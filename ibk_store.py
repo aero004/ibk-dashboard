@@ -82,6 +82,11 @@ class IBKStore:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_active_snapshot ON active_items(snapshot_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_active_key ON active_items(item_key)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_release_pair ON released_items(base_snapshot_id, final_snapshot_id)")
+            for col, typ in [("transport", "TEXT"), ("source_post", "TEXT")]:
+                try:
+                    cur.execute(f"ALTER TABLE active_items ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
 
     def register_snapshot(self, report_id: str, file_name: str, file_path: str, deposit_path: str | None, report_date: str) -> int:
         with self.connect() as conn:
@@ -100,12 +105,14 @@ class IBKStore:
             cur.executemany("""
                 INSERT INTO active_items(
                     snapshot_id, item_key, decl, item_no, regime, post, stir, company, gtd_date,
-                    hs_code, goods, weight, value, payment, partiya, country, warehouse, reason
+                    hs_code, goods, weight, value, payment, partiya, country, warehouse, reason,
+                    transport, source_post
                 ) VALUES (
                     :snapshot_id, :item_key, :decl, :item_no, :regime, :post, :stir, :company, :gtd_date,
-                    :hs_code, :goods, :weight, :value, :payment, :partiya, :country, :warehouse, :reason
+                    :hs_code, :goods, :weight, :value, :payment, :partiya, :country, :warehouse, :reason,
+                    :transport, :source_post
                 )
-            """, [{**r, "snapshot_id": snapshot_id} for r in rows])
+            """, [{**r, "snapshot_id": snapshot_id, "transport": r.get("transport",""), "source_post": r.get("source_post","")} for r in rows])
 
     def snapshot_id_by_date(self, date_text: str) -> int | None:
         with self.connect() as conn:
@@ -208,6 +215,119 @@ class IBKStore:
             short = (name[:42].rstrip() + "\u2026") if len(name) > 42 else name
             items.append({"hs_code": str(hs), "goods": name, "goods_short": short or str(hs), "series": series})
         return {"periods": periods, "goods": items}
+
+    def warehouse_series_all(self) -> dict[str, Any]:
+        """Har bir ombor bo'yicha har bir davr kesimida jami qiymat/vazn/partiya."""
+        with self.connect() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT s.report_date as date, a.warehouse as warehouse,
+                       SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
+                FROM active_items a
+                JOIN snapshots s ON s.id = a.snapshot_id
+                WHERE a.warehouse IS NOT NULL AND a.warehouse != ''
+                GROUP BY s.report_date, a.warehouse
+                """,
+                conn,
+            )
+        if df.empty:
+            return {"periods": [], "warehouses": []}
+        df, periods = self._normalize_periods(df)
+        items = []
+        for wh, g in df.groupby("warehouse"):
+            by_date = {row["date"]: row for _, row in g.iterrows()}
+            series = []
+            for p in periods:
+                row = by_date.get(p)
+                series.append({
+                    "date": p,
+                    "value": float(row["value"]) if row is not None else 0.0,
+                    "weight": float(row["weight"]) if row is not None else 0.0,
+                    "partiya": int(row["partiya"]) if row is not None else 0,
+                })
+            items.append({"warehouse": str(wh), "series": series})
+        items.sort(key=lambda x: sum(s["value"] for s in x["series"]), reverse=True)
+        return {"periods": periods, "warehouses": items}
+
+    def transport_series_all(self) -> dict[str, Any]:
+        """Har bir transport turi bo'yicha har bir davr kesimida jami qiymat/vazn/partiya."""
+        with self.connect() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT s.report_date as date, a.transport as transport,
+                       SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
+                FROM active_items a
+                JOIN snapshots s ON s.id = a.snapshot_id
+                WHERE a.transport IS NOT NULL AND a.transport != ''
+                GROUP BY s.report_date, a.transport
+                """,
+                conn,
+            )
+        if df.empty:
+            return {"periods": [], "transports": []}
+        df, periods = self._normalize_periods(df)
+        items = []
+        for tr, g in df.groupby("transport"):
+            by_date = {row["date"]: row for _, row in g.iterrows()}
+            series = []
+            for p in periods:
+                row = by_date.get(p)
+                series.append({
+                    "date": p,
+                    "value": float(row["value"]) if row is not None else 0.0,
+                    "weight": float(row["weight"]) if row is not None else 0.0,
+                    "partiya": int(row["partiya"]) if row is not None else 0,
+                })
+            items.append({"transport": str(tr), "series": series})
+        items.sort(key=lambda x: sum(s["value"] for s in x["series"]), reverse=True)
+        return {"periods": periods, "transports": items}
+
+    def transport_company_series_all(self) -> dict[str, Any]:
+        """Har bir transport turi kesimida korxonalarning davriy aylanmasi."""
+        with self.connect() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT s.report_date as date, a.transport as transport,
+                       a.stir as stir, a.company as company,
+                       SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
+                FROM active_items a
+                JOIN snapshots s ON s.id = a.snapshot_id
+                WHERE a.transport IS NOT NULL AND a.transport != ''
+                  AND a.stir IS NOT NULL AND a.stir != ''
+                GROUP BY s.report_date, a.transport, a.stir
+                """,
+                conn,
+            )
+        if df.empty:
+            return {"periods": [], "transports": []}
+        df, periods = self._normalize_periods(df)
+        name_map = df.groupby("stir")["company"].last().to_dict()
+        result = {}
+        for (tr, stir), g in df.groupby(["transport", "stir"]):
+            if tr not in result:
+                result[tr] = {}
+            by_date = {row["date"]: row for _, row in g.iterrows()}
+            series = []
+            for p in periods:
+                row = by_date.get(p)
+                series.append({
+                    "date": p,
+                    "value": float(row["value"]) if row is not None else 0.0,
+                    "weight": float(row["weight"]) if row is not None else 0.0,
+                    "partiya": int(row["partiya"]) if row is not None else 0,
+                })
+            result[tr][str(stir)] = {
+                "stir": str(stir),
+                "company": str(name_map.get(stir, "")),
+                "series": series,
+                "total_value": sum(s["value"] for s in series),
+            }
+        transports = []
+        for tr, companies in result.items():
+            clist = sorted(companies.values(), key=lambda x: x["total_value"], reverse=True)
+            transports.append({"transport": str(tr), "companies": clist})
+        transports.sort(key=lambda x: sum(c["total_value"] for c in x["companies"]), reverse=True)
+        return {"periods": periods, "transports": transports}
 
     def compute_released(self, base_snapshot_id: int, final_snapshot_id: int) -> dict[str, Any]:
         with self.connect() as conn:
