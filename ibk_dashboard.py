@@ -1357,7 +1357,7 @@ dialog{width:min(1760px,98.5vw)!important;max-width:98.5vw!important}dialog .bod
 .flow-map-svg{display:block;width:min(1060px,100%);height:auto;margin:0 auto;overflow:visible;--flow-bg-1:#eaf6ff;--flow-bg-2:#c9e8fb}
 .flow-bg{fill:url(#flowBg);stroke:rgba(120,190,230,.32);stroke-width:1.4}
 .flow-grid line{stroke:rgba(120,190,230,.14);stroke-width:1}
-.flow-map-svg .continent{fill:rgba(120,190,230,.22)}
+.flow-map-svg .continent{fill:rgba(120,190,230,.22)}.wld-land{fill:rgba(48,130,75,.52);stroke:rgba(130,215,145,.55);stroke-width:1.1;stroke-linejoin:round;stroke-linecap:round}.dark .wld-land{fill:rgba(35,98,55,.62);stroke:rgba(95,185,108,.38)}
 .flow-route{fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:7 9;opacity:.8;animation-name:flowDash;animation-timing-function:linear;animation-iteration-count:infinite}
 .flow-route.hi{stroke:#16a34a}.flow-route.mid{stroke:#f59e0b}.flow-route.lo{stroke:#7aa9c9}
 .flow-dot{stroke:#fff;stroke-width:1.8;animation:dotPulse2 1.7s ease-in-out infinite}
@@ -1568,18 +1568,64 @@ const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺",
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
 function flowProj(lat,lon){return {x:(lon+180)/360*1000,y:(90-lat)/180*456+22}}
 function flowGrid(){let l=[];for(let x=0;x<=1000;x+=125)l.push(`<line x1="${x}" y1="2" x2="${x}" y2="498"/>`);for(let y=2;y<=498;y+=76)l.push(`<line x1="2" y1="${y.toFixed(1)}" x2="998" y2="${y.toFixed(1)}"/>`);return `<g class="flow-grid">${l.join("")}</g>`}
-function countryFlowMap(rows){rows=by(rows||[],"qiymat").slice(0,12);let uzP=flowProj(41.38,64.59);let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-let continents=[[-100,42,160,90],[15,50,115,72],[100,52,230,98],[78,20,145,82],[135,-25,115,62],[-60,-15,115,98],[20,5,125,118],[-65,55,80,46],[105,-2,90,60],[145,40,90,52]];
-let contSvg=continents.map(c=>{let p=flowProj(c[1],c[0]);return `<ellipse class="continent" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" rx="${(c[2]/2).toFixed(1)}" ry="${(c[3]/2).toFixed(1)}"/>`}).join("");
-let items=rows.map((r,i)=>{let ll=countryLatLon(r.name,i,rows.length),p=flowProj(ll.lat,ll.lon);let q=+r.qiymat||0,v=+r.vazn||0,qShare=q/maxQ,radius=4.5+Math.sqrt(v/maxV)*10;
-let cls=qShare>=.6?"hi":qShare>=.3?"mid":"lo";
-let dx=uzP.x-p.x,dy=uzP.y-p.y,c1x=p.x+dx*0.32,c1y=p.y-46,c2x=p.x+dx*0.68,c2y=uzP.y-46;
-let anchor="middle",lx=p.x;if(p.x>uzP.x+15){anchor="start";lx=p.x+radius+6}else if(p.x<uzP.x-15){anchor="end";lx=p.x-radius-6}
-let ly=p.y-radius-8;if(ly<16)ly=p.y+radius+16;if(ly>490)ly=p.y-radius-8;
-let dur=(2.6+i*0.22).toFixed(2);
-return `<g class="flow-item"><path class="flow-route ${cls}" style="animation-duration:${dur}s" d="M${p.x.toFixed(1)},${p.y.toFixed(1)} C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${uzP.x.toFixed(1)},${uzP.y.toFixed(1)}"/><circle class="flow-dot ${cls}" style="--r:${radius.toFixed(1)}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${radius.toFixed(1)}"/><text class="flow-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${countryFlag(r.name)} ${esc(r.name)}</text></g>`}).join("");
-let legend=`<div class="flow-legend"><span class="lg hi">●</span> Yuqori qiymat ulushi<span class="lg mid">●</span> O'rtacha<span class="lg lo">●</span> Past<span class="lg-size">⬤</span> Doira o'lchami = vazn (tn)</div>`;
-return `<div class="flow-map real-globe"><svg class="flow-map-svg" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="flowBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--flow-bg-1)"/><stop offset="1" stop-color="var(--flow-bg-2)"/></linearGradient><filter id="flowGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect class="flow-bg" x="2" y="2" width="996" height="496" rx="22"/>${flowGrid()}${contSvg}<g filter="url(#flowGlow)">${items}<circle class="flow-uz-ring" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="6"/><circle class="flow-uz-ring flow-uz-ring2" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="6"/><circle class="flow-uz-dot" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="7"/></g><text class="flow-uz-label" x="${(uzP.x+13).toFixed(1)}" y="${(uzP.y+5).toFixed(1)}">🇺🇿 O'zbekiston</text></svg><div class="globe-caption">Davlatlardan O'zbekistonga yo'nalgan yuk oqimi</div>${legend}</div>`}
+function worldLandPaths(){
+  function mp(pts){return pts.map((p,i)=>{let r=flowProj(p[0],p[1]);return(i?'L':'M')+r.x.toFixed(1)+' '+r.y.toFixed(1)}).join('')+'Z'}
+  let shapes=[
+    // Shimoliy Amerika
+    mp([[72,-142],[62,-143],[50,-128],[40,-124],[32,-117],[24,-110],[15,-91],[10,-83],[8,-77],[12,-72],[18,-87],[22,-106],[30,-87],[25,-80],[36,-76],[47,-53],[57,-62],[63,-65],[72,-80]]),
+    // Grenlandiya
+    mp([[83,-58],[83,-12],[72,-22],[60,-45],[72,-60]]),
+    // Markaziy Amerika
+    mp([[25,-80],[22,-82],[15,-91],[10,-83],[8,-77],[12,-72],[18,-87],[22,-88],[25,-91],[22,-92],[15,-91]]),
+    // Janubiy Amerika
+    mp([[12,-72],[8,-60],[5,-50],[0,-50],[-10,-38],[-20,-40],[-35,-58],[-55,-65],[-55,-70],[-38,-73],[-18,-70],[-5,-80],[12,-77]]),
+    // G'arbiy Evropa
+    mp([[71,28],[62,28],[55,24],[50,36],[43,28],[37,27],[37,23],[40,20],[37,15],[36,0],[43,-9],[48,-5],[55,0],[60,5],[66,15]]),
+    // Britaniya orollari
+    mp([[58,-6],[58,0],[52,0],[50,-5],[55,-6]]),
+    // Skandinaviya
+    mp([[71,29],[70,18],[62,5],[57,8],[58,12],[62,28],[70,28]]),
+    // Afrika
+    mp([[37,10],[37,38],[23,37],[12,44],[0,42],[-12,40],[-35,26],[-35,17],[-22,14],[0,-18],[8,-15],[15,-17],[21,-17]]),
+    // Madagaskar
+    mp([[-12,44],[-13,48],[-26,46],[-25,43],[-12,44]]),
+    // Osiyo (asosiy)
+    mp([[72,28],[72,140],[55,135],[50,140],[42,133],[38,121],[35,140],[30,121],[22,110],[5,100],[5,80],[10,50],[25,56],[30,49],[38,36],[43,28],[55,24],[62,28]]),
+    // Hindiston
+    mp([[25,60],[30,61],[26,68],[22,68],[8,77],[7,80],[10,79],[20,86],[23,88],[22,92],[12,80],[8,76]]),
+    // Janubi-Sharqiy Osiyo
+    mp([[22,92],[18,102],[5,100],[2,103],[5,104],[15,102],[20,99]]),
+    // Yaponiya
+    mp([[45,141],[41,141],[33,130],[33,131],[35,135],[37,137],[41,142],[45,141]]),
+    // Sri-Lanka
+    mp([[10,80],[6,80],[6,82],[10,81]]),
+    // Avstraliya
+    mp([[-14,128],[-15,130],[-15,142],[-38,148],[-38,146],[-38,140],[-34,122],[-22,114],[-14,126]]),
+    // Yangi Zelandiya (Shimoliy)
+    mp([[-34,172],[-37,175],[-41,175],[-37,176],[-34,172]]),
+    // Yangi Zelandiya (Janubiy)
+    mp([[-40,172],[-46,168],[-46,172],[-40,173]]),
+  ];
+  return shapes.map(d=>`<path class="wld-land" d="${d}"/>`).join('');
+}
+function countryFlowMap(rows){
+  rows=by(rows||[],"qiymat").slice(0,12);
+  let uzP=flowProj(41.3,69.3);
+  let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
+  let contSvg=worldLandPaths();
+  let items=rows.map((r,i)=>{
+    let ll=countryLatLon(r.name,i,rows.length),p=flowProj(ll.lat,ll.lon);
+    let q=+r.qiymat||0,v=+r.vazn||0,qShare=q/maxQ,radius=5+Math.sqrt(v/maxV)*12;
+    let cls=qShare>=.6?"hi":qShare>=.3?"mid":"lo";
+    let dx=uzP.x-p.x,dy=uzP.y-p.y,c1x=p.x+dx*0.28,c1y=p.y-54,c2x=p.x+dx*0.72,c2y=uzP.y-54;
+    let anchor="middle",lx=p.x;
+    if(p.x>uzP.x+18){anchor="start";lx=p.x+radius+7}else if(p.x<uzP.x-18){anchor="end";lx=p.x-radius-7}
+    let ly=p.y-radius-10;if(ly<16)ly=p.y+radius+17;if(ly>490)ly=p.y-radius-10;
+    let dur=(2.4+i*0.19).toFixed(2);
+    return `<g class="flow-item"><path class="flow-route ${cls}" style="animation-duration:${dur}s" d="M${p.x.toFixed(1)},${p.y.toFixed(1)} C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${uzP.x.toFixed(1)},${uzP.y.toFixed(1)}"/><circle class="flow-dot ${cls}" style="--r:${radius.toFixed(1)}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${radius.toFixed(1)}"/><text class="flow-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${countryFlag(r.name)} ${esc(r.name)}</text></g>`;
+  }).join("");
+  let legend=`<div class="flow-legend"><span class="lg hi">●</span> Yuqori qiymat ulushi<span class="lg mid">●</span> O'rtacha<span class="lg lo">●</span> Past<span class="lg-size">⬤</span> Doira o'lchami = vazn (tn)</div>`;
+  return `<div class="flow-map real-globe"><svg class="flow-map-svg" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="flowBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b2644"/><stop offset="1" stop-color="#163455"/></linearGradient><filter id="flowGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="landShad" x="-5%" y="-5%" width="110%" height="110%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.4)"/></filter></defs><rect x="0" y="0" width="1000" height="500" rx="20" style="fill:url(#flowBg)"/>${flowGrid()}<g filter="url(#landShad)">${contSvg}</g><g filter="url(#flowGlow)">${items}<circle class="flow-uz-ring" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="8"/><circle class="flow-uz-ring flow-uz-ring2" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="8"/><circle class="flow-uz-dot" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="9"/></g><text class="flow-uz-label" x="${(uzP.x+14).toFixed(1)}" y="${(uzP.y+5).toFixed(1)}">🇺🇿 O'zbekiston</text></svg><div class="globe-caption">Davlatlardan O'zbekistonga yo'nalgan yuk oqimi</div>${legend}</div>`}
 const POST_NAMES={"00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF","00107":"Elektron tijorat TIF","00110":"Toshkent-Humo aeroporti CHBP","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","27001":"Yallama chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti"};
 function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>Object.assign({},r,{post_nomi:r.post_nomi||POST_NAMES[r.post_kodi]||r.post_kodi||"-"}))}
 function sourcePostInfographics(){let posts=by(namedSourcePosts(),"qiymat").slice(0,12),trans=DATA.transport||[],tp=trans.reduce((a,r)=>a+(+r.qiymat||0),0)||1,pp=posts.reduce((a,r)=>a+(+r.qiymat||0),0)||1;let rings=trans.map((r,i)=>{let pct=Math.round((+r.qiymat||0)/tp*100),dash=Math.max(0,Math.min(100,pct));return `<div class=transport-ring style="--p:${dash};--delay:${i*.12}s" onclick='detail(${JSON.stringify(r.key||{transport:r.name})})'><b>${esc(r.name||"-")}</b><span>${pct}%</span><small>${fmtI(r.partiya||0)} partiya В· ${fmtN(r.qiymat||0)} ming $</small></div>`}).join("");let barsHtml=posts.map((r,i)=>{let pct=Math.max(2,(+r.qiymat||0)/pp*100);return `<div class=flow-row onclick='detail(${JSON.stringify(r.key||{})})' title="${esc(r.post_nomi||r.post_kodi||"-")}"><div class=flow-name><b>${esc(r.post_kodi||"-")}</b><span>${esc(r.post_nomi||"-")}</span></div><div class=flow-track><i style="width:${pct.toFixed(1)}%;animation-delay:${i*.05}s"></i><em>${pct.toFixed(1)}%</em></div><div class=flow-num>${fmtN(r.qiymat||0)}</div></div>`}).join("");return `<div class="panel wide"><h2>Nazoratga qo'yilgan postlar va transport turlari</h2><div class=transport-viz><div class=ring-grid>${rings}</div><div class=flow-list>${barsHtml}</div></div></div>`}
@@ -1820,6 +1866,7 @@ showApp=async function(){
   if(tabsEl)tabsEl.innerHTML=`<button class="module-parent" onclick="openGroup('bnrte','umumiy')"><span>▦</span>BNRTE</button><button class="module-parent pay" onclick="openGroup('payments','payments')"><span>$</span>To'lovlar</button><button class="module-parent" onclick="openGroup('common','upload')"><span>⚙</span>Boshqaruv</button>`;
   if(actionsEl)actionsEl.innerHTML=`<button class="light lang-btn" onclick="setLang('uz')">O'zb</button><button class="light lang-btn" onclick="setLang('uzc')">Ўзб</button><button class="light lang-btn" onclick="setLang('ru')">Рус</button><button class="light lang-btn" onclick="document.body.classList.toggle('dark')">◐</button> <button class="logout-btn" onclick="logout()">Chiqish</button>`;
   if(viewEl) viewEl.innerHTML=landingPanel();
+  setTimeout(initFlightsMap,200);
 }
 let AUTO_LOGOUT_MS=20*60*1000,autoLogoutTimer=null;
 function resetAutoLogout(){clearTimeout(autoLogoutTimer);if(TOKEN)autoLogoutTimer=setTimeout(()=>{logout();let e=$("loginError");if(e)e.textContent="20 daqiqa faollik bo'lmagani uchun qayta kirish kerak."},AUTO_LOGOUT_MS)}
