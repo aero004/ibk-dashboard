@@ -1,0 +1,72 @@
+{
+  "admin": {
+    "salt": "ibk",
+    "password": "4d15cb7ad4082e4ffa6b89461b909ececf2244439c600d88fdc921443eb8e285",
+    "role": "admin",
+    "enabled": true,
+    "perms": [
+      "view",
+      "upload",
+      "export",
+      "release",
+      "admin",
+      "settings"
+    ],
+    "full_name": "",
+    "position": "",
+    "phone": "",
+    "lang": "uz",
+    "post_code": "",
+    "role_label": "Admin"
+  },
+  "IBK03": {
+    "salt": "8e3f335ee9ce74b9",
+    "password": "37290901942cf56f502a526eda3f7a900efcaa87200769be13979c7016f64562",
+    "role": "rahbar",
+    "role_label": "Rahbar",
+    "enabled": true,
+    "full_name": "Baydebov Azamat Shavkatovich",
+    "position": "IBK boshlig'i o'rinbosari",
+    "phone": "4103",
+    "lang": "uz",
+    "post_code": "00",
+    "perms": [
+      "view",
+      "upload",
+      "export"
+    ]
+  },
+  "IBK02": {
+    "salt": "9731cb7b5328aa63",
+    "password": "24dacd3b2a5c81bd4bcd70344b0bafcb9b93439462029f764b9ab915bb6c2380",
+    "role": "rahbar",
+    "role_label": "Rahbar",
+    "enabled": true,
+    "full_name": "Xamidov Sherzod",
+    "position": "IBK boshlig'ining birinchi o'rinbosari",
+    "phone": "4102",
+    "lang": "uz",
+    "post_code": "00",
+    "perms": [
+      "view",
+      "upload"
+    ]
+  },
+  "IBK01": {
+    "salt": "4fa1791039c2d49c",
+    "password": "d8cd6bd42b5dee22b6d968f139e18f6e697a1784b36dd93dfbccf3b467386f7d",
+    "role": "rahbar",
+    "role_label": "Rahbar",
+    "enabled": true,
+    "full_name": "Mirzaxmedova Dilafruz Farxatovna",
+    "position": "IBK boshlig'i",
+    "phone": "4101",
+    "lang": "uz",
+    "post_code": "00",
+    "perms": [
+      "view",
+      "upload",
+      "export"
+    ]
+  }
+}
