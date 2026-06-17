@@ -407,7 +407,7 @@ POST_CLASSIFIER = {
 
 def source_post_name(code: str) -> str:
     code = core.clean(code)
-    return POST_CLASSIFIER.get(code, code or "-")
+    return POST_CLASSIFIER.get(code, f"Post №{code}" if code else "-")
 
 
 def source_transport(code: str, post_name: str = "") -> str:
@@ -1579,11 +1579,25 @@ function initCountryFlowMap(){
   try{COUNTRY_FLOW_MAP.fitBounds(bounds,{padding:[28,28],maxZoom:5})}catch(e){}
 }
 const POST_NAMES={"00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF","00107":"Elektron tijorat TIF","00110":"Toshkent-Humo aeroporti CHBP","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","27001":"Yallama chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti"};
-function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>Object.assign({},r,{post_nomi:r.post_nomi||POST_NAMES[r.post_kodi]||r.post_kodi||"-"}))}
+function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>Object.assign({},r,{post_nomi:r.post_nomi||POST_NAMES[r.post_kodi]||(r.post_kodi?`Post №`+r.post_kodi:"-")}))}
 function sourcePostInfographics(){let posts=by(namedSourcePosts(),"qiymat").slice(0,12),trans=DATA.transport||[],tp=trans.reduce((a,r)=>a+(+r.qiymat||0),0)||1,pp=posts.reduce((a,r)=>a+(+r.qiymat||0),0)||1;let rings=trans.map((r,i)=>{let pct=Math.round((+r.qiymat||0)/tp*100),dash=Math.max(0,Math.min(100,pct));return `<div class=transport-ring style="--p:${dash};--delay:${i*.12}s" onclick='detail(${JSON.stringify(r.key||{transport:r.name})})'><b>${esc(r.name||"-")}</b><span>${pct}%</span><small>${fmtI(r.partiya||0)} partiya В· ${fmtN(r.qiymat||0)} ming $</small></div>`}).join("");let barsHtml=posts.map((r,i)=>{let pct=Math.max(2,(+r.qiymat||0)/pp*100);return `<div class=flow-row onclick='detail(${JSON.stringify(r.key||{})})' title="${esc(r.post_nomi||r.post_kodi||"-")}"><div class=flow-name><b>${esc(r.post_kodi||"-")}</b><span>${esc(r.post_nomi||"-")}</span></div><div class=flow-track><i style="width:${pct.toFixed(1)}%;animation-delay:${i*.05}s"></i><em>${pct.toFixed(1)}%</em></div><div class=flow-num>${fmtN(r.qiymat||0)}</div></div>`}).join("");return `<div class="panel wide"><h2>Nazoratga qo'yilgan postlar va transport turlari</h2><div class=transport-viz><div class=ring-grid>${rings}</div><div class=flow-list>${barsHtml}</div></div></div>`}
 function transportPanel(){let cols=[{k:"post_kodi",t:"Post kodi",w:"78px"},{k:"post_nomi",t:"Post nomi",w:"260px"},{k:"transport",t:"Transport turi",w:"92px"},{k:"partiya",t:"Partiya",w:"78px",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"92px",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"112px",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",w:"112px",n:1,f:fmtN},{k:"korxona",t:"Korxona",w:"82px",n:1,f:fmtI}];let rows=namedSourcePosts();return `<div class=panel><h2>Deklaratsiya post kodi bo'yicha tahlil</h2>${table(cols,basicTotal(rows,"IBK bo'yicha Jami","post_nomi"),"fixed-table transport-table")}</div>${sourcePostInfographics()}${chartBlock("Transport turi bo'yicha ulushi",DATA.transport||[],"name","qiymat",fmtN)}`}
 const overviewPanelsWithMap=overviewPanels;overviewPanels=function(){let html=overviewPanelsWithMap();let countries=countryRows();let countryBlock=`<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countries,"name","qiymat",fmtN)}</div></div>${transportPanel()}`;return html.replace(`<div class=panel><h2>Davlatlar bo'yicha tahlil</h2>${bars(countryRows(),"name","qiymat",fmtN)}</div>`,countryBlock)}
-function flightsPanelShell(){return `<div class="panel wide" id="flightsPanelWrap"><h2>Toshkent va Markaziy Osiyo - jonli parvozlar xaritasi</h2><div id="flightsMap" class="flights-map"></div><div id="flightsMeta" class="muted">Yuklanmoqda...</div></div>`}
+function flightsPanelShell(){
+  return `<div class="panel wide" id="flightsPanelWrap">
+<h2>Toshkent va Markaziy Osiyo — jonli parvozlar (FlightRadar24)</h2>
+<div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px">
+  <iframe id="fr24Frame"
+    src="https://www.flightradar24.com/simple_index.php?lat=41.3&lng=69.3&z=6&hideSidebar=1&hideToolbar=0"
+    width="100%" height="500" frameborder="0" allowfullscreen
+    style="display:block;min-height:480px"
+    loading="lazy">
+  </iframe>
+</div>
+<div class="muted" style="font-size:12px;margin-top:4px">Manba: FlightRadar24 · Ma'lumotlar real vaqtda yangilanadi · Toshkent UTTT aeroporti atrofi</div>
+<div id="flightsMeta" class="muted" style="display:none"></div>
+<div id="flightsMap" style="display:none"></div>
+</div>`}
 let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
 function planeIcon(heading){return L.divIcon({className:"plane-marker",html:`<div style="transform:rotate(${(heading||0).toFixed(0)}deg)">✈</div>`,iconSize:[22,22],iconAnchor:[11,11]})}
 function initFlightsMap(){let el=document.getElementById("flightsMap");if(!el){if(FLIGHTS_TIMER){clearInterval(FLIGHTS_TIMER);FLIGHTS_TIMER=null}return}
