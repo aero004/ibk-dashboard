@@ -1354,28 +1354,6 @@ table{table-layout:fixed!important}th{white-space:normal!important;word-break:br
 .transport-table{min-width:1010px!important}.transport-table th{height:52px!important;padding:5px 4px!important}.transport-table td{height:34px!important;padding:4px 6px!important}.transport-table td:nth-child(2){text-align:left!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.transport-viz{display:grid;grid-template-columns:360px 1fr;gap:18px}.ring-grid{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:12px}.transport-ring{position:relative;min-height:150px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(236,248,255,.86));border:1px solid rgba(50,123,180,.16);display:grid;place-items:center;text-align:center;cursor:pointer;overflow:hidden;box-shadow:0 10px 24px rgba(30,96,150,.09);transition:.2s}.transport-ring:before{content:"";position:absolute;width:104px;height:104px;border-radius:50%;background:conic-gradient(#1e79bd calc(var(--p)*1%),#d9eef8 0);animation:ringLoad .9s ease both;animation-delay:var(--delay)}.transport-ring:after{content:"";position:absolute;width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.95)}.transport-ring b,.transport-ring span,.transport-ring small{position:relative;z-index:1}.transport-ring b{align-self:end;font-size:13px;color:#143b61}.transport-ring span{font-weight:900;font-size:22px;color:#0d6da6}.transport-ring small{align-self:start;color:#64748b;font-size:11px;max-width:130px}.transport-ring:hover{transform:translateY(-4px) scale(1.015);box-shadow:0 16px 36px rgba(31,111,178,.18)}.flow-list{display:grid;gap:8px}.flow-row{display:grid;grid-template-columns:255px 1fr 92px;gap:10px;align-items:center;padding:8px 10px;border:1px solid rgba(37,108,166,.13);border-radius:12px;background:rgba(255,255,255,.72);cursor:pointer;transition:.18s}.flow-row:hover{transform:translateX(4px);box-shadow:0 10px 24px rgba(32,103,163,.13)}.flow-name{min-width:0;display:grid;grid-template-columns:58px 1fr;gap:8px;align-items:center}.flow-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.flow-track{height:24px;border-radius:999px;background:#e7f1f8;position:relative;overflow:hidden}.flow-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#32c6cf,#1d72b8);animation:flowGrow .75s ease both}.flow-track em{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-style:normal;font-weight:900;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,.32)}.flow-num{text-align:right;font-weight:800;color:#174a7c}.dark .transport-ring,.dark .flow-row{background:rgba(20,35,54,.88);border-color:#39536d}.dark .transport-ring:after{background:#142337}.dark .transport-ring b,.dark .flow-name b,.dark .flow-num{color:#eaf6ff}.dark .transport-ring small{color:#b7c6d8}.dark .flow-track{background:#263f59}.dark .flow-name span{color:#eaf6ff}@keyframes ringLoad{from{transform:scale(.84);opacity:.2}to{transform:scale(1);opacity:1}}@keyframes flowGrow{from{width:0}to{}}@media(max-width:1000px){.transport-viz{grid-template-columns:1fr}.flow-row{grid-template-columns:210px 1fr 82px}.ring-grid{grid-template-columns:repeat(2,1fr)}}
 .sample-like{border-collapse:collapse!important;table-layout:fixed!important;font-family:"Segoe UI",Arial,sans-serif}.sample-like th{background:#b6dde8!important;color:#111!important;border:1px solid #333!important;font-size:12px!important;font-weight:800!important;white-space:normal!important;line-height:1.08!important;text-align:center!important;vertical-align:middle!important;padding:4px!important}.sample-like td{border:1px solid #333!important;height:24px!important;max-height:24px!important;font-size:12px!important;padding:3px 5px!important;vertical-align:middle!important}.sample-like tbody tr:first-child td,.sample-like .grand-total td{background:#eaf1dd!important;font-weight:800!important}.sample-like .merged-row td{background:#d9eaf7!important;font-weight:800!important;text-align:center!important}.sample-like .sub-total td{background:#f2f7fb!important;font-weight:800!important}.sample-like td.text,.sample-like .col-korxona,.sample-like .col-company,.sample-like .col-goods,.sample-like .col-tovar,.sample-like .col-reason{text-align:left!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.sample-like .col-reason,td.col-reason{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.expired-sample{min-width:1120px!important}.expired-sample col:nth-child(1),.expired-sample td:nth-child(1),.expired-sample th:nth-child(1){width:330px!important}.food-sample{min-width:820px!important}.food-sample col:nth-child(1){width:56px!important}.food-sample col:nth-child(2){width:340px!important}.regime-year-table{max-width:920px!important;min-width:820px!important}.col-korxona,.col-company{min-width:260px;text-align:left!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.col-goods,.col-tovar{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.col-reason{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}body.login-screen header{display:flex!important}body.login-screen #actions{display:none!important}body.login-screen #app,body.login-screen #dash,body.login-screen #tabs,body.login-screen #view,body.login-screen #kpis,.login-screen .workspace,.login-screen .tabs{display:none!important}body.login-screen main{max-width:100%!important}.login-screen .plane-wrap,.login-screen .bird,.login-screen .city,.login-screen .mountains,.login-screen .water,.login-screen .runway,.login-screen .tower,.login-screen .cinema-clouds,.login-screen .cinema-runway,.login-screen .cinema-glow,.login-screen .cinema-vignette{display:none!important}.login-screen .bg-video{display:block!important;opacity:.56!important;filter:brightness(1.18) saturate(.82) contrast(.96)!important}.login-screen #bgCanvas{display:block!important}.login-screen .sky-scene{background:radial-gradient(circle at 50% 32%,rgba(255,255,255,.96),rgba(228,245,255,.84) 42%,rgba(207,232,248,.72))!important}.login-screen .sky-scene:before,.login-screen .sky-scene:after{display:none!important}.login-seal{filter:brightness(1.2) saturate(.72) drop-shadow(0 26px 42px rgba(32,94,154,.18))!important}.eye-btn{font-size:18px!important;line-height:1!important}
 dialog{width:min(1760px,98.5vw)!important;max-width:98.5vw!important}dialog .body{max-height:82vh!important}.details-wide{min-width:1580px!important}.real-globe{min-height:430px!important;padding:12px!important}
-.flow-map-svg{display:block;width:min(1060px,100%);height:auto;margin:0 auto;overflow:visible;--flow-bg-1:#eaf6ff;--flow-bg-2:#c9e8fb}
-.flow-bg{fill:url(#flowBg);stroke:rgba(120,190,230,.32);stroke-width:1.4}
-.flow-grid line{stroke:rgba(120,190,230,.14);stroke-width:1}
-.flow-map-svg .continent{fill:rgba(120,190,230,.22)}.wld-land{fill:rgba(48,130,75,.52);stroke:rgba(130,215,145,.55);stroke-width:1.1;stroke-linejoin:round;stroke-linecap:round}.dark .wld-land{fill:rgba(35,98,55,.62);stroke:rgba(95,185,108,.38)}
-.flow-route{fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:7 9;opacity:.8;animation-name:flowDash;animation-timing-function:linear;animation-iteration-count:infinite}
-.flow-route.hi{stroke:#16a34a}.flow-route.mid{stroke:#f59e0b}.flow-route.lo{stroke:#7aa9c9}
-.flow-dot{stroke:#fff;stroke-width:1.8;animation:dotPulse2 1.7s ease-in-out infinite}
-.flow-dot.hi{fill:#16a34a}.flow-dot.mid{fill:#f59e0b}.flow-dot.lo{fill:#5b9bd1}
-.flow-label{font-size:12.5px;font-weight:800;fill:#16395c;paint-order:stroke;stroke:#fff;stroke-width:3.2px}
-.flow-uz-dot{fill:#0a5f9e;stroke:#fff;stroke-width:2.8}
-.flow-uz-ring{fill:none;stroke:#0a5f9e;stroke-width:2;opacity:.5;animation:uzRing 2.2s ease-out infinite}
-.flow-uz-ring2{animation-delay:1.1s}
-.flow-uz-label{font-size:15px;font-weight:900;fill:#0b3154;paint-order:stroke;stroke:#fff;stroke-width:3.2px}
-@keyframes flowDash{to{stroke-dashoffset:-32}}
-@keyframes dotPulse2{0%,100%{r:var(--r)}50%{r:calc(var(--r) * 1.35)}}
-@keyframes uzRing{0%{r:6;opacity:.6}100%{r:30;opacity:0}}
-.dark .flow-map-svg{--flow-bg-1:#16314c;--flow-bg-2:#0a1726}
-.dark .flow-bg{stroke:rgba(180,229,252,.24)}
-.dark .flow-grid line{stroke:rgba(180,229,252,.10)}
-.dark .flow-map-svg .continent{fill:rgba(180,229,252,.16)}
-.dark .flow-label,.dark .flow-uz-label{fill:#eaf7ff;stroke:#0e2235}
-.dark .flow-route.lo{stroke:#5b87ab}
 .flow-legend{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;align-items:center;margin-top:10px;font-size:12px;color:#557086;font-weight:700}
 .flow-legend .lg{font-size:16px;line-height:1}
 .flow-legend .lg.hi{color:#16a34a}.flow-legend .lg.mid{color:#f59e0b}.flow-legend .lg.lo{color:#5b9bd1}
@@ -1572,66 +1550,34 @@ const COUNTRY_COORDS=[["xitoy",35.86,104.19],["china",35.86,104.19],["rossiya",6
 function countryLatLon(name,i,total){let s=String(name||"").toLowerCase();for(let c of COUNTRY_COORDS){if(s.includes(c[0]))return {lat:c[1],lon:c[2]}}let lon=-150+(i/(Math.max(total-1,1)))*300;let lat=46-((i%7)*13);return {lat,lon}}
 const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺","russia":"🇷🇺","turkiya":"🇹🇷","turkey":"🇹🇷","koreya":"🇰🇷","germaniya":"🇩🇪","germany":"🇩🇪","italiya":"🇮🇹","fransiya":"🇫🇷","aqsh":"🇺🇸","usa":"🇺🇸","amerika":"🇺🇸","hindiston":"🇮🇳","india":"🇮🇳","qozog":"🇰🇿","kazakh":"🇰🇿","baa":"🇦🇪","amirlik":"🇦🇪","eron":"🇮🇷","iran":"🇮🇷","polsha":"🇵🇱","ispaniya":"🇪🇸","yaponiya":"🇯🇵","japan":"🇯🇵","belarus":"🇧🇾","latviya":"🇱🇻","litva":"🇱🇹","ukraina":"🇺🇦","misr":"🇪🇬","egypt":"🇪🇬","pokiston":"🇵🇰","pakistan":"🇵🇰","vietnam":"🇻🇳","malayziya":"🇲🇾","tailand":"🇹🇭","indoneziya":"🇮🇩","braziliya":"🇧🇷","meksika":"🇲🇽","saudiya":"🇸🇦","gretsiya":"🇬🇷","gruziya":"🇬🇪","britaniya":"🇬🇧"};
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
-function flowProj(lat,lon){return {x:(lon+180)/360*1000,y:(90-lat)/180*456+22}}
-function flowGrid(){let l=[];for(let x=0;x<=1000;x+=125)l.push(`<line x1="${x}" y1="2" x2="${x}" y2="498"/>`);for(let y=2;y<=498;y+=76)l.push(`<line x1="2" y1="${y.toFixed(1)}" x2="998" y2="${y.toFixed(1)}"/>`);return `<g class="flow-grid">${l.join("")}</g>`}
-function worldLandPaths(){
-  function mp(pts){return pts.map((p,i)=>{let r=flowProj(p[0],p[1]);return(i?'L':'M')+r.x.toFixed(1)+' '+r.y.toFixed(1)}).join('')+'Z'}
-  let shapes=[
-    // Shimoliy Amerika
-    mp([[72,-142],[62,-143],[50,-128],[40,-124],[32,-117],[24,-110],[15,-91],[10,-83],[8,-77],[12,-72],[18,-87],[22,-106],[30,-87],[25,-80],[36,-76],[47,-53],[57,-62],[63,-65],[72,-80]]),
-    // Grenlandiya
-    mp([[83,-58],[83,-12],[72,-22],[60,-45],[72,-60]]),
-    // Markaziy Amerika
-    mp([[25,-80],[22,-82],[15,-91],[10,-83],[8,-77],[12,-72],[18,-87],[22,-88],[25,-91],[22,-92],[15,-91]]),
-    // Janubiy Amerika
-    mp([[12,-72],[8,-60],[5,-50],[0,-50],[-10,-38],[-20,-40],[-35,-58],[-55,-65],[-55,-70],[-38,-73],[-18,-70],[-5,-80],[12,-77]]),
-    // G'arbiy Evropa
-    mp([[71,28],[62,28],[55,24],[50,36],[43,28],[37,27],[37,23],[40,20],[37,15],[36,0],[43,-9],[48,-5],[55,0],[60,5],[66,15]]),
-    // Britaniya orollari
-    mp([[58,-6],[58,0],[52,0],[50,-5],[55,-6]]),
-    // Skandinaviya
-    mp([[71,29],[70,18],[62,5],[57,8],[58,12],[62,28],[70,28]]),
-    // Afrika
-    mp([[37,10],[37,38],[23,37],[12,44],[0,42],[-12,40],[-35,26],[-35,17],[-22,14],[0,-18],[8,-15],[15,-17],[21,-17]]),
-    // Madagaskar
-    mp([[-12,44],[-13,48],[-26,46],[-25,43],[-12,44]]),
-    // Osiyo (asosiy)
-    mp([[72,28],[72,140],[55,135],[50,140],[42,133],[38,121],[35,140],[30,121],[22,110],[5,100],[5,80],[10,50],[25,56],[30,49],[38,36],[43,28],[55,24],[62,28]]),
-    // Hindiston
-    mp([[25,60],[30,61],[26,68],[22,68],[8,77],[7,80],[10,79],[20,86],[23,88],[22,92],[12,80],[8,76]]),
-    // Janubi-Sharqiy Osiyo
-    mp([[22,92],[18,102],[5,100],[2,103],[5,104],[15,102],[20,99]]),
-    // Yaponiya
-    mp([[45,141],[41,141],[33,130],[33,131],[35,135],[37,137],[41,142],[45,141]]),
-    // Sri-Lanka
-    mp([[10,80],[6,80],[6,82],[10,81]]),
-    // Avstraliya
-    mp([[-14,128],[-15,130],[-15,142],[-38,148],[-38,146],[-38,140],[-34,122],[-22,114],[-14,126]]),
-    // Yangi Zelandiya (Shimoliy)
-    mp([[-34,172],[-37,175],[-41,175],[-37,176],[-34,172]]),
-    // Yangi Zelandiya (Janubiy)
-    mp([[-40,172],[-46,168],[-46,172],[-40,173]]),
-  ];
-  return shapes.map(d=>`<path class="wld-land" d="${d}"/>`).join('');
-}
-function countryFlowMap(rows){
-  rows=by(rows||[],"qiymat").slice(0,12);
-  let uzP=flowProj(41.3,69.3);
+let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;
+function countryFlowMap(rows){_CFM_ROWS=by(rows||[],"qiymat").slice(0,12);let legend=`<div class="flow-legend"><span class="lg hi">●</span> Yuqori qiymat<span class="lg mid">●</span> O'rtacha<span class="lg lo">●</span> Past<span class="lg-size">⬤</span> Doira = vazn (tn)</div>`;return `<div style="border-radius:18px;overflow:hidden;border:1px solid var(--line)"><div id="cfmMap" style="height:420px"></div></div><div class="globe-caption">Davlatlardan O'zbekistonga yo'nalgan yuk oqimi</div>${legend}`}
+function initCountryFlowMap(){
+  let el=document.getElementById("cfmMap");if(!el||typeof L==="undefined")return;
+  if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.remove()}catch(e){}COUNTRY_FLOW_MAP=null}
+  let rows=_CFM_ROWS;if(!rows.length)return;
+  COUNTRY_FLOW_MAP=L.map("cfmMap",{zoomControl:true,scrollWheelZoom:false}).setView([30,50],2);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:10,attribution:"© OpenStreetMap"}).addTo(COUNTRY_FLOW_MAP);
+  let UZ=[41.3,69.3];
   let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-  let contSvg=worldLandPaths();
-  let items=rows.map((r,i)=>{
-    let ll=countryLatLon(r.name,i,rows.length),p=flowProj(ll.lat,ll.lon);
-    let q=+r.qiymat||0,v=+r.vazn||0,qShare=q/maxQ,radius=5+Math.sqrt(v/maxV)*12;
-    let cls=qShare>=.6?"hi":qShare>=.3?"mid":"lo";
-    let dx=uzP.x-p.x,dy=uzP.y-p.y,c1x=p.x+dx*0.28,c1y=p.y-54,c2x=p.x+dx*0.72,c2y=uzP.y-54;
-    let anchor="middle",lx=p.x;
-    if(p.x>uzP.x+18){anchor="start";lx=p.x+radius+7}else if(p.x<uzP.x-18){anchor="end";lx=p.x-radius-7}
-    let ly=p.y-radius-10;if(ly<16)ly=p.y+radius+17;if(ly>490)ly=p.y-radius-10;
-    let dur=(2.4+i*0.19).toFixed(2);
-    return `<g class="flow-item"><path class="flow-route ${cls}" style="animation-duration:${dur}s" d="M${p.x.toFixed(1)},${p.y.toFixed(1)} C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${uzP.x.toFixed(1)},${uzP.y.toFixed(1)}"/><circle class="flow-dot ${cls}" style="--r:${radius.toFixed(1)}" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${radius.toFixed(1)}"/><text class="flow-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}">${countryFlag(r.name)} ${esc(r.name)}</text></g>`;
-  }).join("");
-  let legend=`<div class="flow-legend"><span class="lg hi">●</span> Yuqori qiymat ulushi<span class="lg mid">●</span> O'rtacha<span class="lg lo">●</span> Past<span class="lg-size">⬤</span> Doira o'lchami = vazn (tn)</div>`;
-  return `<div class="flow-map real-globe"><svg class="flow-map-svg" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="flowBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b2644"/><stop offset="1" stop-color="#163455"/></linearGradient><filter id="flowGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="landShad" x="-5%" y="-5%" width="110%" height="110%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.4)"/></filter></defs><rect x="0" y="0" width="1000" height="500" rx="20" style="fill:url(#flowBg)"/>${flowGrid()}<g filter="url(#landShad)">${contSvg}</g><g filter="url(#flowGlow)">${items}<circle class="flow-uz-ring" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="8"/><circle class="flow-uz-ring flow-uz-ring2" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="8"/><circle class="flow-uz-dot" cx="${uzP.x.toFixed(1)}" cy="${uzP.y.toFixed(1)}" r="9"/></g><text class="flow-uz-label" x="${(uzP.x+14).toFixed(1)}" y="${(uzP.y+5).toFixed(1)}">🇺🇿 O'zbekiston</text></svg><div class="globe-caption">Davlatlardan O'zbekistonga yo'nalgan yuk oqimi</div>${legend}</div>`}
+  let uzMarker=L.circleMarker(UZ,{radius:11,fillColor:"#1769aa",color:"#fff",weight:3,fillOpacity:1}).addTo(COUNTRY_FLOW_MAP);
+  uzMarker.bindPopup("<b>🇺🇿 O'zbekiston (Toshkent)</b><br>IBK nazorat punkti");
+  let bounds=[UZ];
+  rows.forEach((r,i)=>{
+    let ll=countryLatLon(r.name,i,rows.length);
+    let q=+r.qiymat||0,v=+r.vazn||0,qShare=q/maxQ;
+    let radius=Math.max(6,Math.min(28,6+Math.sqrt(v/maxV)*22));
+    let color=qShare>=.6?"#16a34a":qShare>=.3?"#f59e0b":"#5b9bd1";
+    let latlng=[ll.lat,ll.lon];
+    bounds.push(latlng);
+    L.polyline([latlng,UZ],{color:color,weight:2,opacity:0.65,dashArray:"7 9"}).addTo(COUNTRY_FLOW_MAP);
+    let circle=L.circleMarker(latlng,{radius,fillColor:color,color:"#fff",weight:2,fillOpacity:0.82}).addTo(COUNTRY_FLOW_MAP);
+    circle.bindPopup(`<b>${countryFlag(r.name)} ${esc(r.name)}</b><br>Qiymat: <b>${fmtN(q)}</b> ming $<br>Vazn: <b>${fmtN(v)}</b> tn<br>Partiya: <b>${fmtI(r.partiya||0)}</b>`);
+    let icon=L.divIcon({className:"",html:`<div style="font-size:11px;font-weight:800;color:#fff;background:${color};padding:2px 6px;border-radius:8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.35)">${countryFlag(r.name)} ${esc(r.name)}</div>`,iconAnchor:[-radius-2,8]});
+    L.marker(latlng,{icon}).addTo(COUNTRY_FLOW_MAP);
+  });
+  try{COUNTRY_FLOW_MAP.fitBounds(bounds,{padding:[28,28],maxZoom:5})}catch(e){}
+}
 const POST_NAMES={"00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF","00107":"Elektron tijorat TIF","00110":"Toshkent-Humo aeroporti CHBP","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","27001":"Yallama chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti"};
 function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>Object.assign({},r,{post_nomi:r.post_nomi||POST_NAMES[r.post_kodi]||r.post_kodi||"-"}))}
 function sourcePostInfographics(){let posts=by(namedSourcePosts(),"qiymat").slice(0,12),trans=DATA.transport||[],tp=trans.reduce((a,r)=>a+(+r.qiymat||0),0)||1,pp=posts.reduce((a,r)=>a+(+r.qiymat||0),0)||1;let rings=trans.map((r,i)=>{let pct=Math.round((+r.qiymat||0)/tp*100),dash=Math.max(0,Math.min(100,pct));return `<div class=transport-ring style="--p:${dash};--delay:${i*.12}s" onclick='detail(${JSON.stringify(r.key||{transport:r.name})})'><b>${esc(r.name||"-")}</b><span>${pct}%</span><small>${fmtI(r.partiya||0)} partiya В· ${fmtN(r.qiymat||0)} ming $</small></div>`}).join("");let barsHtml=posts.map((r,i)=>{let pct=Math.max(2,(+r.qiymat||0)/pp*100);return `<div class=flow-row onclick='detail(${JSON.stringify(r.key||{})})' title="${esc(r.post_nomi||r.post_kodi||"-")}"><div class=flow-name><b>${esc(r.post_kodi||"-")}</b><span>${esc(r.post_nomi||"-")}</span></div><div class=flow-track><i style="width:${pct.toFixed(1)}%;animation-delay:${i*.05}s"></i><em>${pct.toFixed(1)}%</em></div><div class=flow-num>${fmtN(r.qiymat||0)}</div></div>`}).join("");return `<div class="panel wide"><h2>Nazoratga qo'yilgan postlar va transport turlari</h2><div class=transport-viz><div class=ring-grid>${rings}</div><div class=flow-list>${barsHtml}</div></div></div>`}
@@ -1872,14 +1818,14 @@ showApp=async function(){
   if(tabsEl)tabsEl.innerHTML=`<button class="module-parent" onclick="openGroup('bnrte','umumiy')"><span>▦</span>BNRTE</button><button class="module-parent pay" onclick="openGroup('payments','payments')"><span>$</span>To'lovlar</button><button class="module-parent" onclick="openGroup('common','upload')"><span>⚙</span>Boshqaruv</button>`;
   if(actionsEl)actionsEl.innerHTML=`<button class="light lang-btn" onclick="setLang('uz')">O'zb</button><button class="light lang-btn" onclick="setLang('uzc')">Ўзб</button><button class="light lang-btn" onclick="setLang('ru')">Рус</button><button class="light lang-btn" onclick="document.body.classList.toggle('dark')">◐</button> <button class="logout-btn" onclick="logout()">Chiqish</button>`;
   if(viewEl) viewEl.innerHTML=landingPanel();
-  setTimeout(initFlightsMap,200);
+  setTimeout(()=>{initFlightsMap();initCountryFlowMap();},200);
 }
 let AUTO_LOGOUT_MS=20*60*1000,autoLogoutTimer=null;
 function resetAutoLogout(){clearTimeout(autoLogoutTimer);if(TOKEN)autoLogoutTimer=setTimeout(()=>{logout();let e=$("loginError");if(e)e.textContent="20 daqiqa faollik bo'lmagani uchun qayta kirish kerak."},AUTO_LOGOUT_MS)}
 ["click","keydown","mousemove","touchstart","scroll"].forEach(ev=>document.addEventListener(ev,resetAutoLogout,{passive:true}));
 const showAppAutoLogout=showApp;showApp=async function(){await showAppAutoLogout();resetAutoLogout()}
 const logoutAutoBase=logout;logout=function(){clearTimeout(autoLogoutTimer);logoutAutoBase();}
-const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(initFlightsMap,80)}
+const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(()=>{initFlightsMap();initCountryFlowMap();},80)}
 setBg(localStorage.ibk_bg||"premium");
 startBackgroundVideo();
 function releaseDatePair(id,title){return `<div class="release-date-card"><h3>${title}</h3><div class="filters compact-filters"><select id="${id}Base">${dateOptions()}</select><select id="${id}Final">${dateOptions()}</select><button onclick="buildReleaseSection('${id}')">Shakllantirish</button></div><div id="${id}Result" class="release-section-result"></div></div>`}
