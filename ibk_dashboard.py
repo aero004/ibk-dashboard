@@ -637,21 +637,30 @@ def detail_rows(df: pd.DataFrame, filters: dict) -> list[dict]:
     if filters.get("transport"):
         d = d[d["_source_transport"].map(core.clean).eq(filters["transport"])]
     if filters.get("food_name"):
-        _food_pats = {
-            "Ichimliklar (alkogolsiz)": r"ичимлик|напит|drink|сок|water|вода",
-            "Shakar va qandolat mahsulotlari": r"шакар|сахар|sugar|qand|конфет|шоколад",
-            "Sut mahsulotlari, tuxum va asal": r"сут|молок|milk|tuxum|яйц|egg|asal|мед",
-            "Go'sht va go'sht mahsulotlari": r"go'sht|мяс|meat|колбас|tovuq|куриц",
-            "Yog' va moy mahsulotlari": r"yog|мой|масло|oil",
-            "Don, un va yorma mahsulotlari": r"don|un|мука|круп|guruch|рис|bug'doy|пшениц",
-            "Meva-sabzavot mahsulotlari": r"мева|сабзавот|овощ|фрукт|картоф|томат|пиёз|лук",
-            "Boshqa oziq-ovqatlar": r"oziq|овқат|озиқ|food|confection|кондитер|озуқ|пищ",
-        }
+        _food_cats = [
+            ("Ichimliklar (alkogolsiz)", r"ичимлик|напит|drink|сок|water|вода"),
+            ("Shakar va qandolat mahsulotlari", r"шакар|сахар|sugar|qand|конфет|шоколад"),
+            ("Sut mahsulotlari, tuxum va asal", r"сут|молок|milk|tuxum|яйц|egg|asal|мед"),
+            ("Go'sht va go'sht mahsulotlari", r"go'sht|мяс|meat|колбас|tovuq|куриц"),
+            ("Yog' va moy mahsulotlari", r"yog'|yog\b|мой|масло|\boil\b"),
+            ("Don, un va yorma mahsulotlari", r"\bdon\b|\bun\b|мука|круп|guruch|рис|bug'doy|пшениц|jo'xori|arpa"),
+            ("Meva-sabzavot mahsulotlari", r"мева|сабзавот|овощ|фрукт|картоф|томат|пиёз|лук|pomidor|bodring"),
+            ("Boshqa oziq-ovqatlar", r"oziq|овқат|озиқ|confection|кондитер|озуқ|пищ"),
+        ]
         fname = filters["food_name"]
-        pat = next((v for k, v in _food_pats.items() if core.to_latin(core.clean(k)) == fname), None)
-        if pat:
-            hay = (d["_tnved_name"].map(core.clean) + " " + d[core.SRC["goods"]].map(core.clean))
-            d = d[hay.str.contains(pat, case=False, na=False, regex=True)]
+        hay = (d["_tnved_name"].map(core.clean) + " " + d[core.SRC["goods"]].map(core.clean))
+        used = pd.Series(False, index=d.index)
+        matched = False
+        for label, pat in _food_cats:
+            mask = hay.str.contains(pat, case=False, na=False, regex=True)
+            if core.to_latin(core.clean(label)) == fname:
+                d = d[mask & ~used]
+                matched = True
+                break
+            used |= mask
+        if not matched:
+            d = d[~used & d["_tnved_name"].map(core.clean).str.contains(
+                "озиқ|овқат|пищ|food|озуқ", case=False, na=False, regex=True)]
     out = []
     for _, r in d.head(2000).iterrows():
         out.append({
