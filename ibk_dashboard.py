@@ -1528,6 +1528,7 @@ body.logged-in main{
   display:block!important;
 }
 
+/* hex-bg */body{background:#eef4f9!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{background:#eef4f9!important;overflow:hidden!important;animation:none!important}.dark body,.dark .sky-scene{background:#0a1628!important}.sky-scene>*:not(#hexBg){display:none!important}#hexBg{position:absolute;inset:0;width:100%;height:100%;display:block}.panel,.kpi,.login,.upload{background:rgba(255,255,255,.92)!important;backdrop-filter:blur(8px)}.dark .panel,.dark .kpi,.dark .login,.dark .upload{background:rgba(20,35,54,.92)!important}
 </style></head><body><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
 <section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()">Ko'z</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
@@ -2036,6 +2037,42 @@ if(TOKEN){
 }else{
   forceLoginView();
 }
+/* Hex monitoring background */
+(function(){
+  const sc=document.querySelector('.sky-scene');if(!sc)return;
+  const cv=document.createElement('canvas');cv.id='hexBg';sc.appendChild(cv);
+  const dk=()=>document.body.classList.contains('dark');
+  const R=22;let W,H,cells;
+  function resize(){
+    W=window.innerWidth;H=window.innerHeight;cv.width=W;cv.height=H;
+    const cols=Math.ceil(W/(R*1.73))+2,rows=Math.ceil(H/(R*1.5))+2;
+    cells=[];
+    for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)
+      cells.push({x:col*R*1.73+(row%2)*R*.87,y:row*R*1.5,p:Math.random()*Math.PI*2,s:.005+Math.random()*.01,b:Math.random()});
+  }
+  const ctx=cv.getContext('2d');
+  function hx(x,y){
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(x+R*Math.cos(a),y+R*Math.sin(a))}
+    ctx.closePath();
+  }
+  function draw(){
+    const d=dk();
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle=d?'#0a1628':'#eef4f9';ctx.fillRect(0,0,W,H);
+    cells.forEach(c=>{
+      c.p+=c.s;
+      const v=(Math.sin(c.p)+1)/2;
+      hx(c.x,c.y);
+      ctx.fillStyle=d?'rgba(59,130,246,'+(v*.13).toFixed(3)+')':'rgba(29,114,184,'+(v*.065).toFixed(3)+')';
+      ctx.fill();
+      ctx.strokeStyle=d?'rgba(96,165,250,'+(.1+v*.35).toFixed(3)+')':'rgba(29,114,184,'+(.06+v*.24).toFixed(3)+')';
+      ctx.lineWidth=.8;ctx.stroke();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize();window.addEventListener('resize',resize);draw();
+})();
 </script></main></body></html>"""
 
 
