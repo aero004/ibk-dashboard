@@ -1652,65 +1652,58 @@ const COUNTRY_COORDS=[["xitoy",35.86,104.19],["china",35.86,104.19],["rossiya",6
 function countryLatLon(name,i,total){let s=String(name||"").toLowerCase();for(let c of COUNTRY_COORDS){if(s.includes(c[0]))return {lat:c[1],lon:c[2]}}let lon=-150+(i/(Math.max(total-1,1)))*300;let lat=46-((i%7)*13);return {lat,lon}}
 const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺","russia":"🇷🇺","turkiya":"🇹🇷","turkey":"🇹🇷","koreya":"🇰🇷","germaniya":"🇩🇪","germany":"🇩🇪","italiya":"🇮🇹","fransiya":"🇫🇷","aqsh":"🇺🇸","usa":"🇺🇸","amerika":"🇺🇸","hindiston":"🇮🇳","india":"🇮🇳","qozog":"🇰🇿","kazakh":"🇰🇿","baa":"🇦🇪","amirlik":"🇦🇪","eron":"🇮🇷","iran":"🇮🇷","polsha":"🇵🇱","ispaniya":"🇪🇸","yaponiya":"🇯🇵","japan":"🇯🇵","belarus":"🇧🇾","latviya":"🇱🇻","litva":"🇱🇹","ukraina":"🇺🇦","misr":"🇪🇬","egypt":"🇪🇬","pokiston":"🇵🇰","pakistan":"🇵🇰","vietnam":"🇻🇳","malayziya":"🇲🇾","tailand":"🇹🇭","indoneziya":"🇮🇩","braziliya":"🇧🇷","meksika":"🇲🇽","saudiya":"🇸🇦","gretsiya":"🇬🇷","gruziya":"🇬🇪","britaniya":"🇬🇧"};
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
-let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;
-function countryFlowMap(rows){_CFM_ROWS=by(rows||[],"qiymat").slice(0,12);let legend=`<div class="flow-legend"><span class="lg hi">●</span> Yuqori qiymat<span class="lg mid">●</span> O'rtacha<span class="lg lo">●</span> Past<span class="lg-size">⬤</span> Doira = vazn (tn)</div>`;return `<div style="border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#b8d4e8"><div id="cfmMap" style="height:460px;width:100%;background:#b8d4e8"></div></div><div class="globe-caption">Davlatlardan O'zbekistonga yo'nalgan yuk oqimi</div>${legend}`}
+let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;let _YMAP_LOADED=false;let _YMAP_CBS=[];
+function _loadYMaps(cb){
+  if(typeof ymaps!=='undefined'){ymaps.ready(cb);return}
+  _YMAP_CBS.push(cb);
+  if(_YMAP_LOADED)return;
+  _YMAP_LOADED=true;
+  let s=document.createElement('script');
+  // API kalit olish uchun: https://developer.tech.yandex.ru
+  // Kalit bo'lsa: s.src='https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=KALIT_SHU_YERGA';
+  s.src='https://api-maps.yandex.ru/2.1/?lang=ru_RU';
+  s.onload=function(){ymaps.ready(function(){let cbs=_YMAP_CBS;_YMAP_CBS=[];cbs.forEach(fn=>fn())})};
+  s.onerror=function(){let el=document.getElementById('cfmMap');if(el)el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Yandex Maps yuklanmadi — internet aloqasini tekshiring</div>'};
+  document.head.appendChild(s);
+}
+function countryFlowMap(rows){
+  _CFM_ROWS=by(rows||[],"qiymat").slice(0,15);
+  return `<div style="border-radius:12px;overflow:hidden;border:1px solid var(--line)"><div id="cfmMap" style="height:480px;width:100%"><div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita yuklanmoqda...</div></div></div><div class="globe-caption">Davlatlardan O\'zbekistonga yo\'nalgan yuk oqimi</div>`
+}
 function initCountryFlowMap(){
-  let el=document.getElementById("cfmMap");if(!el||typeof L==="undefined")return;
-  if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.remove()}catch(e){}COUNTRY_FLOW_MAP=null}
+  let el=document.getElementById("cfmMap");if(!el)return;
+  if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.destroy()}catch(e){}COUNTRY_FLOW_MAP=null}
   let rows=_CFM_ROWS;if(!rows.length)return;
-  if(!document.getElementById("cfm-css")){let s=document.createElement("style");s.id="cfm-css";s.textContent=`
-    @keyframes cfm-dash{to{stroke-dashoffset:-40px}}
-    .cfm-flow path{animation:cfm-dash 1.4s linear infinite!important}
-    .cfm-label-div{
-      font-size:12px;font-weight:800;color:#fff;
-      padding:4px 9px;border-radius:10px;white-space:nowrap;
-      box-shadow:0 2px 8px rgba(0,0,0,.55);
-      pointer-events:none;
-      border:1.5px solid rgba(255,255,255,.7);
-      letter-spacing:.2px;
-      text-shadow:0 1px 3px rgba(0,0,0,.6);
-      background:rgba(20,60,120,.88);
-    }
-  `;document.head.appendChild(s)}
-  COUNTRY_FLOW_MAP=L.map("cfmMap",{zoomControl:true,scrollWheelZoom:false,preferCanvas:false}).setView([35,50],2);
-  let cartoLayer=L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
-    maxZoom:10,attribution:"© OpenStreetMap © CartoDB",subdomains:"abcd"
-  });
-  let osmLayer=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-    maxZoom:10,attribution:"© OpenStreetMap",crossOrigin:true
-  });
-  let satLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
-    maxZoom:10,attribution:"© Esri"
-  });
-  cartoLayer.addTo(COUNTRY_FLOW_MAP);
-  L.control.layers({"🗺 Oddiy (Carto)":cartoLayer,"🗺 OSM":osmLayer,"🛰 Sputnik":satLayer},{},{position:"topright"}).addTo(COUNTRY_FLOW_MAP);
-  setTimeout(()=>{if(COUNTRY_FLOW_MAP)COUNTRY_FLOW_MAP.invalidateSize()},250);
-  let UZ=[41.3,69.3];
-  let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-  let uzMarker=L.circleMarker(UZ,{radius:14,fillColor:"#1769aa",color:"#fff",weight:3,fillOpacity:1}).addTo(COUNTRY_FLOW_MAP);
-  uzMarker.bindPopup("<b>🇺🇿 O'zbekiston (Toshkent)</b><br>IBK nazorat punkti");
-  let uzIcon=L.divIcon({className:"",html:'<div class="cfm-label-div" style="background:#1769aa;font-size:13px">🇺🇿 O\'zbekiston</div>',iconAnchor:[-18,10]});
-  L.marker(UZ,{icon:uzIcon,zIndexOffset:1000}).addTo(COUNTRY_FLOW_MAP);
-  let bounds=[UZ];
-  rows.forEach((r,i)=>{
-    let ll=countryLatLon(r.name,i,rows.length);
-    let q=+r.qiymat||0,v=+r.vazn||0,qShare=q/maxQ;
-    let radius=Math.max(8,Math.min(28,8+Math.sqrt(v/maxV)*22));
-    let color=qShare>=.6?"#16a34a":qShare>=.3?"#c97700":"#1e56c8";
-    let latlng=[ll.lat,ll.lon];
-    bounds.push(latlng);
-    L.polyline([latlng,UZ],{color,weight:3,opacity:0.8,dashArray:"12 8",className:"cfm-flow"}).addTo(COUNTRY_FLOW_MAP);
-    let mid=[(latlng[0]+UZ[0])/2,(latlng[1]+UZ[1])/2];
-    let angle=Math.atan2(UZ[0]-latlng[0],UZ[1]-latlng[1])*180/Math.PI;
-    let planeIcon=L.divIcon({className:"",html:`<div style="font-size:17px;transform:rotate(${angle}deg);opacity:.85;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))">✈</div>`,iconSize:[20,20],iconAnchor:[10,10]});
-    L.marker(mid,{icon:planeIcon,interactive:false}).addTo(COUNTRY_FLOW_MAP);
-    let circle=L.circleMarker(latlng,{radius,fillColor:color,color:"#fff",weight:2.5,fillOpacity:0.9}).addTo(COUNTRY_FLOW_MAP);
-    circle.bindPopup(`<b>${countryFlag(r.name)} ${esc(r.name)}</b><br>Qiymat: <b>${fmtN(q)}</b> ming $<br>Vazn: <b>${fmtN(v)}</b> tn<br>Partiya: <b>${fmtI(r.partiya||0)}</b>`);
-    let labelIcon=L.divIcon({className:"",html:`<div class="cfm-label-div" style="background:${color}">${countryFlag(r.name)} ${esc(r.name)}</div>`,iconAnchor:[-radius-6,10]});
-    L.marker(latlng,{icon:labelIcon,zIndexOffset:500,interactive:false}).addTo(COUNTRY_FLOW_MAP);
-  });
-  try{COUNTRY_FLOW_MAP.fitBounds(bounds,{padding:[40,40],maxZoom:4})}catch(e){}
-  setTimeout(()=>{if(COUNTRY_FLOW_MAP)COUNTRY_FLOW_MAP.invalidateSize()},500);
+  _loadYMaps(function(){_buildCFM(el,rows)});
+}
+function _buildCFM(el,rows){
+  try{
+    let map=new ymaps.Map(el,{center:[41,58],zoom:3,controls:['zoomControl','typeSelector','fullscreenControl']},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
+    COUNTRY_FLOW_MAP=map;
+    let UZ=[41.3,69.3];
+    let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
+    let uzPm=new ymaps.Placemark(UZ,{hintContent:"O'zbekiston — IBK nazorat punkti",balloonContentHeader:"O'zbekiston",balloonContentBody:"IBK nazorat punkti"},{preset:'islands#blueCircleDotIconWithCaption',iconCaptionMaxWidth:'140',iconCaption:"O'zbekiston"});
+    map.geoObjects.add(uzPm);
+    rows.forEach((r,i)=>{
+      let ll=countryLatLon(r.name,i,rows.length);
+      if(!ll)return;
+      let q=+r.qiymat||0,v=+r.vazn||0,p=+r.partiya||0;
+      let qShare=q/maxQ;
+      let clr=qShare>=.6?'#16a34a':qShare>=.3?'#c97700':'#1d72b8';
+      let latlng=[ll.lat,ll.lon];
+      map.geoObjects.add(new ymaps.Polyline([latlng,UZ],{},{strokeColor:clr,strokeWidth:2,strokeOpacity:.55,strokeStyle:'dash'}));
+      let sz=Math.round(Math.max(28,Math.min(52,28+Math.sqrt(v/maxV)*26)));
+      let fs=sz>42?14:sz>34?12:10;
+      let num=p>0?p:Math.round(q/Math.max(1,maxQ/100));
+      let MkL=ymaps.templateLayoutFactory.createClass('<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:#fff;border:3px solid '+clr+';display:flex;align-items:center;justify-content:center;font-size:'+fs+'px;font-weight:700;color:'+clr+';box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;box-sizing:border-box">'+num+'</div>');
+      let pm=new ymaps.Placemark(latlng,{hintContent:'<b>'+esc(r.name)+'</b> — '+fmtN(q)+' ming $',balloonContentHeader:r.name,balloonContentBody:'Qiymat: <b>'+fmtN(q)+'</b> ming $<br>Vazn: <b>'+fmtN(v)+'</b> tn<br>Partiya: <b>'+fmtI(p)+'</b>'},{iconLayout:MkL,iconShape:{type:'Circle',coordinates:[0,0],radius:Math.round(sz/2)}});
+      map.geoObjects.add(pm);
+      let LbL=ymaps.templateLayoutFactory.createClass('<div style="white-space:nowrap;font-size:11px;font-weight:700;color:#fff;background:'+clr+';padding:2px 8px;border-radius:8px;margin-left:'+(Math.round(sz/2)+5)+'px;margin-top:-10px;box-shadow:0 1px 4px rgba(0,0,0,.4)">'+esc(r.name)+'</div>');
+      map.geoObjects.add(new ymaps.Placemark(latlng,{},{iconLayout:LbL,iconShape:{type:'Rectangle',coordinates:[[-4,-12],[180,12]]}}));
+    });
+    let bnds=map.geoObjects.getBounds();
+    if(bnds)map.setBounds(bnds,{checkZoomRange:true,zoomMargin:60,duration:300});
+  }catch(err){console.error('YMap init error:',err)}
 }
 const POST_NAMES={"35001":"Nukus aeroporti chegara bojxona posti","35002":"Nukus TIF bojxona posti","35003":"Xo'jayli chegara bojxona posti","35004":"Dovut-ota chegara bojxona posti","35010":"Qoraqalpog'iston temir yo'l chegara bojxona posti","03002":"Do'stlik chegara bojxona posti","03003":"Andijon aeroporti chegara bojxona posti","03005":"Mingtepa chegara bojxona posti","03006":"Qorasuv chegara bojxona posti","03007":"Xonobod chegara bojxona posti","03008":"Pushmon chegara bojxona posti","03009":"Madaniyat chegara bojxona posti","03011":"Andijon TIF bojxona posti","03013":"Keskanyol chegara bojxona posti","03014":"Savay temir yo'l chegara bojxona posti","03015":"Asaka TIF bojxona posti","06001":"Buxoro aeroporti chegara bojxona posti","06006":"Buxoro TIF bojxona posti","06009":"Qorakol TIF bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti","08003":"Uchturgon chegara bojxona posti","08004":"Jizzax TIF bojxona posti","08007":"Qo'shkent chegara bojxona posti","10002":"Nasaf TIF bojxona posti","10007":"Qamashi-G'uzor TIF bojxona posti","10008":"Qarshi-Kerki chegara bojxona posti","10012":"Qarshi aeroporti chegara bojxona posti","12002":"Navoiy aeroporti chegara bojxona posti","12003":"Navoiy TIF bojxona posti","12008":"Zarafshon TIF bojxona posti","14002":"Namangan aeroporti chegara bojxona posti","14003":"Uchqo'rg'on chegara bojxona posti","14004":"Kosonsoy chegara bojxona posti","14005":"Pop chegara bojxona posti","14010":"Namangan TIF bojxona posti","18001":"Samarqand aeroporti chegara bojxona posti","18002":"Jartepa chegara bojxona posti","18005":"Samarqand TIF bojxona posti","18007":"Ulug'bek TIF bojxona posti","22002":"Termiz aeroporti chegara bojxona posti","22003":"Sariosiyo chegara bojxona posti","22004":"Sariosiyo temir yo'l chegara bojxona posti","22005":"Termiz TIF bojxona posti","22006":"Denov TIF bojxona posti","22007":"Gulbahor chegara bojxona posti","22011":"Daryo porti chegara bojxona posti","22015":"Boldir temir yo'l chegara bojxona posti","22017":"Ayritom chegara bojxona posti","22022":"Termiz xalqaro savdo markazi TIF bojxona posti","24002":"Xovosobod chegara bojxona posti","24004":"Sirdaryo chegara bojxona posti","24006":"Oq oltin chegara bojxona posti","24009":"Guliston TIF bojxona posti","24014":"Malik chegara bojxona posti","27001":"Yallama chegara bojxona posti","27008":"Navoiy chegara bojxona posti","27009":"S. Najimov chegara bojxona posti","27011":"Oybek chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27014":"Chirchiq TIF bojxona posti","27015":"Olmaliq TIF bojxona posti","27016":"Yangiyol TIF bojxona posti","27019":"Nazarbek TIF bojxona posti","27020":"Keles TIF bojxona posti","27021":"G'ishtkoprik chegara bojxona posti","27023":"Farhod chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","27028":"Angren TIF bojxona posti","30001":"Farg'ona aeroporti chegara bojxona posti","30002":"Qo'qon TIF bojxona posti","30004":"Farg'ona chegara bojxona posti","30005":"Andarxon chegara bojxona posti","30006":"Rishton chegara bojxona posti","30008":"Rovot chegara bojxona posti","30009":"Vodiy TIF bojxona posti","30010":"O'zbekiston chegara bojxona posti","30012":"So'x chegara bojxona posti","33001":"Shovot chegara bojxona posti","33004":"Do'stlik chegara bojxona posti","33007":"Urganch TIF bojxona posti","33011":"Urganch aeroporti chegara bojxona posti","33033":"Shovot chegaraoldi savdo zonasi","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF bojxona posti","00107":"Elektron tijorat TIF bojxona posti","00110":"Toshkent-Humo aeroporti CHBP"};
 function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>{let nm=r.post_nomi;if(!nm||nm===r.post_kodi||/^\d{5}$/.test(String(nm||""))){nm=POST_NAMES[r.post_kodi]||(r.post_kodi?"Post №"+r.post_kodi:"-")}return Object.assign({},r,{post_nomi:nm})})}
