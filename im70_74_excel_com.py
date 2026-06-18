@@ -831,9 +831,37 @@ def run_excel_writer(template: Path, output: Path, files: dict, date_label: str,
     shutil.copy2(template, output)
     script = f"""
 $ErrorActionPreference = 'Stop'
-$excel = New-Object -ComObject Excel.Application
-$excel.Visible = $false
-$excel.DisplayAlerts = $false
+# Kill any lingering Excel processes from prior failed runs.
+# Broken Excel instances leave the COM type library in an unloadable state
+# which causes TYPE_E_CANTLOADLIBRARY on the NEXT attempt.
+Get-Process -Name EXCEL -ErrorAction SilentlyContinue | ForEach-Object {{
+  try {{ $_.Kill() }} catch {{}}
+}}
+$kw = 0
+while ((Get-Process -Name EXCEL -ErrorAction SilentlyContinue) -and $kw -lt 10) {{
+  Start-Sleep -Milliseconds 400; $kw++
+}}
+[System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers()
+Start-Sleep -Milliseconds 800
+$xlCLSID = [System.Guid]::new("00024500-0000-0000-C000-000000000046")
+$excel = $null
+for ($attempt = 1; $attempt -le 3; $attempt++) {{
+  try {{
+    $excel = [System.Activator]::CreateInstance([System.Type]::GetTypeFromCLSID($xlCLSID, $true))
+    $excel.Visible = $false
+    $excel.DisplayAlerts = $false
+    break
+  }} catch {{
+    if ($null -ne $excel) {{
+      try {{ [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null }} catch {{}}
+      $excel = $null
+    }}
+    [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers()
+    Get-Process -Name EXCEL -ErrorAction SilentlyContinue | ForEach-Object {{ try {{ $_.Kill() }} catch {{}} }}
+    if ($attempt -lt 3) {{ Start-Sleep -Seconds 2 }}
+  }}
+}}
+if ($null -eq $excel) {{ throw "Excel COM yuklanmadi" }}
 try {{
   $wb = $excel.Workbooks.Open({ps_quote(output)})
   function Write-Json($jsonPath, $sheetName, $row, $col, $clearRows, $clearCols) {{
@@ -1251,8 +1279,10 @@ try {{
   $wb.Save()
   $wb.Close($true)
 }} finally {{
-  $excel.Quit()
-  [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
+  if ($null -ne $excel) {{
+    try {{ $excel.Quit() }} catch {{}}
+    try {{ [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null }} catch {{}}
+  }}
 }}
 """
     ps1 = output.with_suffix(".writer.ps1")
@@ -1274,8 +1304,10 @@ def build(source: Path, template: Path, output: Path, report_date: datetime, dep
     else:
         deposit_label = "Depozit: 0 mln so'm"
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="im70_74_") as td:
-        tmp = Path(td)
+    # Use a persistent directory so JSON files survive PS1 retries
+    tmp = output.parent / "artifacts_json"
+    tmp.mkdir(parents=True, exist_ok=True)
+    if True:
         files = {}
         data = {
             "base": base_rows(df),
@@ -1315,7 +1347,7 @@ def build(source: Path, template: Path, output: Path, report_date: datetime, dep
             files[name] = tmp / f"{name}.json"
             write_json(files[name], rows)
         run_excel_writer(template, output, files, date_label, short_date, deposit_label, len(data["company"]))
-    return len(df)
+        return len(df)
 
 
 def main():

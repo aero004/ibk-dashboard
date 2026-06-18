@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import importlib.util
@@ -1294,7 +1294,6 @@ def run_job(job_id: str, source: Path, deposit: Path | None, report_date: dateti
 
 
 HTML = r"""<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IBK Dashboard</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{--ink:#172033;--muted:#64748b;--line:#dae2ec;--blue:#174a7c;--green:#1b9e77;--orange:#d95f02;--bg:#f6f8fb;--panel:#fff}*{box-sizing:border-box}body{margin:0;color:var(--ink);font:14px/1.45 "Segoe UI",Arial,sans-serif;background:linear-gradient(120deg,#f6f8fb,#eef6fb,#f7fbf5);background-size:280% 280%;animation:bgshift 18s ease-in-out infinite}header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);z-index:3;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:22px;margin:0}.muted{color:var(--muted)}main{max-width:1500px;margin:auto;padding:14px}.login,.upload,.panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.panel{overflow-x:auto}.upload{display:grid;grid-template-columns:1fr 1fr 170px auto;gap:10px;align-items:end}input,select{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fff}label{display:block;margin-bottom:5px;font-weight:700;color:var(--muted)}button,.btn{background:var(--blue);color:#fff;border:0;border-radius:6px;padding:10px 13px;font-weight:700;text-decoration:none;cursor:pointer}.btn.light,button.light{background:#e8eef6;color:var(--ink)}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:12px 0}.kpi{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{display:block;font-size:24px;margin-top:5px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tab.active{background:var(--blue);color:#fff}.tab{background:#e8eef6;color:#172033}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}h2{font-size:17px;margin:0 0 10px}table{width:100%;min-width:760px;border-collapse:collapse;table-layout:auto}.release-table{min-width:1120px;font-size:12px;table-layout:fixed}.release-table th,.release-table td{padding:4px 5px}.release-table th{white-space:normal!important;word-break:normal;line-height:1.12;vertical-align:middle;text-align:center}.release-table th:nth-child(1),.release-table td:nth-child(1){width:34px;text-align:center}.release-table th:nth-child(2),.release-table td:nth-child(2){width:245px}.release-table th:nth-child(3),.release-table td:nth-child(3){width:82px}.release-table th:nth-child(n+4),.release-table td:nth-child(n+4){width:82px}.release-table th:nth-child(6),.release-table td:nth-child(6),.release-table th:nth-child(9),.release-table td:nth-child(9),.release-table th:nth-child(12),.release-table td:nth-child(12){width:96px}th{background:var(--blue);color:#fff;text-align:left;padding:7px;font-size:13px}td{border:1px solid #d7e0ea;padding:5px 6px;vertical-align:middle}td.text,th.text{white-space:normal;overflow:visible;text-overflow:clip;word-break:normal}td.num,th.num{text-align:right;white-space:nowrap}tbody tr:first-child td{font-weight:800;background:#d7e8d2}tbody tr.own-row td{background:#eaf3ec!important;font-weight:800}th{white-space:normal;line-height:1.2}tr:nth-child(even) td{background:#f8fafc}tbody tr{cursor:pointer}.merged-row td{background:#dfeaf6!important;font-weight:800}.merged-row td:first-child{text-align:left}.bars{display:grid;gap:8px}.barrow{display:grid;grid-template-columns:220px 1fr 120px;gap:8px;align-items:center}.bar{height:24px;background:#e8eef6;position:relative}.bar span{display:block;height:100%;min-width:34px;background:var(--green);color:#fff;font-size:12px;font-weight:700;text-align:right;padding-right:5px;line-height:24px}dialog{width:min(1100px,96vw);border:0;border-radius:8px;padding:0}dialog .head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}dialog .body{padding:14px;max-height:72vh;overflow:auto}.hidden{display:none}@media(max-width:1000px){.upload,.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start;flex-direction:column}}
  .workspace{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:start}.tabs{position:sticky;top:78px;display:flex;flex-direction:column;gap:8px;margin:12px 0}.tab{width:100%;text-align:left;background:#e8eef6;color:#172033;border-left:5px solid transparent;transition:.18s transform,.18s background,.18s box-shadow}.tab:active,button:active,.btn:active{transform:translateY(1px) scale(.99)}.tab.active{background:#174a7c;color:#fff;border-left-color:#1b9e77;box-shadow:0 2px 8px rgba(23,74,124,.18)}.chart{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.barrow{grid-template-columns:minmax(145px,220px) 1fr 110px}.barrow div:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar span{animation:growbar .55s ease-out}.wide{grid-column:1/-1}.partial{background:#fff4cc!important;color:#8a5a00;font-weight:800;border:1px solid #e6b84d}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.danger{background:#b42318!important}.dark{--ink:#e5eefb;--muted:#9fb0c6;--line:#2f3f55;--blue:#2c7fb8;--bg:#101826;--panel:#172033}.dark header,.dark .login,.dark .upload,.dark .panel,.dark .kpi{background:#172033}.dark input,.dark select{background:#101826;color:var(--ink);border-color:var(--line)}.dark tr:nth-child(even) td{background:#1d2a3d}@keyframes bgshift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}@keyframes growbar{from{width:0}to{}}@media(max-width:1000px){.workspace{grid-template-columns:1fr}.tabs{position:static;flex-direction:row;overflow:auto}.tab{min-width:max-content}.barrow{grid-template-columns:120px 1fr 82px}}
@@ -1528,18 +1527,17 @@ body.logged-in main{
   display:block!important;
 }
 
-/* hex-bg */body{background:#eef4f9!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}body .sky-scene,.login-screen .sky-scene,.logged-in .sky-scene{background:#eef4f9!important;overflow:hidden!important;animation:none!important;transform:none!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important;animation:none!important}.dark body,.dark body .sky-scene,.dark .login-screen .sky-scene,.dark .logged-in .sky-scene{background:#0a1628!important}.sky-scene>*:not(#hexBg){display:none!important}#hexBg{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:10}.panel,.kpi,.upload{background:rgba(255,255,255,.92)!important;backdrop-filter:blur(8px)}.dark .panel,.dark .kpi,.dark .upload{background:rgba(20,35,54,.92)!important}
-</style></head><body><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
-<section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()">Ko'z</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
+/* hex-bg */body{background:#c8dcf0!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#c8dcf0!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important}.dark .sky-scene{background:#080f1e!important}.panel,.kpi,.login,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .login,.dark .upload{background:rgba(15,28,50,.95)!important}
+</style></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
+<section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]};
 const I18N={uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},uzc:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},ru:{archive:"Arxiv",upload:"Zagruzka",general:"Obshiy",companies:"Kompanii",expired:"Prosrochennie",released:"Snyatie s kontrolya",goods:"Tovari",food:"Produkti",profile:"Profil",settings:"Nastroyki",admin:"Admin",dark:"Temniy rejim",logout:"Vixod"}};
 function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){document.body.classList.toggle("bg-aero",v==="aero");document.body.classList.toggle("bg-classic",v==="classic");localStorage.ibk_bg=v} function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
 const fmtN=v=>Math.abs(+v||0)<.005?"0":(+v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/\u00a0/g," "), fmtI=v=>Math.round(+v||0).toLocaleString("ru-RU").replace(/\u00a0/g," "), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-function activateLogin(){let el=$("login");if(el)el.classList.add("active")}
+async function activateLogin(){if(TOKEN){try{await showApp();return;}catch(e){localStorage.removeItem("ibk_token");TOKEN="";}}let el=$("login");if(el)el.classList.add("active")}
 function togglePassword(){let p=$("pass");if(p)p.type=p.type==="password"?"text":"password"}
 ["user","pass"].forEach(id=>{let el=document.getElementById(id);if(el)el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doLogin()}})});
 function updateClock(){let c=$("clock");if(c)c.textContent=new Date().toLocaleString("uz-UZ",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}).replace(",", "")}
@@ -1547,7 +1545,7 @@ setInterval(updateClock,1000);setTimeout(updateClock,50);
 function setBusy(btn,on,text){if(!btn)return;if(on){btn.dataset.old=btn.innerHTML;btn.classList.add("is-busy");btn.disabled=true;btn.innerHTML=(text||btn.textContent)+` <span class="busy-spinner"></span>`}else{btn.classList.remove("is-busy");btn.disabled=false;if(btn.dataset.old)btn.innerHTML=btn.dataset.old}}
 function clearBusy(){document.querySelectorAll(".is-busy").forEach(b=>setBusy(b,false))}
 async function api(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);if(r.status===401){showLogin();throw Error("login")};return await r.json()} function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("meta").textContent="Kirish kerak"}
-async function doLogin(){let btn=$("loginBtn");try{setBusy(btn,true,"Kirish");let j=await api("/api/login",{method:"POST",body:JSON.stringify({user:$("user").value,pass:$("pass").value})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
+async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();DATA=null;TAB="home";GROUP="home";render()} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){let j=await api("/api/jobs/"+id);$("status").textContent=j.status;if(j.status==="xatolik"){$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}
 async function prepareArtifacts(){if(!DATA)return;$("status").textContent="Excel/PNG/PDF tayyorlash boshlandi...";let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});pollArtifacts(j.job_id)}
@@ -1579,7 +1577,7 @@ function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();retu
 if(TAB==="umumiy"){v.innerHTML=overviewPanels();return}
 if(TAB==="payments"){v.innerHTML=paymentModule("overview");return}if(TAB==="pay_lists"){v.innerHTML=paymentModule("lists");return}if(TAB==="pay_analysis"){v.innerHTML=paymentModule("analysis");return}
 if(TAB==="rejim"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami va 70-74-80</h2>${table(sumCols,regimeSummaryRows())}</div><div class=panel><h2>70-74-80 rejimlar kesimida</h2>${table(regimeCols,basicTotal(DATA.regimes||[],"IBK bo'yicha Jami","rejim"))}</div><div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div><div class=panel><h2>Rejimlar to'lov ulushi</h2>${bars(DATA.regimes||[],"rejim","tolov",fmtN)}</div></div>`;return}
-if(TAB==="ombor"){v.innerHTML=`<div class=stack><div class=panel><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0}loadWarehouseTrends();return}
+if(TAB==="ombor"){v.innerHTML=`<div class=stack><div class=panel><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();return}
 if(TAB==="muddat"){v.innerHTML=`<div class=stack><div class=panel><h2>Muddatlar kesimida</h2>${table([{k:"muddat",t:"Muddat",w:"30%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.ages||[],"IBK bo'yicha Jami","muddat"))}</div><div class=panel><h2>Saqlanish sabablari</h2>${table(sumCols,basicTotal(DATA.reason||[]))}</div><div class=panel><h2>Muddatlar partiya ulushi</h2>${bars(DATA.ages||[],"muddat","partiya",fmtI)}</div><div class=panel><h2>Saqlanish sabablari qiymat ulushi</h2>${bars(DATA.reason||[],"name","qiymat",fmtN)}</div></div>`;return}
 if(TAB==="korxona"){v.innerHTML=`<div class=stack><div class=panel><h2>TOP 20 korxona (qiymat) ${xls("top_value")}</h2>${table(companyCols,companyTotal(DATA.top_value||[]))}</div><div class=panel><h2>TOP 20 korxona (depozit mablag'lari) ${xls("top_deposit")}</h2>${table(companyCols,companyTotal(DATA.top_deposit||[]))}</div><div class=panel><h2>Qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN)}</div></div><div class="panel" id="trendPanel"><h3>Korxonalar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportCompanyPanel"><h3>Transport kesimida korxonalar — yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportTrendPanel"><h3>Transport turi bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div>`;loadCompanyTrends();loadTransportCompanyTrends();loadTransportTrends();return}
 if(TAB==="expired"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}<div class=overview-note>Jadval ustunlari jamlanma Excel vkladkasidagi ko'rinishga yaqin qat'iy kenglikda berildi.</div></div><div class=panel><h2>Muddati o'tgan postlar kesimida</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"90px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"120px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"130px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"135px"}],basicTotal(DATA.post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}${bars(DATA.post_summary||[],"post","qiymat",fmtN)}${miniChart(DATA.post_summary||[],"qiymat","post")}</div><div class=panel><h2>Muddati o'tgan jamlanma ${xls("expired")}</h2>${expiredBlockTable(DATA.expired_block||[])}</div><div class=panel><h2>Muddati o'tgan korxonalar</h2>${table([{k:"korxona",t:"Korxona nomi",w:"300px"},{k:"stir",t:"STIR",w:"92px"},{k:"rejim",t:"Rejim",w:"70px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"kun",t:"Kun hisobi",n:1,f:fmtI,w:"80px"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"78px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"120px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"125px"}],expiredTotal(DATA.expired||[]),"fixed-table")}</div></div>`;return}
@@ -1601,7 +1599,7 @@ function periodBtns(fn,active){return[[1,'🗓 1 oy'],[3,'📅 3 oy'],[6,'📆 6
 function filterPeriodArr(periods,months){if(!periods||!periods.length)return[];let lastDate=new Date(periods[periods.length-1]);let cutoff=new Date(lastDate);cutoff.setMonth(cutoff.getMonth()-months);let cutoffStr=cutoff.toISOString().slice(0,10);return periods.filter(p=>p>=cutoffStr)}
 function renderCompChart(m){let el=$('compChartSect');if(!el||!COMPANY_TRENDS)return;let periods=COMPANY_TRENDS.periods||[],companies=COMPANY_TRENDS.companies||[];if(!periods.length)return;let fp=filterPeriodArr(periods,m);let wi=fp.map(p=>periods.indexOf(p));let totalValues=fp.map((p,j)=>companies.reduce((a,c)=>a+(c.series[wi[j]]?.value||0),0));let totalWeights=fp.map((p,j)=>companies.reduce((a,c)=>a+(c.series[wi[j]]?.weight||0),0));let range=fp.length>=2?`${fp[0]} — ${fp[fp.length-1]}`:fp[0]||"";el.innerHTML=`<div class="panel"><h3>Umumiy oborot tendensiyasi (${range})</h3>${svgLineChart(fp,[{label:"Qiymat (ming $)",values:totalValues},{label:"Vazn (tn)",values:totalWeights}])}<div class="overview-note">Har qaysi korxona qatoriga bosilganda shu korxonaning alohida qiymat/vazn tendensiyasi ochiladi.</div></div>`}
 function renderGoodsChart(m){let el=$('goodsChartSect');if(!el||!GOODS_TRENDS)return;let periods=GOODS_TRENDS.periods||[],items=GOODS_TRENDS.goods||[];if(!periods.length)return;let fp=filterPeriodArr(periods,m);let wi=fp.map(p=>periods.indexOf(p));let totalValues=fp.map((p,j)=>items.reduce((a,g)=>a+(g.series[wi[j]]?.value||0),0));let totalWeights=fp.map((p,j)=>items.reduce((a,g)=>a+(g.series[wi[j]]?.weight||0),0));let range=fp.length>=2?`${fp[0]} — ${fp[fp.length-1]}`:fp[0]||"";el.innerHTML=`<div class="panel"><h3>Umumiy tovar oqimi tendensiyasi (${range})</h3>${svgLineChart(fp,[{label:"Qiymat (ming $)",values:totalValues},{label:"Vazn (tn)",values:totalWeights}])}<div class="overview-note">Har qaysi tovar qatoriga bosilganda shu tovarning alohida qiymat/vazn tendensiyasi ochiladi.</div></div>`}
-function renderCompNewStopped(m){COMP_PERIOD_M=m;renderCompChart(m);let el=$(‘compNewStoppedSect’);if(!el||!COMPANY_TRENDS)return;let periods=COMPANY_TRENDS.periods||[],companies=COMPANY_TRENDS.companies||[];let{newItems,stoppedItems}=filterPeriodItems(periods,companies,m);let mLabel=m===1?’1 oy’:m+’ oy’;el.innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin:4px 0 12px;flex-wrap:wrap"><span style="font-size:12px;color:#557086;font-weight:700">Hisobot davri:</span>${periodBtns(‘renderCompNewStopped’,m)}</div><div class="grid2">${companyTrendTable(periods,stoppedItems,’🚫 So\’nggi ‘+mLabel+’ ichida faoliyatini to\’xtatgan korxonalar’,’Barcha korxonalar faol’,’stopped’)}${companyTrendTable(periods,newItems,’🆕 So\’nggi ‘+mLabel+’ ichida birinchi marta yuk olib kelgan korxonalar’,’Yangi korxona aniqlanmadi’,’new’)}</div>`}
+function renderCompNewStopped(m){COMP_PERIOD_M=m;renderCompChart(m);let el=$('compNewStoppedSect');if(!el||!COMPANY_TRENDS)return;let periods=COMPANY_TRENDS.periods||[],companies=COMPANY_TRENDS.companies||[];let{newItems,stoppedItems}=filterPeriodItems(periods,companies,m);let mLabel=m===1?'1 oy':m+' oy';el.innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin:4px 0 12px;flex-wrap:wrap"><span style="font-size:12px;color:#557086;font-weight:700">Hisobot davri:</span>${periodBtns('renderCompNewStopped',m)}</div><div class="grid2">${companyTrendTable(periods,stoppedItems,'🚫 So\'nggi '+mLabel+' ichida faoliyatini to\'xtatgan korxonalar','Barcha korxonalar faol','stopped')}${companyTrendTable(periods,newItems,'🆕 So\'nggi '+mLabel+' ichida birinchi marta yuk olib kelgan korxonalar','Yangi korxona aniqlanmadi','new')}</div>`}
 function renderGoodsNewStopped(m){GOODS_PERIOD_M=m;renderGoodsChart(m);let el=$('goodsNewStoppedSect');if(!el||!GOODS_TRENDS)return;let periods=GOODS_TRENDS.periods||[],items=GOODS_TRENDS.goods||[];let{newItems,stoppedItems}=filterPeriodItems(periods,items,m);let mLabel=m===1?'1 oy':m+' oy';el.innerHTML=`<div style="display:flex;gap:8px;align-items:center;margin:4px 0 12px;flex-wrap:wrap"><span style="font-size:12px;color:#557086;font-weight:700">Hisobot davri:</span>${periodBtns('renderGoodsNewStopped',m)}</div><div class="grid2">${goodsTrendTable(periods,stoppedItems,'🚫 So\'nggi '+mLabel+' ichida IBKdan chiqib ketgan tovarlar','Barcha tovarlar faol','stopped')}${goodsTrendTable(periods,newItems,'🆕 So\'nggi '+mLabel+' ichida yangi qo\'shilgan tovarlar','Yangi tovar aniqlanmadi','new')}</div>`}
 async function buildOmborOborot(){let base=$('omborOborotBase').value,final=$('omborOborotFinal').value,box=$('omborOborotResult');if(!box)return;box.innerHTML='<div class=muted>Hisoblanmoqda...</div>';let j=await loadReleaseData(base,final,box);if(!j)return;box.innerHTML=warehouseTurnoverPanel(j)}
 function companyTrendTable(periods,rows,title,emptyMsg,mode){if(!rows.length)return `<div class="panel"><h3>${esc(title)} (0)</h3><div class="muted">${esc(emptyMsg)}</div></div>`;let lastIdx=periods.length-1;let dateHead=mode==="new"?"Birinchi faol davr":"So'nggi faol davr";let valHead=mode==="new"?"Joriy qiymat (ming $)":"So'nggi qiymat (ming $)";let wHead=mode==="new"?"Joriy vazn (tn)":"So'nggi vazn (tn)";let body=rows.slice(0,150).map(c=>{let refIdx,dateLabel;if(mode==="new"){refIdx=lastIdx;let fi=firstActiveIdx(c.series);dateLabel=fi>=0?periods[fi]:"-"}else{refIdx=lastActiveIdx(c.series);dateLabel=refIdx>=0?periods[refIdx]:"-"}let s=c.series[refIdx>=0?refIdx:lastIdx]||{value:0,weight:0};return `<tr style="cursor:pointer" onclick="showCompanyTrend('${c.stir}')"><td class=text>${esc(c.company||"-")}</td><td>${esc(c.stir)}</td><td>${esc(dateLabel)}</td><td class=num>${fmtN(s.value)}</td><td class=num>${fmtN(s.weight)}</td></tr>`}).join("");return `<div class="panel"><h3>${esc(title)} (${rows.length})</h3><table class="fixed-table"><thead><tr><th>Korxona</th><th>STIR</th><th>${dateHead}</th><th>${valHead}</th><th>${wHead}</th></tr></thead><tbody>${body}</tbody></table></div>`}
@@ -1713,37 +1711,52 @@ function transportPanel(){let cols=[{k:"post_kodi",t:"Post kodi",w:"78px"},{k:"p
 const overviewPanelsWithMap=overviewPanels;overviewPanels=function(){let html=overviewPanelsWithMap();let countries=countryRows();let countryBlock=`<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countries,"name","qiymat",fmtN)}</div></div>${transportPanel()}`;return html.replace(`<div class=panel><h2>Davlatlar bo'yicha tahlil</h2>${bars(countryRows(),"name","qiymat",fmtN)}</div>`,countryBlock)}
 function flightsPanelShell(){
   return `<div class="panel wide" id="flightsPanelWrap">
-<h2>Toshkent xalqaro aeroporti (jonli parvozlar)</h2>
+<h2>Toshkent xalqaro aeroporti — jonli parvozlar (Yandex xarita)</h2>
 <div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px">
-  <iframe id="fr24Frame"
-    src="https://globe.adsbexchange.com/?lat=41.3&lon=69.3&zoom=7"
-    width="100%" height="520" frameborder="0" allowfullscreen
-    style="display:block;min-height:500px"
-    loading="lazy">
-  </iframe>
+  <div id="flightsMap" style="height:520px;width:100%">
+    <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Yandex xarita yuklanmoqda...</div>
+  </div>
 </div>
-<div class="muted" style="font-size:12px;margin-top:4px">Manba: ADS-B Exchange · Jonli parvozlar, real vaqtda yangilanadi · Toshkent UTTT (TAS) aeroporti atrofi · <a href="https://www.flightradar24.com/41.3,69.3/7" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">FlightRadar24 →</a></div>
-<div id="flightsMeta" class="muted" style="display:none"></div>
-<div id="flightsMap" style="display:none"></div>
+<div id="flightsMeta" class="muted" style="font-size:12px;margin-top:4px">Jonli parvozlar, real vaqtda yangilanadi · Toshkent aeroporti (TAS) · manba: OpenSky Network</div>
 </div>`}
 let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
-function planeIcon(heading){return L.divIcon({className:"plane-marker",html:`<div style="transform:rotate(${(heading||0).toFixed(0)}deg)">✈</div>`,iconSize:[22,22],iconAnchor:[11,11]})}
-function initFlightsMap(){let el=document.getElementById("flightsMap");if(!el){if(FLIGHTS_TIMER){clearInterval(FLIGHTS_TIMER);FLIGHTS_TIMER=null}return}
-if(typeof L==="undefined"){el.innerHTML='<div class="muted" style="padding:14px">Xarita kutubxonasi yuklanmadi (internet ulanishini tekshiring).</div>';return}
-if(FLIGHTS_MAP){try{FLIGHTS_MAP.remove()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
-FLIGHTS_MAP=L.map("flightsMap",{zoomControl:true,scrollWheelZoom:true}).setView([41.3,69.27],5);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:11,attribution:"© OpenStreetMap"}).addTo(FLIGHTS_MAP);
-L.marker([41.2995,69.2401],{title:"Toshkent (TAS)"}).addTo(FLIGHTS_MAP).bindPopup("Toshkent (TAS) aeroporti");
-refreshFlightsMap();
-if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
-FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000)}
-async function refreshFlightsMap(){let meta=document.getElementById("flightsMeta");if(!document.getElementById("flightsMap")){if(FLIGHTS_TIMER){clearInterval(FLIGHTS_TIMER);FLIGHTS_TIMER=null}return}if(!FLIGHTS_MAP)return;
-try{let j=await api("/api/flights_live");FLIGHTS_MARKERS.forEach(m=>FLIGHTS_MAP.removeLayer(m));FLIGHTS_MARKERS=[];
-(j.planes||[]).forEach(p=>{let m=L.marker([p.lat,p.lon],{icon:planeIcon(p.heading)}).addTo(FLIGHTS_MAP);
-m.bindPopup(`<b>${esc(p.callsign||p.icao24||"-")}</b><br>Balandlik: ${Math.round(p.alt||0)} m<br>Tezlik: ${Math.round((p.speed||0)*3.6)} km/soat<br>Davlat: ${esc(p.country||"-")}`);
-FLIGHTS_MARKERS.push(m)});
-if(meta)meta.textContent=j.error?`Xatolik: ${j.error}`:`Jonli parvozlar: ${(j.planes||[]).length} ta В· manba: OpenSky Network В· yangilangan: ${new Date(j.updated*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"})}`
-}catch(e){if(meta)meta.textContent="Jonli parvozlar ma'lumotini yuklab bo'lmadi"}}
+function initFlightsMap(){
+  let el=document.getElementById("flightsMap");if(!el)return;
+  if(FLIGHTS_MAP){try{FLIGHTS_MAP.destroy()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
+  _loadYMaps(function(){
+    try{
+      FLIGHTS_MAP=new ymaps.Map(el,{center:[41.3,69.27],zoom:7,
+        controls:['zoomControl','typeSelector','fullscreenControl']},
+        {suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
+      refreshFlightsMap();
+      if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
+      FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
+    }catch(err){console.error('Flights map error:',err)}
+  });
+}
+async function refreshFlightsMap(){
+  if(!FLIGHTS_MAP||typeof ymaps==='undefined')return;
+  let meta=document.getElementById("flightsMeta");
+  try{
+    let j=await api("/api/flights_live");
+    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.geoObjects.remove(m)}catch(e){}});
+    FLIGHTS_MARKERS=[];
+    (j.planes||[]).forEach(p=>{
+      let h=+(p.heading||0);
+      let IconL=ymaps.templateLayoutFactory.createClass(
+        '<div style="transform:rotate('+h+'deg);font-size:20px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.6)">&#9992;</div>'
+      );
+      let pm=new ymaps.Placemark([p.lat,p.lon],{
+        hintContent:'<b>'+esc(p.callsign||p.icao24||'-')+'</b>',
+        balloonContentHeader:esc(p.callsign||p.icao24||'-'),
+        balloonContentBody:'Balandlik: '+Math.round(p.alt||0)+' m<br>Tezlik: '+Math.round((p.speed||0)*3.6)+' km/soat<br>Davlat: '+esc(p.country||'-')
+      },{iconLayout:IconL,iconShape:{type:'Circle',coordinates:[0,0],radius:13}});
+      FLIGHTS_MAP.geoObjects.add(pm);
+      FLIGHTS_MARKERS.push(pm);
+    });
+    if(meta)meta.textContent=j.error?'Xatolik: '+j.error:'Jonli parvozlar: '+(j.planes||[]).length+' ta \xb7 yangilangan: '+new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"});
+  }catch(e){if(meta)meta.textContent="Ma'lumot yuklanmadi"}
+}
 detail=async function(key){if(!DATA||!key||Object.keys(key).length===0)return;if(key.view==="expired_inline"){let el=$("expiredInline");if(el)el.innerHTML=expiredTotalExcelTable();return}if(key.view==="regime_posts"){let rows=(DATA.regime_posts||{})[key.regime]||[];dlgTitle.textContent=`${key.regime} - postlar kesimida`;dlgBody.innerHTML=table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}],basicTotal(rows,"IBK bo'yicha Jami","post"));dlg.showModal();return}let filterText=JSON.stringify(key),q=new URLSearchParams({report:DATA.id,filters:filterText}),j=await api("/api/details?"+q);dlgTitle.textContent="Asos deklaratsiyalar";dlgBody.innerHTML=`<p><a class="btn light" href="/api/export_details?report=${DATA.id}&filters=${encodeURIComponent(filterText)}&token=${TOKEN}">Excelga yuklash</a></p>`+table([{k:"decl",t:"Deklaratsiya",w:"160px"},{k:"source_post",t:"Boshlang'ich post kodi",w:"90px"},{k:"source_post_name",t:"Boshlang'ich post nomi",w:"220px"},{k:"transport",t:"Transport",w:"92px"},{k:"date",t:"Sana",w:"86px"},{k:"regime",t:"Rejim",w:"64px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"stir",t:"STIR",w:"105px"},{k:"company",t:"Korxona",w:"220px"},{k:"hs",t:"TIF TN",w:"105px"},{k:"goods",t:"Tovar",w:"240px"},{k:"partiya",t:"Partiya",w:"70px",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"90px",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"105px",n:1,f:fmtN}],j.rows,"fixed-table details-wide");dlg.showModal()}
 function cleanTopActions(){let a=$("actions");if(!a)return;[...a.querySelectorAll("button")].forEach(b=>{if(["Sozlamalar","Nastroyki","Settings"].includes(b.textContent.trim()))b.remove()});[...a.querySelectorAll("a")].forEach(x=>{let t=x.textContent.trim();if(/^PNG\s+\d+$/i.test(t)||t==="Barcha PNG")x.remove()});if(DATA){let f=DATA.files||{};let has=a.querySelector("[data-pngzip]");if(!has&&(f.pngs||[]).length){let href=(f.pngs||[]).length>1?`/download/${DATA.id}/_pngs?token=${TOKEN}`:`/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}`;a.insertAdjacentHTML("afterbegin",`<a data-pngzip class=btn href="${href}">PNG</a> `)}}}
 function translateRuPage(){if(LANG!=="ru")return;let pairs=[["Kirish","Р’С…РѕРґ"],["Chiqish","Р’С‹С…РѕРґ"],["Ombor ma'lumot","РЎРєР»Р°РґСЃРєР°СЏ СЃРІРѕРґРєР°"],["Fayl yuklash","Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»РѕРІ"],["Umumiy","РћР±С‰РµРµ"],["Korxonalar","РџСЂРµРґРїСЂРёСЏС‚РёСЏ"],["Muddati o'tgan","РџСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ"],["Nazoratdan yechish","РЎРЅСЏС‚РёРµ СЃ РєРѕРЅС‚СЂРѕР»СЏ"],["Tovarlar","РўРѕРІР°СЂС‹"],["Omborlar","РЎРєР»Р°РґС‹"],["Rejimlar","Р РµР¶РёРјС‹"],["Oziq-ovqat","РџСЂРѕРґРѕРІРѕР»СЊСЃС‚РІРёРµ"],["Muddatlar","РЎСЂРѕРєРё"],["Boshqaruv","РЈРїСЂР°РІР»РµРЅРёРµ"],["Arxiv","РђСЂС…РёРІ"],["To'lovlar","РџР»Р°С‚РµР¶Рё"],["Davlatlar bo'yicha yo'nalishlar","РњР°СЂС€СЂСѓС‚С‹ РїРѕ СЃС‚СЂР°РЅР°Рј"],["Deklaratsiya post kodi bo'yicha tahlil","РђРЅР°Р»РёР· РїРѕ РєРѕРґСѓ РїРѕСЃС‚Р° РґРµРєР»Р°СЂР°С†РёРё"],["Transport turi bo'yicha ulushi","Р”РѕР»СЏ РїРѕ РІРёРґСѓ С‚СЂР°РЅСЃРїРѕСЂС‚Р°"],["Qiymat bo'yicha TOP 30 korxona","РўРћРџ-30 РїСЂРµРґРїСЂРёСЏС‚РёР№ РїРѕ СЃС‚РѕРёРјРѕСЃС‚Рё"],["Rahbar uchun qisqa xulosa","РљСЂР°С‚РєР°СЏ СЃРІРѕРґРєР° РґР»СЏ СЂСѓРєРѕРІРѕРґРёС‚РµР»СЏ"]];document.querySelectorAll("button,h2,h1,b,label,.muted,.btn").forEach(el=>{let s=el.childNodes.length===1?el.textContent.trim():"";let p=pairs.find(x=>x[0]===s);if(p)el.textContent=p[1]})}
@@ -1819,14 +1832,8 @@ buildRelease=async function(){
   window.LAST_RELEASE=j;
   let companies=releaseCompanyRows(j);
   let rows=numbered([releaseTotalRow(companies)].concat(companies));
-  $("releaseResult").innerHTML=`<h2>${base} - ${final} <a class="btn light" href="/api/export?kind=release&base=${base}&final=${final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${base}. Yakuniy davr: ${final}. Jadval namuna fayldagi kabi korxonalar kesimida yig'iladi; ustun nomlari ixcham bo'lishi uchun keyingi qatorga ko'chiriladi.</div>${table(releaseCols(base,final),rows,"release-table sample-release-table fixed-table")}${releaseSpeedPanels(companies,base,final)}${warehouseTurnoverPanel(j)}`;
-}
-const renderWarehouseRelease=render;render=function(){
-  renderWarehouseRelease();
-  if(TAB==="ombor"&&window.LAST_RELEASE){
-    let v=$("view");
-    if(v&&!v.innerHTML.includes("Omborlar oboroti: nazoratdan yechilgan vazn"))v.insertAdjacentHTML("beforeend",warehouseTurnoverPanel(window.LAST_RELEASE));
-  }
+  $("releaseResult").innerHTML=`<h2>${base} - ${final} <a class="btn light" href="/api/export?kind=release&base=${base}&final=${final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${base}. Yakuniy davr: ${final}. Jadval namuna fayldagi kabi korxonalar kesimida yig'iladi; ustun nomlari ixcham bo'lishi uchun keyingi qatorga ko'shiriladi.</div>${table(releaseCols(base,final),rows,"release-table sample-release-table fixed-table")}${releaseSpeedPanels(companies,base,final)}`;
+  window.LAST_RELEASE=j;
 }
 function uniqueArchiveRows(){
   let best={};
@@ -1919,22 +1926,17 @@ const showLoginScreenBase=showLogin;showLogin=function(){
 }
 doLogin=async function(){
   let btn=$("loginBtn"),err=$("loginError");
+  if(err)err.textContent="";
   try{
-    if(err)err.textContent="";
     setBusy(btn,true,"Kirish");
     let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";
     if(!user||!pass)throw Error("Login va parolni kiriting");
     let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});
     TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;
-    TAB='home';GROUP='home';DATA=null;
     await showApp();
-    document.body.classList.remove("login-screen");document.body.classList.add("logged-in");
-    $("login")?.classList.add("hidden");$("app")?.classList.remove("hidden");$("dash")?.classList.remove("hidden");
-    let mainView=$("view");if(mainView&&!mainView.innerHTML.trim()){mainView.innerHTML=landingPanel();}
-    window.scrollTo({top:0,behavior:"smooth"});
   }catch(e){
-    document.body.classList.add("login-screen");document.body.classList.remove("logged-in");
-    $("login")?.classList.remove("hidden");$("app")?.classList.add("hidden");$("dash")?.classList.add("hidden");
+    forceLoginView();
+    activateLogin();
     if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";
   }finally{setBusy(btn,false)}
 }
@@ -1983,7 +1985,7 @@ function forceLoginView(){
   document.body.classList.add("login-screen");
   document.body.classList.remove("logged-in");
   let login=$("login"), app=$("app"), dash=$("dash"), tabs=$("tabs"), view=$("view"), kpis=$("kpis"), actions=$("actions"), meta=$("meta");
-  if(login){login.classList.remove("hidden");login.style.display="grid";login.classList.add("active");}
+  if(login){login.classList.remove("hidden");login.style.display="grid";}
   if(app){app.classList.add("hidden");app.style.display="none";}
   if(dash){dash.classList.add("hidden");dash.style.display="none";}
   if(tabs)tabs.innerHTML="";
@@ -2015,66 +2017,68 @@ showApp = async function(){
   window.scrollTo({top:0, behavior:"auto"});
 }
 
-const doLoginFinalBase = doLogin;
-doLogin = async function(){
-  let err=$("loginError");
-  if(err)err.textContent="";
-  try{
-    await doLoginFinalBase();
-    forceAppView();
-  }catch(e){
-    forceLoginView();
-    if(err)err.textContent=(e && e.message && e.message!=="login") ? e.message : "Login yoki parol xato";
-  }
-}
+/* doLogin final version is set above */
 
-if(TOKEN){
-  showApp().catch(()=>{
-    localStorage.removeItem("ibk_token");
-    TOKEN="";
-    forceLoginView();
-  });
-}else{
-  forceLoginView();
-}
+forceLoginView();
 /* Hex monitoring background */
 (function(){
-  const sc=document.querySelector('.sky-scene');if(!sc)return;
-  const cv=document.createElement('canvas');cv.id='hexBg';
-  cv.style.cssText='position:absolute;inset:0;width:100%;height:100%;display:block;z-index:10';
-  sc.style.cssText='position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:#eef4f9;animation:none;transform:none';
+  var sc=document.querySelector('.sky-scene');
+  if(!sc)return;
+  /* Remove every old sky-scene child — eliminates all CSS specificity fights */
+  while(sc.firstChild)sc.removeChild(sc.firstChild);
+  /* Force full-screen via setProperty so !important beats any stylesheet rule */
+  var sp=sc.style;
+  ['position:fixed','top:0','left:0','right:0','bottom:0','width:100%','height:100%',
+   'z-index:0','overflow:hidden','pointer-events:none','background:#c8dcf0',
+   'animation:none','transform:none'].forEach(function(r){
+    var i=r.indexOf(':');sp.setProperty(r.slice(0,i),r.slice(i+1),'important');
+  });
+  /* Build hex canvas */
+  var cv=document.createElement('canvas');
+  cv.id='hexBg';
+  sp=cv.style;
+  ['position:absolute','top:0','left:0','width:100%','height:100%',
+   'display:block','z-index:1','pointer-events:none'].forEach(function(r){
+    var i=r.indexOf(':');sp.setProperty(r.slice(0,i),r.slice(i+1),'important');
+  });
   sc.appendChild(cv);
-  const dk=()=>document.body.classList.contains('dark');
-  const R=22;let W,H,cells;
+  var ctx=cv.getContext('2d');
+  var R=28,W=0,H=0,cells=[];
+  function dk(){return document.body.classList.contains('dark');}
   function resize(){
-    W=window.innerWidth;H=window.innerHeight;cv.width=W;cv.height=H;
-    const cols=Math.ceil(W/(R*1.73))+2,rows=Math.ceil(H/(R*1.5))+2;
+    W=window.innerWidth;H=window.innerHeight;
+    cv.width=W;cv.height=H;
+    var cols=Math.ceil(W/(R*1.73))+2,rows=Math.ceil(H/(R*1.5))+2;
     cells=[];
-    for(let row=0;row<rows;row++)for(let col=0;col<cols;col++)
-      cells.push({x:col*R*1.73+(row%2)*R*.87,y:row*R*1.5,p:Math.random()*Math.PI*2,s:.005+Math.random()*.01,b:Math.random()});
+    for(var row=0;row<rows;row++)
+      for(var col=0;col<cols;col++)
+        cells.push({x:col*R*1.73+(row%2)*R*.87,y:row*R*1.5,
+                    p:Math.random()*Math.PI*2,s:.012+Math.random()*.018});
   }
-  const ctx=cv.getContext('2d');
   function hx(x,y){
     ctx.beginPath();
-    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(x+R*Math.cos(a),y+R*Math.sin(a))}
+    for(var i=0;i<6;i++){var a=Math.PI/3*i-Math.PI/6;
+      ctx.lineTo(x+R*Math.cos(a),y+R*Math.sin(a));}
     ctx.closePath();
   }
   function draw(){
-    const d=dk();
+    var d=dk();
     ctx.clearRect(0,0,W,H);
-    ctx.fillStyle=d?'#0a1628':'#eef4f9';ctx.fillRect(0,0,W,H);
-    cells.forEach(c=>{
-      c.p+=c.s;
-      const v=(Math.sin(c.p)+1)/2;
+    ctx.fillStyle=d?'#080f1e':'#c8dcf0';ctx.fillRect(0,0,W,H);
+    for(var i=0;i<cells.length;i++){
+      var c=cells[i];c.p+=c.s;
+      var v=(Math.sin(c.p)+1)/2;
       hx(c.x,c.y);
-      ctx.fillStyle=d?'rgba(59,130,246,'+(v*.13).toFixed(3)+')':'rgba(29,114,184,'+(v*.065).toFixed(3)+')';
+      ctx.fillStyle=d?('rgba(59,130,246,'+(v*.38).toFixed(3)+')')
+                     :('rgba(20,80,160,'+(v*.30).toFixed(3)+')');
       ctx.fill();
-      ctx.strokeStyle=d?'rgba(96,165,250,'+(.1+v*.35).toFixed(3)+')':'rgba(29,114,184,'+(.06+v*.24).toFixed(3)+')';
-      ctx.lineWidth=.8;ctx.stroke();
-    });
+      ctx.strokeStyle=d?('rgba(96,165,250,'+(.28+v*.55).toFixed(3)+')')
+                       :('rgba(20,80,160,'+(.22+v*.45).toFixed(3)+')');
+      ctx.lineWidth=1.5;ctx.stroke();
+    }
     requestAnimationFrame(draw);
   }
-  resize();window.addEventListener('resize',resize);draw();
+  resize();window.addEventListener('resize',resize,{passive:true});draw();
 })();
 </script></main></body></html>"""
 
