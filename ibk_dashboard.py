@@ -1459,7 +1459,6 @@ dialog{width:min(1760px,98.5vw)!important;max-width:98.5vw!important}dialog .bod
 .flights-map{height:460px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px}
 .plane-marker div{font-size:20px;line-height:1;color:#174a7c;text-shadow:0 0 3px #fff,0 0 1px #fff;transform-origin:center center}
 .dark .plane-marker div{color:#9fd4ff;text-shadow:0 0 3px #0a1726,0 0 1px #0a1726}
-.leaflet-popup-content{font:13px/1.4 "Segoe UI",Arial,sans-serif;color:#172033}
 .trend-chart-wrap{width:100%}
 .trend-chart{width:100%;height:230px;display:block}
 .trend-grid{stroke:rgba(120,150,180,.18);stroke-width:1}
@@ -1539,11 +1538,10 @@ body.logged-in main{
 
 /* hex-bg */body{background:#f8fbff!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#f8fbff!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important;animation:none!important}.dark .sky-scene{background:#080f1e!important}.panel,.kpi,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .upload{background:rgba(15,28,50,.95)!important}#login,main.login-screen-main{background:transparent!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important}header{background:rgba(255,255,255,.08)!important;backdrop-filter:none!important;border-bottom:1px solid rgba(100,160,220,.15)!important;box-shadow:none!important}.dark header{background:rgba(8,15,30,.12)!important}body.login-screen header{background:transparent!important;border-bottom:none!important;box-shadow:none!important}
 @keyframes cfmDash{to{stroke-dashoffset:-28}}.cfm-flow-line{animation:cfmDash 2.2s linear infinite}.cfm-legend{background:rgba(255,255,255,.93);border:1px solid #c8d8ea;border-radius:8px;padding:8px 12px;font-size:11px;line-height:1.7;color:#1a3a5c;box-shadow:0 2px 8px rgba(0,0,0,.1)}.dark .cfm-legend{background:rgba(18,32,50,.93);border-color:#3b5168;color:#eaf2ff}
-</style><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
+</style></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
 <section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]};
 const I18N={uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},uzc:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},ru:{archive:"Arxiv",upload:"Zagruzka",general:"Obshiy",companies:"Kompanii",expired:"Prosrochennie",released:"Snyatie s kontrolya",goods:"Tovari",food:"Produkti",profile:"Profil",settings:"Nastroyki",admin:"Admin",dark:"Temniy rejim",logout:"Vixod"}};
@@ -1674,16 +1672,14 @@ const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺",
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
 let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;let _YMAP_LOADED=false;let _YMAP_CBS=[];
 function _loadYMaps(cb){
-  if(typeof ymaps!=='undefined'){ymaps.ready(cb);return}
+  if(typeof ymaps3!=='undefined'){ymaps3.ready.then(cb);return}
   _YMAP_CBS.push(cb);
   if(_YMAP_LOADED)return;
   _YMAP_LOADED=true;
   let s=document.createElement('script');
-  // API kalit olish uchun: https://developer.tech.yandex.ru
-  // Kalit bo'lsa: s.src='https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=KALIT_SHU_YERGA';
-  s.src='https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=0b5695bd-89cd-4d0e-8945-11b2472402ba';
-  s.onload=function(){ymaps.ready(function(){let cbs=_YMAP_CBS;_YMAP_CBS=[];cbs.forEach(fn=>fn())})};
-  s.onerror=function(){let el=document.getElementById('cfmMap');if(el)el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Yandex Maps yuklanmadi — internet aloqasini tekshiring</div>'};
+  s.src='https://api-maps.yandex.ru/v3/?apikey=0b5695bd-89cd-4d0e-8945-11b2472402ba&lang=ru_RU';
+  s.onload=function(){ymaps3.ready.then(function(){let cbs=_YMAP_CBS;_YMAP_CBS=[];cbs.forEach(fn=>fn())})};
+  s.onerror=function(){let el=document.getElementById('cfmMap');if(el)el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Yandex Maps yuklanmadi</div>'};
   document.head.appendChild(s);
 }
 function countryFlowMap(rows){
@@ -1693,51 +1689,51 @@ function countryFlowMap(rows){
 function initCountryFlowMap(){
   let el=document.getElementById("cfmMap");if(!el)return;
   let rows=_CFM_ROWS;if(!rows.length)return;
-  if(typeof L==='undefined'){el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Xarita kutubxonasi yuklanmadi</div>';return}
-  _buildCFM(el,rows);
+  _loadYMaps(function(){_buildCFM(el,rows)});
 }
 function _buildCFM(el,rows){
   try{
-    if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.remove()}catch(e){}COUNTRY_FLOW_MAP=null}
+    if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.destroy()}catch(e){}COUNTRY_FLOW_MAP=null}
     el.innerHTML='';
-    let map=L.map(el,{zoomControl:true,scrollWheelZoom:true}).setView([41,58],2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:10,attribution:'© OpenStreetMap'}).addTo(map);
+    const {YMap,YMapDefaultSchemeLayer,YMapDefaultFeaturesLayer,YMapMarker,YMapFeature}=ymaps3;
+    let map=new YMap(el,{location:{center:[58,41],zoom:2},behaviors:['drag','scrollZoom','pinchZoom']});
+    map.addChild(new YMapDefaultSchemeLayer());
+    map.addChild(new YMapDefaultFeaturesLayer());
     COUNTRY_FLOW_MAP=map;
-    setTimeout(()=>{if(COUNTRY_FLOW_MAP)COUNTRY_FLOW_MAP.invalidateSize()},200);
-    let UZ=[41.3,69.3];
+    let UZ=[69.3,41.3];
+    let uzEl=document.createElement('div');
+    uzEl.innerHTML='<div style="background:#1d72b8;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%)">🇺🇿 O\'zbekiston</div>';
+    map.addChild(new YMapMarker({coordinates:UZ},uzEl));
     let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0));
     let maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-    let uzIcon=L.divIcon({className:'',html:'<div style="background:#1d72b8;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4)">🇺🇿 O\'zbekiston</div>',iconAnchor:[58,14]});
-    L.marker(UZ,{icon:uzIcon}).addTo(map).bindPopup('<b>O\'zbekiston</b><br>IBK nazorat punkti');
-    let allLL=[];
-    rows.forEach((r)=>{
-      let ll=countryLatLon(r.name);
-      if(!ll)return;
+    let allCoords=[];
+    rows.forEach(r=>{
+      let ll=countryLatLon(r.name);if(!ll)return;
       let q=+r.qiymat||0,v=+r.vazn||0,p=+r.partiya||0;
       let qS=q/maxQ;
       let clr=qS>=.6?'#16a34a':qS>=.3?'#d97706':'#1d72b8';
-      let latlng=[ll.lat,ll.lon];
-      allLL.push(latlng);
-      L.polyline([latlng,UZ],{color:clr,weight:1.5+qS*2.5,opacity:.72,dashArray:'8,6',className:'cfm-flow-line'}).addTo(map);
+      let coord=[ll.lon,ll.lat];
+      allCoords.push(coord);
+      map.addChild(new YMapFeature({id:'cfmline_'+r.name,geometry:{type:'LineString',coordinates:[coord,UZ]},style:{stroke:[{color:clr,width:1.5+qS*2.5,opacity:.72}]}}));
       let sz=Math.round(Math.max(30,Math.min(54,30+Math.sqrt(v/maxV)*24)));
       let fs=sz>44?12:sz>36?11:10;
-      let flag=countryFlag(r.name);
-      let nm=esc(r.name).slice(0,16);
-      let icon=L.divIcon({
-        className:'',
-        html:`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer"><div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box">${fmtI(p)}</div><div style="white-space:nowrap;background:rgba(255,255,255,.93);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#1a3a5c;box-shadow:0 1px 3px rgba(0,0,0,.2)">${flag} ${nm}</div></div>`,
-        iconSize:[sz,sz+22],iconAnchor:[sz/2,sz/2]
-      });
-      L.marker(latlng,{icon}).addTo(map).bindPopup(`<b>${flag} ${esc(r.name)}</b><hr style="margin:4px 0"><b>Partiya:</b> ${fmtI(p)}<br><b>Qiymat:</b> ${fmtN(q)} ming $<br><b>Vazn:</b> ${fmtN(v)} tn`);
+      let flag=countryFlag(r.name);let nm=esc(r.name).slice(0,16);
+      let mEl=document.createElement('div');
+      mEl.style.cssText='transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer';
+      mEl.title=`${flag} ${esc(r.name)}\nPartiya: ${fmtI(p)}\nQiymat: ${fmtN(q)} ming $\nVazn: ${fmtN(v)} tn`;
+      mEl.innerHTML=`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box">${fmtI(p)}</div><div style="white-space:nowrap;background:rgba(255,255,255,.93);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#1a3a5c;box-shadow:0 1px 3px rgba(0,0,0,.2)">${flag} ${nm}</div>`;
+      map.addChild(new YMapMarker({coordinates:coord},mEl));
     });
-    if(allLL.length>0){let bnd=L.latLngBounds(allLL.concat([UZ]));if(bnd.isValid())map.fitBounds(bnd,{padding:[40,40]});}
-    let lg=L.control({position:'bottomright'});
-    lg.onAdd=function(){
-      let d=L.DomUtil.create('div','cfm-legend');
-      d.innerHTML='<b>Rang — qiymat ulushi:</b><br><span style="color:#16a34a">● Yuqori (60%+)</span><br><span style="color:#d97706">● O\'rta (30-60%)</span><br><span style="color:#1d72b8">● Quyi (&lt;30%)</span><hr style="margin:4px 0"><b>Doira ichidagi son:</b> partiya<br><b>Doira hajmi:</b> yuk vazni (tn)';
-      return d;
-    };
-    lg.addTo(map);
+    if(allCoords.length){
+      let lons=allCoords.map(c=>c[0]).concat([UZ[0]]),lats=allCoords.map(c=>c[1]).concat([UZ[1]]),pad=4;
+      map.setLocation({bounds:[[Math.min(...lons)-pad,Math.min(...lats)-pad],[Math.max(...lons)+pad,Math.max(...lats)+pad]],duration:400});
+    }
+    let lgEl=document.createElement('div');
+    lgEl.className='cfm-legend';
+    lgEl.style.cssText='position:absolute;bottom:12px;right:12px;z-index:10';
+    lgEl.innerHTML='<b>Rang — qiymat ulushi:</b><br><span style="color:#16a34a">● Yuqori (60%+)</span><br><span style="color:#d97706">● O\'rta (30-60%)</span><br><span style="color:#1d72b8">● Quyi (&lt;30%)</span><hr style="margin:4px 0"><b>Doira:</b> partiya / vazn';
+    el.style.position='relative';
+    el.appendChild(lgEl);
   }catch(err){console.error('CFM map error:',err)}
 }
 const POST_NAMES={"35001":"Nukus aeroporti chegara bojxona posti","35002":"Nukus TIF bojxona posti","35003":"Xo'jayli chegara bojxona posti","35004":"Dovut-ota chegara bojxona posti","35010":"Qoraqalpog'iston temir yo'l chegara bojxona posti","03002":"Do'stlik chegara bojxona posti","03003":"Andijon aeroporti chegara bojxona posti","03005":"Mingtepa chegara bojxona posti","03006":"Qorasuv chegara bojxona posti","03007":"Xonobod chegara bojxona posti","03008":"Pushmon chegara bojxona posti","03009":"Madaniyat chegara bojxona posti","03011":"Andijon TIF bojxona posti","03013":"Keskanyol chegara bojxona posti","03014":"Savay temir yo'l chegara bojxona posti","03015":"Asaka TIF bojxona posti","06001":"Buxoro aeroporti chegara bojxona posti","06006":"Buxoro TIF bojxona posti","06009":"Qorakol TIF bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti","08003":"Uchturgon chegara bojxona posti","08004":"Jizzax TIF bojxona posti","08007":"Qo'shkent chegara bojxona posti","10002":"Nasaf TIF bojxona posti","10007":"Qamashi-G'uzor TIF bojxona posti","10008":"Qarshi-Kerki chegara bojxona posti","10012":"Qarshi aeroporti chegara bojxona posti","12002":"Navoiy aeroporti chegara bojxona posti","12003":"Navoiy TIF bojxona posti","12008":"Zarafshon TIF bojxona posti","14002":"Namangan aeroporti chegara bojxona posti","14003":"Uchqo'rg'on chegara bojxona posti","14004":"Kosonsoy chegara bojxona posti","14005":"Pop chegara bojxona posti","14010":"Namangan TIF bojxona posti","18001":"Samarqand aeroporti chegara bojxona posti","18002":"Jartepa chegara bojxona posti","18005":"Samarqand TIF bojxona posti","18007":"Ulug'bek TIF bojxona posti","22002":"Termiz aeroporti chegara bojxona posti","22003":"Sariosiyo chegara bojxona posti","22004":"Sariosiyo temir yo'l chegara bojxona posti","22005":"Termiz TIF bojxona posti","22006":"Denov TIF bojxona posti","22007":"Gulbahor chegara bojxona posti","22011":"Daryo porti chegara bojxona posti","22015":"Boldir temir yo'l chegara bojxona posti","22017":"Ayritom chegara bojxona posti","22022":"Termiz xalqaro savdo markazi TIF bojxona posti","24002":"Xovosobod chegara bojxona posti","24004":"Sirdaryo chegara bojxona posti","24006":"Oq oltin chegara bojxona posti","24009":"Guliston TIF bojxona posti","24014":"Malik chegara bojxona posti","27001":"Yallama chegara bojxona posti","27008":"Navoiy chegara bojxona posti","27009":"S. Najimov chegara bojxona posti","27011":"Oybek chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27014":"Chirchiq TIF bojxona posti","27015":"Olmaliq TIF bojxona posti","27016":"Yangiyol TIF bojxona posti","27019":"Nazarbek TIF bojxona posti","27020":"Keles TIF bojxona posti","27021":"G'ishtkoprik chegara bojxona posti","27023":"Farhod chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","27028":"Angren TIF bojxona posti","30001":"Farg'ona aeroporti chegara bojxona posti","30002":"Qo'qon TIF bojxona posti","30004":"Farg'ona chegara bojxona posti","30005":"Andarxon chegara bojxona posti","30006":"Rishton chegara bojxona posti","30008":"Rovot chegara bojxona posti","30009":"Vodiy TIF bojxona posti","30010":"O'zbekiston chegara bojxona posti","30012":"So'x chegara bojxona posti","33001":"Shovot chegara bojxona posti","33004":"Do'stlik chegara bojxona posti","33007":"Urganch TIF bojxona posti","33011":"Urganch aeroporti chegara bojxona posti","33033":"Shovot chegaraoldi savdo zonasi","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF bojxona posti","00107":"Elektron tijorat TIF bojxona posti","00110":"Toshkent-Humo aeroporti CHBP"};
@@ -1758,31 +1754,39 @@ function flightsPanelShell(){
 let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
 function initFlightsMap(){
   let el=document.getElementById("flightsMap");if(!el)return;
-  if(typeof L==='undefined'){el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita kutubxonasi yuklanmadi</div>';return}
-  if(FLIGHTS_MAP){try{FLIGHTS_MAP.remove()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
-  el.innerHTML='';
-  FLIGHTS_MAP=L.map(el,{zoomControl:true,scrollWheelZoom:true}).setView([41.3,69.27],6);
-  setTimeout(()=>{if(FLIGHTS_MAP)FLIGHTS_MAP.invalidateSize()},150);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,attribution:'© OpenStreetMap'}).addTo(FLIGHTS_MAP);
-  let uzIcon=L.divIcon({className:'',html:'<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap">TAS</div>',iconAnchor:[14,10]});
-  L.marker([41.2995,69.2401],{icon:uzIcon}).addTo(FLIGHTS_MAP).bindPopup('Toshkent xalqaro aeroporti (TAS)');
-  refreshFlightsMap();
-  if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
-  FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
+  _loadYMaps(function(){
+    if(FLIGHTS_MAP){try{FLIGHTS_MAP.destroy()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
+    el.innerHTML='';
+    const {YMap,YMapDefaultSchemeLayer,YMapDefaultFeaturesLayer,YMapMarker}=ymaps3;
+    let map=new YMap(el,{location:{center:[69.27,41.3],zoom:6},behaviors:['drag','scrollZoom','pinchZoom']});
+    map.addChild(new YMapDefaultSchemeLayer());
+    map.addChild(new YMapDefaultFeaturesLayer());
+    FLIGHTS_MAP=map;
+    let tasEl=document.createElement('div');
+    tasEl.innerHTML='<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%);cursor:default" title="Toshkent xalqaro aeroporti (TAS)">TAS</div>';
+    map.addChild(new YMapMarker({coordinates:[69.2401,41.2995]},tasEl));
+    refreshFlightsMap();
+    if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
+    FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
+  });
 }
 async function refreshFlightsMap(){
-  if(!FLIGHTS_MAP||typeof L==='undefined')return;
+  if(!FLIGHTS_MAP||typeof ymaps3==='undefined')return;
   let meta=document.getElementById("flightsMeta");
   try{
     let j=await api("/api/flights_live");
-    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.removeLayer(m)}catch(e){}});
+    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.removeChild(m)}catch(e){}});
     FLIGHTS_MARKERS=[];
+    const {YMapMarker}=ymaps3;
     (j.planes||[]).forEach(p=>{
       let h=+(p.heading||0);
-      let icon=L.divIcon({className:'',html:'<div style="transform:rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>',iconSize:[22,22],iconAnchor:[11,11]});
-      let m=L.marker([p.lat,p.lon],{icon}).addTo(FLIGHTS_MAP);
-      m.bindPopup('<b>'+esc(p.callsign||p.icao24||'-')+'</b><br>Balandlik: '+Math.round(p.alt||0)+' m<br>Tezlik: '+Math.round((p.speed||0)*3.6)+' km/soat<br>Davlat: '+esc(p.country||'-'));
-      FLIGHTS_MARKERS.push(m);
+      let mEl=document.createElement('div');
+      mEl.style.cssText='transform:translate(-50%,-50%)';
+      mEl.title=esc(p.callsign||p.icao24||'-')+'\nBalandlik: '+Math.round(p.alt||0)+' m\nTezlik: '+Math.round((p.speed||0)*3.6)+' km/soat\nDavlat: '+esc(p.country||'-');
+      mEl.innerHTML='<div style="transform:rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>';
+      let marker=new YMapMarker({coordinates:[p.lon,p.lat]},mEl);
+      FLIGHTS_MAP.addChild(marker);
+      FLIGHTS_MARKERS.push(marker);
     });
     if(meta)meta.textContent=j.error?'Xatolik: '+j.error:'Jonli parvozlar: '+(j.planes||[]).length+' ta \xb7 yangilangan: '+new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"});
   }catch(e){if(meta)meta.textContent="Ma'lumot yuklanmadi"}
