@@ -2415,7 +2415,8 @@ class Handler(BaseHTTPRequestHandler):
             needs_rebuild = data and (
                 data.get("schema") != 5 or
                 "food" not in data or "post_summary" not in data or "regime_posts" not in data or "regime_year_post" not in data or "expired_post_regime" not in data or "expired_block" not in data or "warehouse" not in data or
-                "vazn" not in data.get("kpis", {}) or "expired_value" not in data.get("kpis", {})
+                "vazn" not in data.get("kpis", {}) or "expired_value" not in data.get("kpis", {}) or
+                "depozit_matched" not in data.get("kpis", {})
             )
             if needs_rebuild:
                 try:
