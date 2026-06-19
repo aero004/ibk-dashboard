@@ -347,6 +347,12 @@ def clean_archive_records(reports: list[dict]) -> list[dict]:
 
 
 def digits(value) -> str:
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return ""
+        return str(int(value))
+    if isinstance(value, int):
+        return str(value)
     return re.sub(r"\D", "", str(value or ""))
 
 
@@ -1024,9 +1030,13 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
         base_dt = report_date - timedelta(days=days)
         base_key = fmt_date(base_dt)
         item = by_date.get(base_key)
-        if item:
-            release[str(days)] = released_between(Path(item["source"]), source)
-            release[str(days)]["base_date"] = base_key
+        old_path = Path(item["source"]) if item and item.get("source") else None
+        if old_path and old_path.exists():
+            try:
+                release[str(days)] = released_between(old_path, source)
+                release[str(days)]["base_date"] = base_key
+            except Exception:
+                release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": base_key, "missing_date": base_key}
         else:
             release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": "", "missing_date": base_key}
 
@@ -1527,17 +1537,19 @@ body.logged-in main{
   display:block!important;
 }
 
-/* hex-bg */body{background:#c8dcf0!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#c8dcf0!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important}.dark .sky-scene{background:#080f1e!important}.panel,.kpi,.login,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .login,.dark .upload{background:rgba(15,28,50,.95)!important}
-</style></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
+/* hex-bg */body{background:#e8f3fb!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#e8f3fb!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important}.dark .sky-scene{background:#080f1e!important}.panel,.kpi,.login,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .login,.dark .upload{background:rgba(15,28,50,.95)!important}
+@keyframes cfmDash{to{stroke-dashoffset:-28}}.cfm-flow-line{animation:cfmDash 2.2s linear infinite}.cfm-legend{background:rgba(255,255,255,.93);border:1px solid #c8d8ea;border-radius:8px;padding:8px 12px;font-size:11px;line-height:1.7;color:#1a3a5c;box-shadow:0 2px 8px rgba(0,0,0,.1)}.dark .cfm-legend{background:rgba(18,32,50,.93);border-color:#3b5168;color:#eaf2ff}
+</style><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
 <section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]};
 const I18N={uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},uzc:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},ru:{archive:"Arxiv",upload:"Zagruzka",general:"Obshiy",companies:"Kompanii",expired:"Prosrochennie",released:"Snyatie s kontrolya",goods:"Tovari",food:"Produkti",profile:"Profil",settings:"Nastroyki",admin:"Admin",dark:"Temniy rejim",logout:"Vixod"}};
 function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){document.body.classList.toggle("bg-aero",v==="aero");document.body.classList.toggle("bg-classic",v==="classic");localStorage.ibk_bg=v} function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
 const fmtN=v=>Math.abs(+v||0)<.005?"0":(+v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/\u00a0/g," "), fmtI=v=>Math.round(+v||0).toLocaleString("ru-RU").replace(/\u00a0/g," "), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-async function activateLogin(){if(TOKEN){try{await showApp();return;}catch(e){localStorage.removeItem("ibk_token");TOKEN="";}}let el=$("login");if(el)el.classList.add("active")}
+function activateLogin(){let el=$("login");if(el)el.classList.add("active")}
 function togglePassword(){let p=$("pass");if(p)p.type=p.type==="password"?"text":"password"}
 ["user","pass"].forEach(id=>{let el=document.getElementById(id);if(el)el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doLogin()}})});
 function updateClock(){let c=$("clock");if(c)c.textContent=new Date().toLocaleString("uz-UZ",{hour:"2-digit",minute:"2-digit",second:"2-digit",day:"2-digit",month:"2-digit",year:"numeric"}).replace(",", "")}
@@ -1648,7 +1660,7 @@ const renderFinal=render;render=function(){renderFinal();let tabs=$("tabs");if(t
 const apiRaw=api;api=async function(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);let j=await r.json().catch(()=>({error:`HTTP ${r.status}`}));if(r.status===401){showLogin();throw Error("login")}if(!r.ok||j.error)throw Error(j.error||`HTTP ${r.status}`);return j}
 function countryPoint(name,i,total){let s=String(name||"").toLowerCase();let map=[["xitoy",70,126],["china",70,126],["rossiya",210,70],["russia",210,70],["turkiya",165,155],["turkey",165,155],["koreya",105,95],["germaniya",135,115],["germany",135,115],["italiya",125,148],["fransiya",118,130],["aqsh",48,88],["usa",48,88],["hindiston",98,182],["india",98,182],["qozog",238,116],["kazakh",238,116],["baa",146,205],["amirlik",146,205],["eron",170,185],["iran",170,185]];for(let m of map){if(s.includes(m[0]))return {x:m[1],y:m[2]}}let angle=(-120+(i/(Math.max(total-1,1))*240))*Math.PI/180;return {x:155+112*Math.cos(angle),y:150+82*Math.sin(angle)}}
 const COUNTRY_COORDS=[["xitoy",35.86,104.19],["china",35.86,104.19],["rossiya",61.52,105.32],["russia",61.52,105.32],["turkiya",38.96,35.24],["turkey",38.96,35.24],["koreya",36.5,127.8],["germaniya",51.17,10.45],["germany",51.17,10.45],["italiya",41.87,12.57],["italy",41.87,12.57],["fransiya",46.23,2.21],["france",46.23,2.21],["aqsh",37.09,-95.71],["usa",37.09,-95.71],["amerika",37.09,-95.71],["hindiston",20.59,78.96],["india",20.59,78.96],["qozog",48.02,66.92],["kazakh",48.02,66.92],["baa",23.42,53.85],["amirlik",23.42,53.85],["eron",32.43,53.69],["iran",32.43,53.69],["polsha",51.92,19.15],["ispaniya",40.46,-3.75],["yaponiya",36.2,138.25],["japan",36.2,138.25],["belarus",53.7,27.95],["latviya",56.88,24.6],["litva",55.17,23.88],["ukraina",48.38,31.17],["misr",26.82,30.8],["egypt",26.82,30.8],["pokiston",30.38,69.35],["pakistan",30.38,69.35],["vietnam",14.06,108.28],["malayziya",4.21,101.98],["tailand",15.87,100.99],["indoneziya",-0.79,113.92],["braziliya",-14.24,-51.93],["meksika",23.63,-102.55],["saudiya",23.89,45.08],["gruziya",41.69,44.03],["georgia",41.69,44.03],["ozarbayjon",40.14,47.58],["azerbaijan",40.14,47.58],["armaniston",40.07,45.04],["armenia",40.07,45.04],["qirg'iziston",41.2,74.77],["kyrgyz",41.2,74.77],["tojikiston",38.86,71.28],["tajik",38.86,71.28],["turkmaniston",38.97,59.56],["turkmen",38.97,59.56],["afg'oniston",33.93,67.71],["afghan",33.93,67.71],["niderlandiya",52.13,5.29],["netherlands",52.13,5.29],["belgiya",50.50,4.47],["avstriya",47.52,14.55],["shveytsariya",46.82,8.23],["chexiya",49.82,15.47],["vengriya",47.16,19.50],["ruminiya",45.94,24.97],["bolgariya",42.73,25.49],["serbiya",44.02,21.01],["xorvatiya",45.10,15.20],["slovakiya",48.67,19.70],["sloveniya",46.15,14.99],["estoniya",58.60,25.01],["finlyandiya",61.92,25.75],["shvetsiya",60.13,18.64],["norvegiya",60.47,8.47],["daniya",56.26,9.50],["gollandiya",52.13,5.29],["avstraly",-25.27,133.78],["australia",-25.27,133.78],["kanada",56.13,-106.35],["canada",56.13,-106.35],["isroil",31.05,34.85],["israel",31.05,34.85],["iordaniya",30.59,36.24],["livan",33.85,35.86],["falastin",31.95,35.23],["suriya",34.80,38.99],["iroq",33.22,43.68],["iraq",33.22,43.68],["quvayt",29.31,47.48],["bahrayn",26.07,50.55],["qatar",25.35,51.18],["ummon",21.51,55.92],["yaman",15.55,48.52],["efiopiya",9.14,40.49],["marokash",31.79,-7.09],["tunis",33.89,9.54],["jazoir",28.03,1.66],["nigeria",9.08,8.68],["gana",7.95,-1.02],["keniya",-0.02,37.91],["tanzaniya",-6.37,34.89],["britaniya",55.38,-3.44],["buyuk brit",55.38,-3.44],["united king",55.38,-3.44],["england",51.50,-0.12],["scotland",56.49,-4.20],["wales",52.13,-3.78],["ireland",53.41,-8.24],["irlandiya",53.41,-8.24],["irlandia",53.41,-8.24],["portugal",39.40,-8.22],["portugaliya",39.40,-8.22],["gretsiya",37.98,23.73],["greece",37.98,23.73],["portugal",39.40,-8.22],["singapur",1.35,103.82],["singapore",1.35,103.82],["gonkong",22.32,114.17],["hong kong",22.32,114.17],["tayvan",23.70,121.00],["taiwan",23.70,121.00],["nz",40.90,174.89],["yangi zelend",40.90,174.89],["peru",-9.19,-75.02],["chili",-35.68,-71.54],["argentina",-38.42,-63.62],["kolumbiya",4.57,-74.30],["venetsuela",6.42,-66.59]];
-function countryLatLon(name,i,total){let s=String(name||"").toLowerCase();for(let c of COUNTRY_COORDS){if(s.includes(c[0]))return {lat:c[1],lon:c[2]}}let lon=-150+(i/(Math.max(total-1,1)))*300;let lat=46-((i%7)*13);return {lat,lon}}
+function countryLatLon(name){let s=String(name||"").toLowerCase();for(let c of COUNTRY_COORDS){if(s.includes(c[0]))return {lat:c[1],lon:c[2]}}return null}
 const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺","russia":"🇷🇺","turkiya":"🇹🇷","turkey":"🇹🇷","koreya":"🇰🇷","germaniya":"🇩🇪","germany":"🇩🇪","italiya":"🇮🇹","fransiya":"🇫🇷","aqsh":"🇺🇸","usa":"🇺🇸","amerika":"🇺🇸","hindiston":"🇮🇳","india":"🇮🇳","qozog":"🇰🇿","kazakh":"🇰🇿","baa":"🇦🇪","amirlik":"🇦🇪","eron":"🇮🇷","iran":"🇮🇷","polsha":"🇵🇱","ispaniya":"🇪🇸","yaponiya":"🇯🇵","japan":"🇯🇵","belarus":"🇧🇾","latviya":"🇱🇻","litva":"🇱🇹","ukraina":"🇺🇦","misr":"🇪🇬","egypt":"🇪🇬","pokiston":"🇵🇰","pakistan":"🇵🇰","vietnam":"🇻🇳","malayziya":"🇲🇾","tailand":"🇹🇭","indoneziya":"🇮🇩","braziliya":"🇧🇷","meksika":"🇲🇽","saudiya":"🇸🇦","gretsiya":"🇬🇷","gruziya":"🇬🇪","britaniya":"🇬🇧"};
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
 let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;let _YMAP_LOADED=false;let _YMAP_CBS=[];
@@ -1671,38 +1683,53 @@ function countryFlowMap(rows){
 }
 function initCountryFlowMap(){
   let el=document.getElementById("cfmMap");if(!el)return;
-  if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.destroy()}catch(e){}COUNTRY_FLOW_MAP=null}
   let rows=_CFM_ROWS;if(!rows.length)return;
-  _loadYMaps(function(){_buildCFM(el,rows)});
+  if(typeof L==='undefined'){el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Xarita kutubxonasi yuklanmadi</div>';return}
+  _buildCFM(el,rows);
 }
 function _buildCFM(el,rows){
   try{
-    let map=new ymaps.Map(el,{center:[41,58],zoom:3,controls:['zoomControl','typeSelector','fullscreenControl']},{suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
+    if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.remove()}catch(e){}COUNTRY_FLOW_MAP=null}
+    el.innerHTML='';
+    let map=L.map(el,{zoomControl:true,scrollWheelZoom:true}).setView([41,58],2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:10,attribution:'© OpenStreetMap'}).addTo(map);
     COUNTRY_FLOW_MAP=map;
+    setTimeout(()=>{if(COUNTRY_FLOW_MAP)COUNTRY_FLOW_MAP.invalidateSize()},200);
     let UZ=[41.3,69.3];
-    let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0)),maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-    let uzPm=new ymaps.Placemark(UZ,{hintContent:"O'zbekiston — IBK nazorat punkti",balloonContentHeader:"O'zbekiston",balloonContentBody:"IBK nazorat punkti"},{preset:'islands#blueCircleDotIconWithCaption',iconCaptionMaxWidth:'140',iconCaption:"O'zbekiston"});
-    map.geoObjects.add(uzPm);
-    rows.forEach((r,i)=>{
-      let ll=countryLatLon(r.name,i,rows.length);
+    let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0));
+    let maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
+    let uzIcon=L.divIcon({className:'',html:'<div style="background:#1d72b8;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4)">🇺🇿 O\'zbekiston</div>',iconAnchor:[58,14]});
+    L.marker(UZ,{icon:uzIcon}).addTo(map).bindPopup('<b>O\'zbekiston</b><br>IBK nazorat punkti');
+    let allLL=[];
+    rows.forEach((r)=>{
+      let ll=countryLatLon(r.name);
       if(!ll)return;
       let q=+r.qiymat||0,v=+r.vazn||0,p=+r.partiya||0;
-      let qShare=q/maxQ;
-      let clr=qShare>=.6?'#16a34a':qShare>=.3?'#c97700':'#1d72b8';
+      let qS=q/maxQ;
+      let clr=qS>=.6?'#16a34a':qS>=.3?'#d97706':'#1d72b8';
       let latlng=[ll.lat,ll.lon];
-      map.geoObjects.add(new ymaps.Polyline([latlng,UZ],{},{strokeColor:clr,strokeWidth:2,strokeOpacity:.55,strokeStyle:'dash'}));
-      let sz=Math.round(Math.max(28,Math.min(52,28+Math.sqrt(v/maxV)*26)));
-      let fs=sz>42?14:sz>34?12:10;
-      let num=p>0?p:Math.round(q/Math.max(1,maxQ/100));
-      let MkL=ymaps.templateLayoutFactory.createClass('<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:#fff;border:3px solid '+clr+';display:flex;align-items:center;justify-content:center;font-size:'+fs+'px;font-weight:700;color:'+clr+';box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;box-sizing:border-box">'+num+'</div>');
-      let pm=new ymaps.Placemark(latlng,{hintContent:'<b>'+esc(r.name)+'</b> — '+fmtN(q)+' ming $',balloonContentHeader:r.name,balloonContentBody:'Qiymat: <b>'+fmtN(q)+'</b> ming $<br>Vazn: <b>'+fmtN(v)+'</b> tn<br>Partiya: <b>'+fmtI(p)+'</b>'},{iconLayout:MkL,iconShape:{type:'Circle',coordinates:[0,0],radius:Math.round(sz/2)}});
-      map.geoObjects.add(pm);
-      let LbL=ymaps.templateLayoutFactory.createClass('<div style="white-space:nowrap;font-size:11px;font-weight:700;color:#fff;background:'+clr+';padding:2px 8px;border-radius:8px;margin-left:'+(Math.round(sz/2)+5)+'px;margin-top:-10px;box-shadow:0 1px 4px rgba(0,0,0,.4)">'+esc(r.name)+'</div>');
-      map.geoObjects.add(new ymaps.Placemark(latlng,{},{iconLayout:LbL,iconShape:{type:'Rectangle',coordinates:[[-4,-12],[180,12]]}}));
+      allLL.push(latlng);
+      L.polyline([latlng,UZ],{color:clr,weight:1.5+qS*2.5,opacity:.72,dashArray:'8,6',className:'cfm-flow-line'}).addTo(map);
+      let sz=Math.round(Math.max(30,Math.min(54,30+Math.sqrt(v/maxV)*24)));
+      let fs=sz>44?12:sz>36?11:10;
+      let flag=countryFlag(r.name);
+      let nm=esc(r.name).slice(0,16);
+      let icon=L.divIcon({
+        className:'',
+        html:`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer"><div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box">${fmtI(p)}</div><div style="white-space:nowrap;background:rgba(255,255,255,.93);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#1a3a5c;box-shadow:0 1px 3px rgba(0,0,0,.2)">${flag} ${nm}</div></div>`,
+        iconSize:[sz,sz+22],iconAnchor:[sz/2,sz/2]
+      });
+      L.marker(latlng,{icon}).addTo(map).bindPopup(`<b>${flag} ${esc(r.name)}</b><hr style="margin:4px 0"><b>Partiya:</b> ${fmtI(p)}<br><b>Qiymat:</b> ${fmtN(q)} ming $<br><b>Vazn:</b> ${fmtN(v)} tn`);
     });
-    let bnds=map.geoObjects.getBounds();
-    if(bnds)map.setBounds(bnds,{checkZoomRange:true,zoomMargin:60,duration:300});
-  }catch(err){console.error('YMap init error:',err)}
+    if(allLL.length>0){let bnd=L.latLngBounds(allLL.concat([UZ]));if(bnd.isValid())map.fitBounds(bnd,{padding:[40,40]});}
+    let lg=L.control({position:'bottomright'});
+    lg.onAdd=function(){
+      let d=L.DomUtil.create('div','cfm-legend');
+      d.innerHTML='<b>Rang — qiymat ulushi:</b><br><span style="color:#16a34a">● Yuqori (60%+)</span><br><span style="color:#d97706">● O\'rta (30-60%)</span><br><span style="color:#1d72b8">● Quyi (&lt;30%)</span><hr style="margin:4px 0"><b>Doira ichidagi son:</b> partiya<br><b>Doira hajmi:</b> yuk vazni (tn)';
+      return d;
+    };
+    lg.addTo(map);
+  }catch(err){console.error('CFM map error:',err)}
 }
 const POST_NAMES={"35001":"Nukus aeroporti chegara bojxona posti","35002":"Nukus TIF bojxona posti","35003":"Xo'jayli chegara bojxona posti","35004":"Dovut-ota chegara bojxona posti","35010":"Qoraqalpog'iston temir yo'l chegara bojxona posti","03002":"Do'stlik chegara bojxona posti","03003":"Andijon aeroporti chegara bojxona posti","03005":"Mingtepa chegara bojxona posti","03006":"Qorasuv chegara bojxona posti","03007":"Xonobod chegara bojxona posti","03008":"Pushmon chegara bojxona posti","03009":"Madaniyat chegara bojxona posti","03011":"Andijon TIF bojxona posti","03013":"Keskanyol chegara bojxona posti","03014":"Savay temir yo'l chegara bojxona posti","03015":"Asaka TIF bojxona posti","06001":"Buxoro aeroporti chegara bojxona posti","06006":"Buxoro TIF bojxona posti","06009":"Qorakol TIF bojxona posti","06010":"Olot chegara bojxona posti","06011":"Xo'jadavlat temir yo'l chegara bojxona posti","08003":"Uchturgon chegara bojxona posti","08004":"Jizzax TIF bojxona posti","08007":"Qo'shkent chegara bojxona posti","10002":"Nasaf TIF bojxona posti","10007":"Qamashi-G'uzor TIF bojxona posti","10008":"Qarshi-Kerki chegara bojxona posti","10012":"Qarshi aeroporti chegara bojxona posti","12002":"Navoiy aeroporti chegara bojxona posti","12003":"Navoiy TIF bojxona posti","12008":"Zarafshon TIF bojxona posti","14002":"Namangan aeroporti chegara bojxona posti","14003":"Uchqo'rg'on chegara bojxona posti","14004":"Kosonsoy chegara bojxona posti","14005":"Pop chegara bojxona posti","14010":"Namangan TIF bojxona posti","18001":"Samarqand aeroporti chegara bojxona posti","18002":"Jartepa chegara bojxona posti","18005":"Samarqand TIF bojxona posti","18007":"Ulug'bek TIF bojxona posti","22002":"Termiz aeroporti chegara bojxona posti","22003":"Sariosiyo chegara bojxona posti","22004":"Sariosiyo temir yo'l chegara bojxona posti","22005":"Termiz TIF bojxona posti","22006":"Denov TIF bojxona posti","22007":"Gulbahor chegara bojxona posti","22011":"Daryo porti chegara bojxona posti","22015":"Boldir temir yo'l chegara bojxona posti","22017":"Ayritom chegara bojxona posti","22022":"Termiz xalqaro savdo markazi TIF bojxona posti","24002":"Xovosobod chegara bojxona posti","24004":"Sirdaryo chegara bojxona posti","24006":"Oq oltin chegara bojxona posti","24009":"Guliston TIF bojxona posti","24014":"Malik chegara bojxona posti","27001":"Yallama chegara bojxona posti","27008":"Navoiy chegara bojxona posti","27009":"S. Najimov chegara bojxona posti","27011":"Oybek chegara bojxona posti","27013":"Bekobod avto chegara bojxona posti","27014":"Chirchiq TIF bojxona posti","27015":"Olmaliq TIF bojxona posti","27016":"Yangiyol TIF bojxona posti","27019":"Nazarbek TIF bojxona posti","27020":"Keles TIF bojxona posti","27021":"G'ishtkoprik chegara bojxona posti","27023":"Farhod chegara bojxona posti","27024":"Bekobod temir yo'l chegara bojxona posti","27028":"Angren TIF bojxona posti","30001":"Farg'ona aeroporti chegara bojxona posti","30002":"Qo'qon TIF bojxona posti","30004":"Farg'ona chegara bojxona posti","30005":"Andarxon chegara bojxona posti","30006":"Rishton chegara bojxona posti","30008":"Rovot chegara bojxona posti","30009":"Vodiy TIF bojxona posti","30010":"O'zbekiston chegara bojxona posti","30012":"So'x chegara bojxona posti","33001":"Shovot chegara bojxona posti","33004":"Do'stlik chegara bojxona posti","33007":"Urganch TIF bojxona posti","33011":"Urganch aeroporti chegara bojxona posti","33033":"Shovot chegaraoldi savdo zonasi","26002":"Toshkent-tovar TIF bojxona posti","26003":"Ark buloq TIF bojxona posti","26004":"Chuqursoy TIF bojxona posti","26009":"Keles temir yo'l chegara bojxona posti","26010":"Sirg'ali TIF bojxona posti","26013":"Chuqursoy texnik idora temir yo'l chegara bojxona posti","00101":"Toshkent xalqaro aeroporti CHBP","00102":"Avia yuklar TIF bojxona posti","00107":"Elektron tijorat TIF bojxona posti","00110":"Toshkent-Humo aeroporti CHBP"};
 function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>{let nm=r.post_nomi;if(!nm||nm===r.post_kodi||/^\d{5}$/.test(String(nm||""))){nm=POST_NAMES[r.post_kodi]||(r.post_kodi?"Post №"+r.post_kodi:"-")}return Object.assign({},r,{post_nomi:nm})})}
@@ -1711,7 +1738,7 @@ function transportPanel(){let cols=[{k:"post_kodi",t:"Post kodi",w:"78px"},{k:"p
 const overviewPanelsWithMap=overviewPanels;overviewPanels=function(){let html=overviewPanelsWithMap();let countries=countryRows();let countryBlock=`<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countries,"name","qiymat",fmtN)}</div></div>${transportPanel()}`;return html.replace(`<div class=panel><h2>Davlatlar bo'yicha tahlil</h2>${bars(countryRows(),"name","qiymat",fmtN)}</div>`,countryBlock)}
 function flightsPanelShell(){
   return `<div class="panel wide" id="flightsPanelWrap">
-<h2>Toshkent xalqaro aeroporti — jonli parvozlar (Yandex xarita)</h2>
+<h2>Toshkent xalqaro aeroporti — jonli parvozlar</h2>
 <div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px">
   <div id="flightsMap" style="height:520px;width:100%">
     <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Yandex xarita yuklanmoqda...</div>
@@ -1722,37 +1749,31 @@ function flightsPanelShell(){
 let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
 function initFlightsMap(){
   let el=document.getElementById("flightsMap");if(!el)return;
-  if(FLIGHTS_MAP){try{FLIGHTS_MAP.destroy()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
-  _loadYMaps(function(){
-    try{
-      FLIGHTS_MAP=new ymaps.Map(el,{center:[41.3,69.27],zoom:7,
-        controls:['zoomControl','typeSelector','fullscreenControl']},
-        {suppressMapOpenBlock:true,yandexMapDisablePoiInteractivity:true});
-      refreshFlightsMap();
-      if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
-      FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
-    }catch(err){console.error('Flights map error:',err)}
-  });
+  if(typeof L==='undefined'){el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita kutubxonasi yuklanmadi</div>';return}
+  if(FLIGHTS_MAP){try{FLIGHTS_MAP.remove()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
+  el.innerHTML='';
+  FLIGHTS_MAP=L.map(el,{zoomControl:true,scrollWheelZoom:true}).setView([41.3,69.27],6);
+  setTimeout(()=>{if(FLIGHTS_MAP)FLIGHTS_MAP.invalidateSize()},150);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,attribution:'© OpenStreetMap'}).addTo(FLIGHTS_MAP);
+  let uzIcon=L.divIcon({className:'',html:'<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap">TAS</div>',iconAnchor:[14,10]});
+  L.marker([41.2995,69.2401],{icon:uzIcon}).addTo(FLIGHTS_MAP).bindPopup('Toshkent xalqaro aeroporti (TAS)');
+  refreshFlightsMap();
+  if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
+  FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
 }
 async function refreshFlightsMap(){
-  if(!FLIGHTS_MAP||typeof ymaps==='undefined')return;
+  if(!FLIGHTS_MAP||typeof L==='undefined')return;
   let meta=document.getElementById("flightsMeta");
   try{
     let j=await api("/api/flights_live");
-    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.geoObjects.remove(m)}catch(e){}});
+    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.removeLayer(m)}catch(e){}});
     FLIGHTS_MARKERS=[];
     (j.planes||[]).forEach(p=>{
       let h=+(p.heading||0);
-      let IconL=ymaps.templateLayoutFactory.createClass(
-        '<div style="transform:rotate('+h+'deg);font-size:20px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.6)">&#9992;</div>'
-      );
-      let pm=new ymaps.Placemark([p.lat,p.lon],{
-        hintContent:'<b>'+esc(p.callsign||p.icao24||'-')+'</b>',
-        balloonContentHeader:esc(p.callsign||p.icao24||'-'),
-        balloonContentBody:'Balandlik: '+Math.round(p.alt||0)+' m<br>Tezlik: '+Math.round((p.speed||0)*3.6)+' km/soat<br>Davlat: '+esc(p.country||'-')
-      },{iconLayout:IconL,iconShape:{type:'Circle',coordinates:[0,0],radius:13}});
-      FLIGHTS_MAP.geoObjects.add(pm);
-      FLIGHTS_MARKERS.push(pm);
+      let icon=L.divIcon({className:'',html:'<div style="transform:rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>',iconSize:[22,22],iconAnchor:[11,11]});
+      let m=L.marker([p.lat,p.lon],{icon}).addTo(FLIGHTS_MAP);
+      m.bindPopup('<b>'+esc(p.callsign||p.icao24||'-')+'</b><br>Balandlik: '+Math.round(p.alt||0)+' m<br>Tezlik: '+Math.round((p.speed||0)*3.6)+' km/soat<br>Davlat: '+esc(p.country||'-'));
+      FLIGHTS_MARKERS.push(m);
     });
     if(meta)meta.textContent=j.error?'Xatolik: '+j.error:'Jonli parvozlar: '+(j.planes||[]).length+' ta \xb7 yangilangan: '+new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"});
   }catch(e){if(meta)meta.textContent="Ma'lumot yuklanmadi"}
@@ -1880,6 +1901,120 @@ const cleanTopActionsBase=cleanTopActions;cleanTopActions=function(){
   });
 }
 const renderFinalPolish=render;render=function(){renderFinalPolish();cleanTopActions();updateClock();if(TOKEN){let l=document.getElementById("login");if(l){l.style.cssText="display:none!important";l.classList.add("hidden");}}}
+
+// ===== UPLOAD YANGILANMASI =====
+function showUploadProgress(label,pct){
+  let el=$("uploadStatus");if(!el)return;
+  if(!label){el.innerHTML='';return}
+  let c=pct>=100?'#16a34a':pct===0?'#dc2626':'#1d72b8';
+  el.innerHTML=`<div style="background:#f0f6ff;border:1px solid #c8dff5;border-radius:8px;padding:10px 14px"><div style="font-size:13px;font-weight:700;color:${c};margin-bottom:6px">${esc(label)}</div><div style="background:#dde8f5;border-radius:6px;height:8px;overflow:hidden"><div style="width:${Math.max(3,pct)}%;background:${c};height:100%;border-radius:6px;transition:width .4s ease"></div></div></div>`;
+}
+poll=async function(id){
+  try{
+    let j=await api("/api/jobs/"+id);
+    let pMap={"navbatda":8,"Hisob-kitob qilinyapti":30,"SQLite bazaga saqlanmoqda":55,"Dashboard JSON tayyorlanmoqda":70,"Excel/PNG/PDF tayyorlanmoqda":82,"Depozit qayta ishlanmoqda":45};
+    let pct=j.status==="tayyor"?100:j.status==="xatolik"?0:(pMap[j.status]||35);
+    showUploadProgress(j.status==="tayyor"?"✓ Tayyor!":j.status==="xatolik"?"✗ Xatolik":j.status+" ...",pct);
+    $("status").textContent=j.status;
+    if(j.status==="xatolik"){showUploadProgress("✗ "+(j.error||"Noma'lum xato"),0);clearBusy();return}
+    if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}
+    DATA=j.data;TAB="umumiy";await loadArchive();clearBusy();setTimeout(()=>showUploadProgress("",0),4000);render();
+  }catch(err){$("status").textContent=err.message;clearBusy()}
+};
+async function uploadDepositOnly(btn){
+  let f=$("depositOnlyForm");if(!f)return;
+  let sel=f.querySelector("[name=report_id]"),dep=f.querySelector("[name=deposit]");
+  if(!sel||!dep||!dep.files.length){$("depositResult").textContent="Hisobot va depozit fayl tanlang";return}
+  setBusy(btn,true,"Yuklanmoqda");$("depositResult").textContent="Depozit yuklanyapti...";
+  showUploadProgress("Depozit fayl yuklanyapti...",10);
+  try{
+    let fd=new FormData();fd.append("report_id",sel.value);fd.append("deposit",dep.files[0]);
+    let j=await api("/api/deposit",{method:"POST",body:fd});
+    $("depositResult").textContent="Qayta hisoblanmoqda...";
+    poll(j.job_id);
+  }catch(err){$("depositResult").textContent="Xato: "+err.message;showUploadProgress("✗ "+err.message,0)}
+  finally{setBusy(btn,false)}
+}
+async function refreshCurrentReport(btn){
+  if(!DATA)return;
+  setBusy(btn,true,"Yangilanmoqda");$("status").textContent="Ma'lumotlar yangilanmoqda...";
+  try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
+}
+uploadPanel=function(){
+  let arcOpts=(ARCHIVE||[]).slice().reverse().slice(0,40).map(r=>`<option value="${r.id}">${r.date} — ${esc((r.source||"").split(/[\\/]/).pop())}</option>`).join("");
+  let refreshHtml=DATA?`<div class=panel style="border-left:4px solid #1d72b8"><h2>&#8635; Joriy ma\'lumotlarni yangilash</h2><p class=muted>Ko\'rinishda: <b>${DATA.meta&&DATA.meta.date||"?"}</b> holatiga hisobot yukli.</p><button onclick="refreshCurrentReport(this)">Ma\'lumotlarni qayta yuklash</button></div>`:"";
+  return `<div class=stack>
+<div class=panel><h2>Fayl yuklash markazi</h2><div class=muted>BNRTE, Depozit va To\'lovlar uchun fayllar alohida yuklanadi. Jarayon holati real vaqtda ko\'rinadi.</div></div>
+<div id=uploadStatus></div>
+${refreshHtml}
+<div class=panel><h2>BNRTE jamlanma — yangi hisobot yuklash</h2>
+<form class="upload" id="upload">
+<div><label>Asos fayl (xls/xlsx)</label><input name="source" type="file" accept=".xls,.xlsx,.html,.htm" required></div>
+<div><label>Depozit fayl (ixtiyoriy)</label><input name="deposit" type="file" accept=".xlsx"></div>
+<div></div><button>Yuklash va hisoblash</button>
+</form>
+<div class=muted style="margin-top:6px">Hisobot sanasi asos fayl nomidan avtomatik aniqlanadi.</div>
+</div>
+<div class=panel><h2>Depozit faylni alohida yangilash</h2>
+<form class="upload" id="depositOnlyForm">
+<div><label>Hisobot tanlang</label><select name="report_id" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px">${arcOpts||"<option>Arxiv bo\'sh</option>"}</select></div>
+<div><label>Depozit fayl (xlsx)</label><input name="deposit" type="file" accept=".xlsx" required></div>
+<div></div><button type="button" onclick="uploadDepositOnly(this)">Depozit yuklash</button>
+</form>
+<div id="depositResult" class=muted></div>
+</div>
+<div class=panel><h2>Yillik arxivni birdan yuklash</h2>
+<form class="upload" id="bulkUpload">
+<div><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div>
+<div><label>Depozit fayl (ixtiyoriy)</label><input name="deposit" type="file" accept=".xlsx"></div>
+<div></div><button>Hammasini yuklash</button>
+</form>
+<div id=bulkResult class=muted>Fayllar sanasi nomidan olinadi va arxivga qo\'shiladi.</div>
+</div>
+<div class=panel><h2>To\'lovlar jadvallari</h2>
+<form class="upload" id="tolovUpload">
+<div><label>To\'lov baza fayli</label><input name="source" type="file" accept=".xlsx,.xls" required></div>
+<div class=muted>04.06+07.06.2026 kabi asos fayl yuklanadi.</div>
+<div></div><button>To\'lov jadvallarini shakllantirish</button>
+</form>
+<div id="tolovUploadResult" class=muted></div>
+</div></div>`;
+};
+const bindUploadFull=bindUpload;bindUpload=function(){
+  let f=$("upload");
+  if(f)f.onsubmit=async e=>{
+    e.preventDefault();let btn=e.submitter;
+    try{setBusy(btn,true,"Yuklanmoqda");showUploadProgress("Fayl yuklanyapti...",5);
+      let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id);
+    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    finally{setBusy(btn,false)};
+  };
+  let bf=$("bulkUpload");
+  if(bf)bf.onsubmit=async e=>{
+    e.preventDefault();let btn=e.submitter;
+    try{setBusy(btn,true,"Yuklanmoqda");showUploadProgress("Yillik fayllar yuklanyapti...",5);
+      let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});
+      let skip=(j.skipped||[]).length?` O\'tkazib: ${j.skipped.map(x=>x.filename).join(", ")}`:"";
+      $("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo\'shildi.${skip}`;
+      showUploadProgress(`${j.count||0} ta fayl navbatga qo\'shildi`,85);
+      await loadArchive();setTimeout(()=>showUploadProgress("",0),3000);
+    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    finally{setBusy(btn,false)};
+  };
+  let tf=$("tolovUpload");
+  if(tf)tf.onsubmit=async e=>{
+    e.preventDefault();let btn=e.submitter;
+    try{setBusy(btn,true,"Shakllanmoqda");showUploadProgress("To\'lovlar shakllantirilyapti...",10);
+      let j=await api("/api/tolov",{method:"POST",body:new FormData(tf)});
+      PAYMENTS=j.payments||[];
+      $("tolovUploadResult").innerHTML=`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so\'m.`;
+      showUploadProgress("To\'lovlar tayyor!",100);setTimeout(()=>showUploadProgress("",0),3000);
+    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    finally{setBusy(btn,false)};
+  };
+};
+// ===== /UPLOAD YANGILANMASI =====
+
 function startBackgroundVideo(){
   const video=document.getElementById('bgVideo'), canvas=document.getElementById('bgCanvas');
   if(!video||!canvas||!canvas.captureStream)return;
@@ -2029,7 +2164,7 @@ forceLoginView();
   /* Force full-screen via setProperty so !important beats any stylesheet rule */
   var sp=sc.style;
   ['position:fixed','top:0','left:0','right:0','bottom:0','width:100%','height:100%',
-   'z-index:0','overflow:hidden','pointer-events:none','background:#c8dcf0',
+   'z-index:0','overflow:hidden','pointer-events:none','background:#e8f3fb',
    'animation:none','transform:none'].forEach(function(r){
     var i=r.indexOf(':');sp.setProperty(r.slice(0,i),r.slice(i+1),'important');
   });
@@ -2064,7 +2199,7 @@ forceLoginView();
   function draw(){
     var d=dk();
     ctx.clearRect(0,0,W,H);
-    ctx.fillStyle=d?'#080f1e':'#c8dcf0';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=d?'#080f1e':'#e8f3fb';ctx.fillRect(0,0,W,H);
     for(var i=0;i<cells.length;i++){
       var c=cells[i];c.p+=c.s;
       var v=(Math.sin(c.p)+1)/2;
@@ -2659,6 +2794,55 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
                 job_ids.append(job_id)
             self.json({"job_ids": job_ids, "count": len(job_ids), "skipped": skipped})
+            return
+        if parsed.path == "/api/deposit":
+            if not self.require_perm("upload"):
+                return
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            report_id = (form.get("report_id") or {}).get("content", b"").decode("utf-8", errors="ignore").strip()
+            if not report_id:
+                self.json({"error": "report_id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if "deposit" not in form or not form["deposit"]["filename"]:
+                self.json({"error": "Depozit fayl kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            reports = archive.get("reports") or []
+            item = next((r for r in reports if isinstance(r, dict) and r.get("id") == report_id), None)
+            if not item:
+                self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            report_dir = Path(item.get("dir", ""))
+            if not report_dir.exists():
+                self.json({"error": "Hisobot papkasi topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            deposit_path = report_dir / safe_name(form["deposit"]["filename"])
+            deposit_path.write_bytes(form["deposit"]["content"])
+            item["deposit"] = str(deposit_path)
+            save_json(INDEX_PATH, archive)
+            job_id = "deposit_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "navbatda"}
+            def _rebuild_with_deposit(jid=job_id, it=dict(item), dp=deposit_path):
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Depozit qayta ishlanmoqda"
+                    src = Path(it["source"])
+                    rd = datetime.strptime(it["date"], "%d.%m.%Y")
+                    data = build_dashboard(it["id"], src, dp, rd)
+                    rdir = Path(it["dir"])
+                    data_path = rdir / "dashboard.json"
+                    existing = load_json(data_path, {})
+                    data["files"] = existing.get("files", {})
+                    save_json(data_path, data)
+                    j.update({"status": "tayyor", "data": data})
+                except Exception as exc:
+                    j["status"] = "xatolik"
+                    j["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+            threading.Thread(target=_rebuild_with_deposit, daemon=True).start()
+            self.json({"job_id": job_id, "report_id": report_id})
             return
         if parsed.path == "/api/reports":
             if not self.require_perm("upload"):
