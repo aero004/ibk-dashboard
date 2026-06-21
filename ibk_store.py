@@ -145,6 +145,53 @@ class IBKStore:
         periods = df.drop_duplicates("date")["date"].tolist()
         return df, periods
 
+    def available_dates(self) -> list[str]:
+        """Arxivdagi barcha snapshot sanalarini dd.mm.yyyy formatda, xronologik
+        kamayish tartibida qaytaradi."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT report_date FROM snapshots ORDER BY report_date DESC"
+            ).fetchall()
+        raw = [r[0] for r in rows if r[0]]
+        def _dt(s):
+            try:
+                return datetime.strptime(s, "%d.%m.%Y")
+            except Exception:
+                return datetime.min
+        return sorted(raw, key=_dt, reverse=True)
+
+    def country_flow_by_date(self, date_text: str) -> list[dict[str, Any]]:
+        """Berilgan sana (dd.mm.yyyy) snapshot uchun davlatlar kesimida
+        jami qiymat/vazn/partiya. Qiymat bo'yicha kamayish tartibida qaytariladi."""
+        with self.connect() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT a.country AS name,
+                       SUM(a.value)   AS qiymat,
+                       SUM(a.weight)  AS vazn,
+                       SUM(a.partiya) AS partiya
+                FROM active_items a
+                JOIN snapshots s ON s.id = a.snapshot_id
+                WHERE s.report_date = ?
+                  AND a.country IS NOT NULL AND a.country != ''
+                GROUP BY a.country
+                ORDER BY qiymat DESC
+                """,
+                conn,
+                params=(date_text,),
+            )
+        if df.empty:
+            return []
+        return [
+            {
+                "name": str(r["name"]),
+                "qiymat": float(r["qiymat"]),
+                "vazn": float(r["vazn"]),
+                "partiya": int(r["partiya"]),
+            }
+            for _, r in df.iterrows()
+        ]
+
     def company_series_all(self) -> dict[str, Any]:
         """Har bir korxona (STIR) bo'yicha har bir snapshot (davr) kesimida
         jami qiymat/vazn/partiya. Davrlar bo'yicha tendensiya tahlili uchun.

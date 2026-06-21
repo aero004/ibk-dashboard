@@ -1,394 +1,415 @@
 <!DOCTYPE html>
-<html>
+<html lang="uz">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:#05070f;font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
-  button{font-family:inherit}
-  @keyframes ibkring{0%{transform:scale(.55);opacity:.85}70%{opacity:0}100%{transform:scale(1.7);opacity:0}}
-</style>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tovarlar oqimi</title>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a1628;color:#e8f4ff;overflow:hidden;height:100vh}
+#app{display:flex;flex-direction:column;height:100vh}
+#toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(15,30,55,0.97);border-bottom:1px solid #1e3a5f;flex-wrap:wrap;flex-shrink:0}
+.pbtn{padding:5px 12px;border-radius:20px;border:1px solid #2a4a7a;background:transparent;color:#94b8d8;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+.pbtn.active{background:#1d5fa0;border-color:#2d7fd0;color:#fff}
+.pbtn:hover:not(.active){background:#162a45;color:#c8dff5}
+#dateSelect{padding:5px 10px;border-radius:8px;border:1px solid #2a4a7a;background:#0d1e35;color:#c8dff5;font-size:12px;cursor:pointer;max-width:160px}
+#statusBar{font-size:11px;color:#7aa5c8;margin-left:auto;white-space:nowrap}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0a1628;z-index:10;flex-direction:column;gap:12px}
+.spin{width:36px;height:36px;border:3px solid #1e3a5f;border-top-color:#2d7fd0;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{color:#7aa5c8;font-size:13px}
+#canvas-wrap{flex:1;position:relative;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#tooltip{position:fixed;background:rgba(10,22,48,0.97);border:1px solid #2a4a7a;border-radius:10px;padding:10px 14px;font-size:12px;pointer-events:none;display:none;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.tt-name{font-weight:700;font-size:13px;margin-bottom:6px;color:#a8d4ff}
+.tt-row{display:flex;justify-content:space-between;gap:16px;margin:2px 0;color:#c8dff5}
+.tt-row span:last-child{font-weight:600;color:#fff}
+#nodata{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#5a7a9a;background:#0a1628}
+.sep{width:1px;height:20px;background:#1e3a5f;flex-shrink:0}
+</style>
 </head>
 <body>
-<div id="wrap" style="position:relative;width:100%;height:100%;overflow:hidden"></div>
-<div id="tip" style="position:absolute;left:0;top:0;pointer-events:none;opacity:0;transform:translate(-9999px,-9999px);transition:opacity .12s;z-index:40"></div>
-
+<div id="loading"><div class="spin"></div><p>Ma'lumotlar yuklanmoqda...</p></div>
+<div id="app" style="display:none">
+  <div id="toolbar">
+    <button class="pbtn active" id="btnGlobe" onclick="setView('globe')">&#127760; Globus</button>
+    <button class="pbtn" id="btnMap" onclick="setView('map')">&#128506; Xarita</button>
+    <div class="sep"></div>
+    <button class="pbtn" data-p="latest" onclick="setPeriod('latest')">Oxirgi</button>
+    <button class="pbtn" data-p="1m" onclick="setPeriod('1m')">1 oy</button>
+    <button class="pbtn" data-p="3m" onclick="setPeriod('3m')">3 oy</button>
+    <button class="pbtn" data-p="6m" onclick="setPeriod('6m')">6 oy</button>
+    <button class="pbtn" data-p="1y" onclick="setPeriod('1y')">1 yil</button>
+    <div class="sep"></div>
+    <select id="dateSelect" onchange="onDateSelect(this.value)" title="Aniq sanani tanlash">
+      <option>—</option>
+    </select>
+    <div id="statusBar">—</div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="cv"></canvas>
+    <div id="nodata"><span>Bu sana uchun ma'lumot mavjud emas</span></div>
+  </div>
+</div>
+<div id="tooltip">
+  <div class="tt-name" id="tt-name"></div>
+  <div class="tt-row"><span>Qiymat</span><span id="tt-val"></span></div>
+  <div class="tt-row"><span>Vazn</span><span id="tt-wt"></span></div>
+  <div class="tt-row"><span>Partiya</span><span id="tt-pt"></span></div>
+</div>
 <script>
-const UZ = [69.2797, 41.3111];
-const COL = { Avia: '#22d3ee', "Temir yo'l": '#f5b524', Avto: '#4ade80' };
-const ORIGINS = [
-  { name: 'Xitoy',          coord: [104.2, 35.9], Avia: 210, "Temir yo'l": 280, Avto: 70 },
-  { name: 'Rossiya',        coord: [50.0, 56.0],  Avia: 70,  "Temir yo'l": 330, Avto: 140 },
-  { name: "Qozog'iston",    coord: [67.0, 48.0],  Avia: 10,  "Temir yo'l": 150, Avto: 230 },
-  { name: 'Janubiy Koreya', coord: [127.5, 36.5], Avia: 165, "Temir yo'l": 0,   Avto: 8 },
-  { name: 'Turkiya',        coord: [33.0, 39.0],  Avia: 95,  "Temir yo'l": 6,   Avto: 88 },
-  { name: 'Germaniya',      coord: [10.4, 51.2],  Avia: 110, "Temir yo'l": 22,  Avto: 48 },
-  { name: 'Eron',           coord: [53.0, 32.4],  Avia: 9,   "Temir yo'l": 24,  Avto: 96 },
-  { name: "Qirg'iziston",   coord: [74.7, 41.4],  Avia: 3,   "Temir yo'l": 7,   Avto: 72 },
-  { name: 'Hindiston',      coord: [78.0, 22.0],  Avia: 60,  "Temir yo'l": 0,   Avto: 18 },
-  { name: 'Yaponiya',       coord: [138.3, 36.2], Avia: 78,  "Temir yo'l": 0,   Avto: 5 },
-  { name: 'Belarus',        coord: [28.0, 53.7],  Avia: 6,   "Temir yo'l": 40,  Avto: 55 },
-  { name: 'Turkmaniston',   coord: [59.0, 39.0],  Avia: 4,   "Temir yo'l": 18,  Avto: 60 },
-  { name: 'BAA',            coord: [54.0, 24.0],  Avia: 70,  "Temir yo'l": 0,   Avto: 14 },
-  { name: 'Italiya',        coord: [12.6, 42.8],  Avia: 42,  "Temir yo'l": 4,   Avto: 30 },
+// ── Token (dashboard iframe URL dan) ─────────────────────────────────────
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+
+// ── Koordinatalar xaritasi ─────────────────────────────────────────────
+const CC = [
+  ["xitoy",35.86,104.19],["china",35.86,104.19],
+  ["rossiya",61.52,105.32],["russia",61.52,105.32],
+  ["turkiya",38.96,35.24],["turkey",38.96,35.24],
+  ["koreya",36.5,127.8],["korea",36.5,127.8],
+  ["germaniya",51.17,10.45],["germany",51.17,10.45],
+  ["italiya",41.87,12.57],["italy",41.87,12.57],
+  ["fransiya",46.23,2.21],["france",46.23,2.21],
+  ["aqsh",37.09,-95.71],["usa",37.09,-95.71],["amerika",37.09,-95.71],
+  ["hindiston",20.59,78.96],["india",20.59,78.96],
+  ["qozog",48.02,66.92],["kazakh",48.02,66.92],
+  ["baa",23.42,53.85],["amirlik",23.42,53.85],["emirat",23.42,53.85],
+  ["eron",32.43,53.69],["iran",32.43,53.69],
+  ["polsha",51.92,19.15],["poland",51.92,19.15],
+  ["ispaniya",40.46,-3.75],["spain",40.46,-3.75],
+  ["yaponiya",36.2,138.25],["japan",36.2,138.25],
+  ["belarus",53.7,27.95],["belgiya",50.50,4.47],
+  ["gruziya",41.69,44.03],["georgia",41.69,44.03],
+  ["ozarbayjon",40.14,47.58],["azerbaijan",40.14,47.58],
+  ["qirg",41.2,74.77],["kyrgyz",41.2,74.77],
+  ["tojik",38.86,71.28],["tajik",38.86,71.28],
+  ["turkman",38.97,59.56],["afg",33.93,67.71],
+  ["niderlandiya",52.13,5.29],["netherlands",52.13,5.29],
+  ["britaniya",55.38,-3.44],["united king",55.38,-3.44],["england",51.50,-0.12],
+  ["saudiya",23.89,45.08],["saudi",23.89,45.08],
+  ["misr",26.82,30.8],["egypt",26.82,30.8],
+  ["pokiston",30.38,69.35],["pakistan",30.38,69.35],
+  ["ukraina",48.38,31.17],["ukraine",48.38,31.17],
+  ["latviya",56.88,24.6],["litva",55.17,23.88],
+  ["avstriya",47.52,14.55],["austria",47.52,14.55],
+  ["shveytsariya",46.82,8.23],["singapur",1.35,103.82],
+  ["vietnam",14.06,108.28],["malayziya",4.21,101.98],
+  ["tailand",15.87,100.99],["indoneziya",-0.79,113.92],
+  ["braziliya",-14.24,-51.93],["meksika",23.63,-102.55],
+  ["isroil",31.05,34.85],["israel",31.05,34.85],
+  ["portugal",39.40,-8.22],["gretsiya",37.98,23.73],
+  ["daniya",56.26,9.50],["shvetsiya",60.13,18.64],
+  ["norvegiya",60.47,8.47],["finlyandiya",61.92,25.75],
+  ["chexiya",49.82,15.47],["vengriya",47.16,19.50],
+  ["kanada",56.13,-106.35],["canada",56.13,-106.35],
+  ["tayvan",23.70,121.00],["taiwan",23.70,121.00],
+  ["misr",26.82,30.8],["nigeria",9.08,8.68],
+  ["avstralyia",-25.27,133.78],["australia",-25.27,133.78],
 ];
+const UZ_LON=69.2797, UZ_LAT=41.3111;
+const COLORS=["#22d3ee","#f59e0b","#4ade80","#fb7185","#a78bfa","#60a5fa","#34d399","#fbbf24","#f87171","#c084fc","#38bdf8","#86efac","#fca5a5","#fdba74","#a5b4fc","#67e8f9","#fde68a"];
 
-// --- State ---
-let state = { view: 'globe', theme: 'dark', f: { avia: true, temir: true, avto: true } };
-let _baseRot = [-69, -26], _rotate = [-69, -26], _phase = 0, _drag = null;
-let _dpr = Math.min(2, window.devicePixelRatio || 1);
-let _w = 0, _h = 0, _run = false, _raf = null;
-let _land = null, _borders = null, _graticule = null, _sphere = null, _region = null;
-let _flows = [];
-let canvas, ctx, wrap, tip;
-
-function rgba(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
-}
-function fmt(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-function sum(k) { return ORIGINS.reduce((a, o) => a + o[k], 0); }
-function dom(o, f) {
-  let best = 'Avia', bv = -1;
-  for (const k of ['Avia', "Temir yo'l", 'Avto']) {
-    const active = k === 'Avia' ? f.avia : k === "Temir yo'l" ? f.temir : f.avto;
-    if (active && o[k] > bv) { bv = o[k]; best = k; }
-  }
-  return COL[best];
+function getLL(name){
+  const s=String(name||'').toLowerCase();
+  for(const r of CC){ if(s.includes(r[0])) return [r[1],r[2]]; }
+  return null;
 }
 
-function buildFlows() {
-  _flows = [];
-  const N = 96;
-  for (const o of ORIGINS) {
-    for (const key of ['Avia', "Temir yo'l", 'Avto']) {
-      const val = o[key];
-      if (!val) continue;
-      const interp = d3.geoInterpolate(o.coord, UZ);
-      const pts = [];
-      for (let i = 0; i <= N; i++) pts.push(interp(i / N));
-      _flows.push({ key, val, pts, color: COL[key], parts: Math.max(1, Math.min(7, Math.round(val / 22))) });
+function fmtN(v){
+  if(v==null)return '—';
+  v=+v;
+  if(v>=1e6)return (v/1e6).toFixed(2)+' mln';
+  if(v>=1e3)return (v/1e3).toFixed(1)+' ming';
+  return v.toFixed(1);
+}
+function fmtI(v){return v!=null?(+v).toLocaleString():'—';}
+
+function parseDMY(s){
+  const p=String(s||'').split('.');
+  if(p.length===3) return new Date(+p[2],+p[1]-1,+p[0]);
+  return null;
+}
+
+// ── Holat ─────────────────────────────────────────────────────────────────
+let S={view:'globe',date:'',available:[],countries:[],period:'latest'};
+let W=0,H=0,cv,ctx,proj,gpath,world=null,particles=[],hovered=null,animId=null;
+
+// ── API ───────────────────────────────────────────────────────────────────
+async function apiGet(date){
+  const url='/api/country_flow?token='+encodeURIComponent(TOKEN)+(date?'&date='+encodeURIComponent(date):'');
+  const r=await fetch(url,{headers:{'X-Token':TOKEN}});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+async function loadDate(date){
+  document.getElementById('loading').style.display='flex';
+  try{
+    const j=await apiGet(date);
+    S.countries=j.countries||[];
+    S.date=j.date||date||'';
+    if(j.available&&j.available.length&&!S.available.length){
+      S.available=j.available;
+      buildSel(j.available);
     }
+    document.getElementById('dateSelect').value=S.date;
+    updateStatus();
+    buildParticles();
+    document.getElementById('nodata').style.display=S.countries.length?'none':'flex';
+  }catch(e){
+    document.getElementById('statusBar').textContent='Xato: '+e.message;
+  }finally{
+    document.getElementById('loading').style.display='none';
   }
 }
 
-function proj() {
-  const m = Math.min(_w, _h);
-  if (state.view === 'globe') {
-    return d3.geoOrthographic().scale(m * 0.46).translate([_w/2, _h/2]).rotate(_rotate).clipAngle(90);
-  }
-  const pad = 18;
-  return d3.geoMercator().fitExtent([[pad,pad],[_w-pad,_h-pad]], _region);
+// ── Period tanlash ────────────────────────────────────────────────────────
+function setPeriod(p){
+  S.period=p;
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  if(!S.available.length) return;
+  if(p==='latest'){selectDate(S.available[0]);return;}
+  const latest=parseDMY(S.available[0]);
+  if(!latest)return;
+  const off={'1m':30,'3m':90,'6m':182,'1y':365}[p]||0;
+  const target=new Date(latest-off*864e5);
+  let best=S.available[0],bestD=Infinity;
+  S.available.forEach(d=>{
+    const dt=parseDMY(d);
+    if(!dt)return;
+    const df=Math.abs(dt-target);
+    if(df<bestD){bestD=df;best=d;}
+  });
+  selectDate(best);
 }
 
-function draw() {
-  const s = state, dark = s.theme === 'dark';
-  const globe = s.view === 'globe';
-  const mapMode = !globe;
-  const mapStyle = 'terrain';
-  const fgDark = mapMode ? true : !dark;
-  const C = dark
-    ? { bg0:'#04060e',bg1:'#080d1a',ocean:'#0d2042',oceanHi:'#1b3c68',land:'#2c4e82',border:'rgba(150,185,240,0.32)',grat:'rgba(140,170,225,0.10)',sphere:'rgba(90,155,240,0.55)' }
-    : { bg0:'#eef2f8',bg1:'#dce5f1',ocean:'#bcccE2',oceanHi:'#d6e2f1',land:'#9fb4d2',border:'rgba(255,255,255,0.8)',grat:'rgba(80,110,155,0.16)',sphere:'rgba(110,145,190,0.6)' };
-  const CARTO = {
-    terrain:{ water:'#bcd6dd',land:'#e8e1d0',border:'rgba(120,110,80,0.35)',coast:'rgba(120,130,100,0.5)',label:'#5a5234',halo:'rgba(255,255,255,0.9)' }
-  };
-  const carto = CARTO.terrain;
-  const W = _w, H = _h;
-  ctx.clearRect(0,0,W,H);
-  const p = proj();
-  const path = d3.geoPath(p, ctx);
+function onDateSelect(v){
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('active'));
+  S.period='';
+  selectDate(v);
+}
 
-  if (globe) {
-    const bg = ctx.createLinearGradient(0,0,0,H);
-    bg.addColorStop(0,C.bg0); bg.addColorStop(1,C.bg1);
-    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-    const cx=W/2,cy=H/2,rr=Math.min(W,H)*0.46;
-    const halo = ctx.createRadialGradient(cx,cy,rr*0.7,cx,cy,rr*1.35);
-    halo.addColorStop(0, dark?'rgba(40,90,170,0.18)':'rgba(120,150,200,0.12)');
-    halo.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(cx,cy,rr*1.35,0,7); ctx.fill();
+function selectDate(d){
+  S.date=d;
+  document.getElementById('dateSelect').value=d;
+  loadDate(d);
+}
+
+function buildSel(dates){
+  const sel=document.getElementById('dateSelect');
+  sel.innerHTML=dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  if(S.date) sel.value=S.date;
+}
+
+function updateStatus(){
+  const n=S.countries.length;
+  const total=S.countries.reduce((s,c)=>s+(+c.qiymat||0),0);
+  document.getElementById('statusBar').textContent=
+    S.date?`${S.date} · ${n} ta davlat · jami ${fmtN(total)} ming $`:'Ma\'lumot yo\'q';
+}
+
+// ── Zarralar ──────────────────────────────────────────────────────────────
+function buildParticles(){
+  particles=[];
+  const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
+  S.countries.forEach((c,i)=>{
+    const ll=getLL(c.name);
+    if(!ll)return;
+    const cnt=Math.max(1,Math.round(3+(+c.qiymat/maxQ)*10));
+    for(let k=0;k<cnt;k++){
+      particles.push({lat:ll[0],lon:ll[1],color:COLORS[i%COLORS.length],t:Math.random(),sp:0.002+Math.random()*0.003,c});
+    }
+  });
+}
+
+// ── Proyeksiya ────────────────────────────────────────────────────────────
+function buildProj(){
+  if(S.view==='globe'){
+    proj=d3.geoOrthographic()
+      .scale(Math.min(W,H)*0.38)
+      .translate([W/2,H/2])
+      .clipAngle(90)
+      .rotate([-UZ_LON,-UZ_LAT,0]);
   } else {
-    ctx.fillStyle=carto.water; ctx.fillRect(0,0,W,H);
+    proj=d3.geoNaturalEarth1()
+      .scale(Math.min(W/6.4,H/3.4))
+      .translate([W/2,H/2]);
+  }
+  gpath=d3.geoPath(proj,ctx);
+}
+
+function resize(){
+  const wrap=document.getElementById('canvas-wrap');
+  W=wrap.offsetWidth; H=wrap.offsetHeight;
+  cv.width=W; cv.height=H;
+  buildProj();
+}
+
+// ── Rasm ──────────────────────────────────────────────────────────────────
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a1628';
+  ctx.fillRect(0,0,W,H);
+
+  if(S.view==='globe'){
+    const sc=proj.scale(), [cx,cy]=proj.translate();
+    const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,sc);
+    gr.addColorStop(0,'#0d2444');gr.addColorStop(1,'#061020');
+    ctx.beginPath();ctx.arc(cx,cy,sc,0,Math.PI*2);
+    ctx.fillStyle=gr;ctx.fill();
+    if(world){ctx.beginPath();gpath(world);ctx.fillStyle='#1a3a5c';ctx.fill();ctx.strokeStyle='#254a6a';ctx.lineWidth=0.5;ctx.stroke();}
+    ctx.beginPath();ctx.arc(cx,cy,sc,0,Math.PI*2);ctx.strokeStyle='#2a4a7a';ctx.lineWidth=1.5;ctx.stroke();
+  } else {
+    if(world){ctx.beginPath();gpath(world);ctx.fillStyle='#1a3a5c';ctx.fill();ctx.strokeStyle='#254a6a';ctx.lineWidth=0.4;ctx.stroke();}
   }
 
-  if (globe) {
-    ctx.beginPath(); path(_sphere);
-    const cx2=W/2,cy2=H/2,rr2=Math.min(W,H)*0.46;
-    const og=ctx.createRadialGradient(cx2-rr2*0.32,cy2-rr2*0.34,rr2*0.08,cx2,cy2,rr2*1.08);
-    og.addColorStop(0,C.oceanHi); og.addColorStop(1,C.ocean);
-    ctx.fillStyle=og; ctx.fill();
-    ctx.beginPath(); path(_graticule); ctx.strokeStyle=C.grat; ctx.lineWidth=0.6; ctx.stroke();
-  }
-  if (_land) {
-    ctx.beginPath(); path(_land); ctx.fillStyle=globe?C.land:carto.land; ctx.fill();
-    if (mapMode) { ctx.strokeStyle=carto.coast; ctx.lineWidth=0.6; ctx.stroke(); }
-    ctx.beginPath(); path(_borders); ctx.strokeStyle=globe?C.border:carto.border; ctx.lineWidth=globe?0.7:0.9; ctx.stroke();
-  }
-  if (globe) { ctx.beginPath(); path(_sphere); ctx.strokeStyle=C.sphere; ctx.lineWidth=1.6; ctx.stroke(); }
+  const uzPt=proj([UZ_LON,UZ_LAT]);
+  const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
 
-  const f = s.f;
-  const center = [-_rotate[0], -_rotate[1]];
-  const vis = co => !globe || d3.geoDistance(co, center) < Math.PI/2 - 0.015;
-  const on = key => (key==='Avia'?f.avia:key==="Temir yo'l"?f.temir:f.avto);
-
-  for (const fl of _flows) {
-    if (!on(fl.key)) continue;
-    ctx.beginPath(); path({type:'LineString',coordinates:fl.pts});
-    ctx.strokeStyle=rgba(fl.color, mapMode?0.32:(dark?0.16:0.24));
-    ctx.lineWidth=Math.min(3.2,0.5+fl.val/55);
-    ctx.lineCap='round'; ctx.stroke();
-  }
-
-  const now2 = performance.now()/1000, PERIOD=3.4;
-  for (const fl of _flows) {
-    if (!on(fl.key)) continue;
-    const head=Math.min(3.6,1.7+fl.val/110);
-    for (let pp=0; pp<fl.parts; pp++) {
-      const phase=(now2/PERIOD+pp/fl.parts)%1;
-      for (let st=0; st<5; st++) {
-        const t=phase-st*0.013;
-        if (t<0||t>1) continue;
-        const idx=Math.round(t*(fl.pts.length-1));
-        const co=fl.pts[idx];
-        if (!vis(co)) continue;
-        const xy=p(co); if (!xy) continue;
-        const a=(1-st/5)*(dark?0.95:0.85);
-        const rad=st===0?head:Math.max(0.5,head*(1-st/5));
-        if (st===0) { ctx.beginPath(); ctx.arc(xy[0],xy[1],rad*2.4,0,7); ctx.fillStyle=rgba(fl.color,0.18); ctx.fill(); }
-        ctx.beginPath(); ctx.arc(xy[0],xy[1],rad,0,7); ctx.fillStyle=rgba(fl.color,a); ctx.fill();
-      }
+  // Chiziqlar
+  S.countries.forEach((c,i)=>{
+    const ll=getLL(c.name);if(!ll)return;
+    const pt=proj([ll[1],ll[0]]);if(!pt||!uzPt)return;
+    const col=COLORS[i%COLORS.length];
+    const alpha=0.12+0.5*(+c.qiymat/maxQ);
+    const lw=0.8+2.5*(+c.qiymat/maxQ);
+    ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=col;ctx.lineWidth=lw;
+    if(S.view==='globe'){
+      ctx.beginPath();
+      gpath({type:'LineString',coordinates:[[ll[1],ll[0]],[UZ_LON,UZ_LAT]]});
+      ctx.stroke();
+    } else {
+      const mx=(pt[0]+uzPt[0])/2, my=(pt[1]+uzPt[1])/2-60;
+      ctx.beginPath();ctx.moveTo(pt[0],pt[1]);
+      ctx.quadraticCurveTo(mx,my,uzPt[0],uzPt[1]);
+      ctx.stroke();
     }
-  }
+    ctx.restore();
+  });
 
-  for (const o of ORIGINS) {
-    const tot=(f.avia?o.Avia:0)+(f.temir?o["Temir yo'l"]:0)+(f.avto?o.Avto:0);
-    if (tot<=0||!vis(o.coord)) continue;
-    const xy=p(o.coord); if (!xy) continue;
-    const d2=dom(o,f), r=Math.max(2.4,2+tot/150);
-    ctx.beginPath(); ctx.arc(xy[0],xy[1],r+3,0,7); ctx.strokeStyle=rgba(d2,0.4); ctx.lineWidth=1; ctx.stroke();
-    ctx.beginPath(); ctx.arc(xy[0],xy[1],r,0,7); ctx.fillStyle=rgba(d2,0.95); ctx.fill();
-  }
-
-  if (mapMode) {
-    ctx.font='600 11px "Segoe UI", sans-serif';
-    ctx.lineJoin='round';
-    for (const o of ORIGINS) {
-      const tot=(f.avia?o.Avia:0)+(f.temir?o["Temir yo'l"]:0)+(f.avto?o.Avto:0);
-      if (tot<=0) continue;
-      const xy=p(o.coord); if (!xy) continue;
-      const right=xy[0]>_w*0.8;
-      ctx.textAlign=right?'right':'left';
-      const tx=xy[0]+(right?-8:8), ty=xy[1]-9;
-      ctx.lineWidth=3; ctx.strokeStyle=carto.halo; ctx.strokeText(o.name,tx,ty);
-      ctx.fillStyle=carto.label; ctx.fillText(o.name,tx,ty);
+  // Davlat markerlar
+  S.countries.forEach((c,i)=>{
+    const ll=getLL(c.name);if(!ll)return;
+    const pt=proj([ll[1],ll[0]]);if(!pt)return;
+    const col=COLORS[i%COLORS.length];
+    const r=4+6*(+c.qiymat/maxQ);
+    ctx.beginPath();ctx.arc(pt[0],pt[1],r,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.stroke();
+    if(r>7||(hovered&&hovered===c)){
+      ctx.fillStyle='#fff';
+      ctx.font=(hovered===c?'bold ':'')+(Math.max(9,Math.min(12,r+3)))+'px Segoe UI,sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='top';
+      const lbl=c.name.length>16?c.name.slice(0,15)+'…':c.name;
+      ctx.fillText(lbl,pt[0],pt[1]+r+2);
     }
+  });
+
+  // O'zbekiston
+  if(uzPt){
+    ctx.beginPath();ctx.arc(uzPt[0],uzPt[1],8,0,Math.PI*2);
+    ctx.fillStyle='#22d3ee';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font='bold 11px Segoe UI,sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillText('UZ',uzPt[0],uzPt[1]-11);
   }
 
-  if (vis(UZ)) {
-    const xy=p(UZ);
-    const pulse=(performance.now()%1700)/1700;
-    ctx.beginPath(); ctx.arc(xy[0],xy[1],6+pulse*22,0,7);
-    ctx.strokeStyle=!fgDark?`rgba(255,255,255,${(1-pulse)*0.5})`:`rgba(20,40,80,${(1-pulse)*0.45})`;
-    ctx.lineWidth=1.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(xy[0],xy[1],5.5,0,7); ctx.fillStyle=!fgDark?'#fff':'#d6402f'; ctx.fill();
-    ctx.beginPath(); ctx.arc(xy[0],xy[1],2.6,0,7); ctx.fillStyle=!fgDark?'#0a1020':'#fff'; ctx.fill();
-    ctx.font='700 13px "Segoe UI", sans-serif';
-    ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.lineJoin='round';
-    if (fgDark) { ctx.lineWidth=3.5; ctx.strokeStyle='rgba(255,255,255,0.92)'; ctx.strokeText('Toshkent',xy[0]+11,xy[1]-11); }
-    ctx.fillStyle=!fgDark?'#e6edff':'#16203a';
-    ctx.fillText('Toshkent',xy[0]+11,xy[1]-11);
-  }
-}
-
-function loop() {
-  if (!_run) return;
-  _raf = requestAnimationFrame(loop);
-  if (!canvas||!_w) return;
-  if (state.view==='globe'&&!_drag) {
-    _phase += 0.0016;
-    _rotate = [_baseRot[0]+Math.sin(_phase)*26, _baseRot[1]];
-  }
-  ctx.save(); ctx.scale(_dpr,_dpr); draw(); ctx.restore();
-}
-
-function resize() {
-  const r = wrap.getBoundingClientRect();
-  _w = Math.max(1,r.width); _h = Math.max(1,r.height);
-  canvas.width = Math.round(_w*_dpr); canvas.height = Math.round(_h*_dpr);
-}
-
-function hitTest(mx,my) {
-  if (!_w) return;
-  const p = proj();
-  const center = [-_rotate[0],-_rotate[1]];
-  let best=null, bd=18;
-  for (const o of ORIGINS) {
-    const tot=o.Avia+o["Temir yo'l"]+o.Avto;
-    if (tot<=0) continue;
-    if (state.view==='globe' && d3.geoDistance(o.coord,center)>=Math.PI/2) continue;
-    const xy=p(o.coord); if (!xy) continue;
-    const d2=Math.hypot(xy[0]-mx,xy[1]-my);
-    if (d2<bd) { bd=d2; best={o,xy}; }
-  }
-  if (best) showTip(best.o,mx,my); else hideTip();
-}
-
-function showTip(o,mx,my) {
-  const dark=state.theme==='dark', f=state.f;
-  const order=[['Avia','#22d3ee'],["Temir yo'l",'#f5b524'],['Avto','#4ade80']];
-  const rows=order
-    .filter(r=>(r[0]==='Avia'?f.avia:r[0]==="Temir yo'l"?f.temir:f.avto)&&o[r[0]]>0)
-    .map(r=>`<div style="display:flex;align-items:center;gap:8px;margin-top:5px"><span style="width:8px;height:8px;border-radius:50%;background:${r[1]};flex:none"></span><span style="flex:1">${r[0]}</span><b style="font-variant-numeric:tabular-nums">${fmt(o[r[0]])}</b></div>`)
-    .join('');
-  const tot=(f.avia?o.Avia:0)+(f.temir?o["Temir yo'l"]:0)+(f.avto?o.Avto:0);
-  tip.innerHTML=`<div style="font-size:14px;font-weight:700;margin-bottom:2px">${o.name}</div><div style="font-size:10.5px;opacity:.6;letter-spacing:.05em;text-transform:uppercase">Jami ${fmt(tot)} mln $</div>${rows}`;
-  const left=mx>_w-190?mx-175:mx+16;
-  Object.assign(tip.style,{
-    opacity:1,left:left+'px',top:(my+16)+'px',transform:'none',
-    background:dark?'rgba(10,16,30,0.92)':'rgba(255,255,255,0.95)',
-    color:dark?'#e6edff':'#16203a',
-    border:'1px solid '+(dark?'rgba(120,150,205,0.25)':'rgba(20,40,80,0.12)'),
-    borderRadius:'11px',padding:'11px 13px',
-    font:'13px "Segoe UI", sans-serif',
-    boxShadow:'0 14px 34px rgba(0,0,0,'+(dark?0.55:0.18)+')',
-    minWidth:'152px',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)',
+  // Zarralar
+  particles.forEach(p=>{
+    const ll=getLL(p.c.name);if(!ll)return;
+    const lat=ll[0]+(UZ_LAT-ll[0])*p.t;
+    const lon=ll[1]+(UZ_LON-ll[1])*p.t;
+    const pt=proj([lon,lat]);if(!pt)return;
+    ctx.beginPath();ctx.arc(pt[0],pt[1],2,0,Math.PI*2);
+    ctx.fillStyle=p.color;
+    ctx.globalAlpha=Math.sin(p.t*Math.PI)*0.85;
+    ctx.fill();ctx.globalAlpha=1;
+    p.t=(p.t+p.sp)%1;
   });
 }
-function hideTip() { tip.style.opacity=0; tip.style.transform='translate(-9999px,-9999px)'; }
 
-function buildUI() {
-  const dark=state.theme==='dark';
-  const glass=dark?'rgba(12,19,34,0.72)':'rgba(255,255,255,0.82)';
-  const txt=dark?'#e8eefc':'#16203a';
-  const sub=dark?'rgba(200,215,245,0.55)':'rgba(30,45,70,0.55)';
-  const border='1px solid '+(dark?'rgba(120,150,205,0.18)':'rgba(20,40,80,0.10)');
-  const shadow=dark?'0 18px 50px rgba(0,0,0,0.55)':'0 18px 50px rgba(40,60,90,0.16)';
-  const accent=dark?'#3b82f6':'#2563eb';
-  const panel=`position:absolute;background:${glass};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:${border};border-radius:16px;box-shadow:${shadow};color:${txt};z-index:20`;
-  const segBase=`appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap;font-family:inherit`;
-  const seg=(a)=>`${segBase};background:${a?accent:'transparent'};color:${a?'#fff':sub};box-shadow:${a?'0 2px 8px rgba(59,130,246,0.35)':'none'}`;
-  const legBase=`display:flex;align-items:center;gap:10px;width:100%;appearance:none;cursor:pointer;padding:9px 11px;border-radius:11px;font-size:13.5px;font-weight:600;transition:all .15s;color:${txt};text-align:left;font-family:inherit`;
-  const leg=(a)=>`${legBase};background:${a?(dark?'rgba(255,255,255,0.05)':'rgba(20,40,80,0.045)'):'transparent'};border:1px solid ${a?(dark?'rgba(120,150,205,0.16)':'rgba(20,40,80,0.08)'):'transparent'};opacity:${a?1:0.4}`;
-  const f=state.f;
-  const totalVal=(f.avia?sum('Avia'):0)+(f.temir?sum("Temir yo'l"):0)+(f.avto?sum('Avto'):0);
-  const cc=ORIGINS.filter(o=>(f.avia?o.Avia:0)+(f.temir?o["Temir yo'l"]:0)+(f.avto?o.Avto:0)>0).length;
+let lastT=0;
+function loop(ts=0){
+  if(ts-lastT>16){draw();lastT=ts;}
+  animId=requestAnimationFrame(loop);
+}
 
-  wrap.innerHTML=`
-    <canvas id="flowCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none"></canvas>
+// ── Mouse ──────────────────────────────────────────────────────────────────
+function onMove(e){
+  const rect=cv.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
+  let found=null;
+  S.countries.forEach(c=>{
+    const ll=getLL(c.name);if(!ll)return;
+    const pt=proj([ll[1],ll[0]]);if(!pt)return;
+    const r=4+6*(+c.qiymat/maxQ)+4;
+    const dx=pt[0]-mx,dy=pt[1]-my;
+    if(dx*dx+dy*dy<r*r)found=c;
+  });
+  hovered=found;
+  if(found)showTip(e.clientX,e.clientY,found);
+  else hideTip();
+}
 
-    <div style="${panel};top:24px;left:26px;padding:16px 20px;max-width:340px">
-      <div style="font-size:10.5px;letter-spacing:0.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:7px">DAVLAT BOJXONA QO'MITASI · IBK NAZORATI</div>
-      <div style="font-size:21px;font-weight:750;letter-spacing:-0.01em;line-height:1.12;color:${txt}">O'zbekistonga tovarlar oqimi</div>
-      <div style="font-size:12px;color:${sub};margin-top:6px;line-height:1.4">Davlatlar kesimida · namuna ma'lumotlari</div>
-    </div>
+function showTip(x,y,c){
+  const tip=document.getElementById('tooltip');
+  document.getElementById('tt-name').textContent=c.name;
+  document.getElementById('tt-val').textContent=fmtN(c.qiymat)+' ming $';
+  document.getElementById('tt-wt').textContent=fmtN(c.vazn)+' tn';
+  document.getElementById('tt-pt').textContent=fmtI(c.partiya)+' ta';
+  tip.style.display='block';
+  tip.style.left=(x+14)+'px';
+  tip.style.top=Math.max(10,y-10)+'px';
+}
+function hideTip(){document.getElementById('tooltip').style.display='none';}
 
-    <div style="position:absolute;top:24px;right:26px;display:flex;flex-direction:column;gap:10px;z-index:20">
-      <div style="display:flex;gap:4px;padding:4px;background:${glass};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:${border};border-radius:12px;box-shadow:${shadow}">
-        <button onclick="setView('globe')" style="${seg(state.view==='globe')}">Globus</button>
-        <button onclick="setView('map')" style="${seg(state.view==='map')}">Xarita</button>
-      </div>
-      <div style="display:flex;gap:4px;padding:4px;background:${glass};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:${border};border-radius:12px;box-shadow:${shadow}">
-        <button onclick="setTheme('dark')" style="${seg(state.theme==='dark')}">Qorong'i</button>
-        <button onclick="setTheme('light')" style="${seg(state.theme==='light')}">Yorug'</button>
-      </div>
-    </div>
+// ── Ko'rinish ─────────────────────────────────────────────────────────────
+function setView(v){
+  S.view=v;
+  document.getElementById('btnGlobe').classList.toggle('active',v==='globe');
+  document.getElementById('btnMap').classList.toggle('active',v==='map');
+  buildProj();
+}
 
-    <div style="${panel};bottom:26px;left:26px;padding:15px 16px;width:286px;display:flex;flex-direction:column;gap:6px">
-      <div style="font-size:10px;letter-spacing:0.12em;font-weight:700;color:${sub};text-transform:uppercase;margin-bottom:3px">TRANSPORT TURI · oqimni filtrlash</div>
-      <button onclick="toggleF('avia')" style="${leg(f.avia)}">
-        <span style="width:11px;height:11px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee;flex:none"></span>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
-        <span style="flex:1;text-align:left">Avia</span>
-        <span style="font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px;flex:none">${fmt(sum('Avia'))} <span style="font-size:10px;font-weight:500;color:${sub}">mln&nbsp;$</span></span>
-      </button>
-      <button onclick="toggleF('temir')" style="${leg(f.temir)}">
-        <span style="width:11px;height:11px;border-radius:50%;background:#f5b524;box-shadow:0 0 12px #f5b524;flex:none"></span>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5b524" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><rect x="6" y="3" width="12" height="13" rx="2.5"/><path d="M6 10h12"/><circle cx="9" cy="13" r="0.6" fill="#f5b524"/><circle cx="15" cy="13" r="0.6" fill="#f5b524"/><path d="M8 16l-2 4M16 16l2 4M9 20h6"/></svg>
-        <span style="flex:1;text-align:left">Temir yo'l</span>
-        <span style="font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px;flex:none">${fmt(sum("Temir yo'l"))} <span style="font-size:10px;font-weight:500;color:${sub}">mln&nbsp;$</span></span>
-      </button>
-      <button onclick="toggleF('avto')" style="${leg(f.avto)}">
-        <span style="width:11px;height:11px;border-radius:50%;background:#4ade80;box-shadow:0 0 12px #4ade80;flex:none"></span>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M2 6h11v9H2z"/><path d="M13 9h4l4 3v3h-8z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>
-        <span style="flex:1;text-align:left">Avto</span>
-        <span style="font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px;flex:none">${fmt(sum('Avto'))} <span style="font-size:10px;font-weight:500;color:${sub}">mln&nbsp;$</span></span>
-      </button>
-      <div style="font-size:10.5px;color:${sub};margin-top:5px;line-height:1.35;font-style:italic">Chiziq qalinligi va oqim tezligi tovar hajmiga mutanosib</div>
-    </div>
-
-    <div style="${panel};bottom:26px;right:26px;padding:16px 20px;min-width:232px">
-      <div style="font-size:30px;font-weight:780;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;line-height:1;color:${dark?'#fff':'#0f1b30'}">${fmt(totalVal)}<span style="font-size:14px;font-weight:600;color:${sub}"> mln $</span></div>
-      <div style="font-size:11.5px;color:${sub};margin-top:7px;line-height:1.35;max-width:212px">tanlangan oqimlar bo'yicha jami import qiymati</div>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${sub};padding:5px 10px;border-radius:8px;background:${dark?'rgba(255,255,255,0.05)':'rgba(20,40,80,0.05)'}"><b style="color:${txt};font-weight:700;font-size:12.5px">${cc}</b> davlat</span>
-        <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${sub};padding:5px 10px;border-radius:8px;background:${dark?'rgba(255,255,255,0.05)':'rgba(20,40,80,0.05)'}"><b style="color:${txt};font-weight:700;font-size:12.5px">3</b> transport kanali</span>
-      </div>
-    </div>
-  `;
-
-  canvas = document.getElementById('flowCanvas');
-  ctx = canvas.getContext('2d');
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init(){
+  cv=document.getElementById('cv');
+  ctx=cv.getContext('2d');
   resize();
-  bindCanvas();
-}
+  window.addEventListener('resize',resize,{passive:true});
+  cv.addEventListener('mousemove',onMove);
+  cv.addEventListener('mouseleave',()=>{hovered=null;hideTip();});
 
-function bindCanvas() {
-  if (!canvas) return;
-  canvas.style.cursor = 'grab';
-  const pos = e => { const r=canvas.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; };
-  canvas.addEventListener('pointerdown', e => {
-    if (state.view!=='globe') return;
-    _drag={x:e.clientX,y:e.clientY,r:[..._rotate]};
-    try{canvas.setPointerCapture(e.pointerId);}catch(err){}
-    canvas.style.cursor='grabbing'; hideTip();
-  });
-  canvas.addEventListener('pointermove', e => {
-    if (_drag) {
-      const dx=e.clientX-_drag.x, dy=e.clientY-_drag.y;
-      _rotate=[_drag.r[0]+dx*0.32, Math.max(-82,Math.min(82,_drag.r[1]-dy*0.32))];
-    } else { hitTest(...pos(e)); }
-  });
-  const up=()=>{ if(_drag){_drag=null;_baseRot=[..._rotate];_phase=0;canvas.style.cursor='grab';} };
-  canvas.addEventListener('pointerup',up);
-  canvas.addEventListener('pointercancel',up);
-  canvas.addEventListener('pointerleave',()=>hideTip());
-}
+  // Dunyo topojson
+  try{
+    const topo=await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    world=topojson.feature(topo,topo.objects.countries);
+  }catch(_){}
 
-function setView(v) { state.view=v; buildUI(); }
-function setTheme(t) { state.theme=t; document.body.style.background=t==='dark'?'#05070f':'#eef2f8'; buildUI(); }
-function toggleF(k) { state.f[k]=!state.f[k]; buildUI(); }
+  // Ma'lumotlarni yukla
+  try{
+    const j=await apiGet('');
+    S.available=j.available||[];
+    S.date=j.date||'';
+    S.countries=j.countries||[];
+    buildSel(S.available);
+    updateStatus();
+    buildParticles();
+    document.getElementById('nodata').style.display=S.countries.length?'none':'flex';
+    // "Oxirgi" tugmasini faol qil
+    const btn=document.querySelector('[data-p="latest"]');
+    if(btn)btn.classList.add('active');
+  }catch(e){
+    document.getElementById('statusBar').textContent='Server bilan ulanish yo\'q';
+  }
 
-window.setView=setView; window.setTheme=setTheme; window.toggleF=toggleF;
-
-async function init() {
-  wrap = document.getElementById('wrap');
-  tip  = document.getElementById('tip');
-
-  await new Promise(res => {
-    const t=()=>{ if(window.d3&&window.topojson)res(); else setTimeout(t,40); };
-    t();
-  });
-
-  try {
-    const w = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json());
-    _land = topojson.feature(w, w.objects.countries);
-    _borders = topojson.mesh(w, w.objects.countries,(a,b)=>a!==b);
-  } catch(e) { _land=null; }
-
-  _graticule = d3.geoGraticule10();
-  _sphere = {type:'Sphere'};
-  _region = {type:'MultiPoint',coordinates:[[-2,14],[148,14],[148,61],[-2,61]]};
-  buildFlows();
-  buildUI();
-
-  const ro = new ResizeObserver(()=>{ resize(); });
-  ro.observe(wrap);
-
-  _run=true; loop();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('app').style.display='flex';
+  loop();
 }
 
 init();
