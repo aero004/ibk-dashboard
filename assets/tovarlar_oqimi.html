@@ -3,41 +3,69 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tovarlar oqimi</title>
+<title>IBKga tovarlar oqimi</title>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a1628;color:#e8f4ff;overflow:hidden;height:100vh}
 #app{display:flex;flex-direction:column;height:100vh}
-#toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(15,30,55,0.97);border-bottom:1px solid #1e3a5f;flex-wrap:wrap;flex-shrink:0}
-.pbtn{padding:5px 12px;border-radius:20px;border:1px solid #2a4a7a;background:transparent;color:#94b8d8;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+
+/* ── sarlavha ── */
+#header{padding:8px 14px 4px;background:rgba(15,30,55,0.97);border-bottom:1px solid #1e3a5f;flex-shrink:0}
+#header h1{font-size:14px;font-weight:700;color:#a8d4ff;letter-spacing:.3px}
+#header p{font-size:11px;color:#5a88b0;margin-top:1px}
+
+/* ── toolbar ── */
+#toolbar{display:flex;align-items:center;gap:7px;padding:6px 14px;background:rgba(15,30,55,0.97);border-bottom:1px solid #1e3a5f;flex-wrap:wrap;flex-shrink:0}
+.pbtn{padding:4px 11px;border-radius:20px;border:1px solid #2a4a7a;background:transparent;color:#94b8d8;cursor:pointer;font-size:11px;font-weight:600;transition:.15s;line-height:1.5}
 .pbtn.active{background:#1d5fa0;border-color:#2d7fd0;color:#fff}
 .pbtn:hover:not(.active){background:#162a45;color:#c8dff5}
-#dateSelect{padding:5px 10px;border-radius:8px;border:1px solid #2a4a7a;background:#0d1e35;color:#c8dff5;font-size:12px;cursor:pointer;max-width:160px}
-#statusBar{font-size:11px;color:#7aa5c8;margin-left:auto;white-space:nowrap}
-#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0a1628;z-index:10;flex-direction:column;gap:12px}
-.spin{width:36px;height:36px;border:3px solid #1e3a5f;border-top-color:#2d7fd0;border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-#loading p{color:#7aa5c8;font-size:13px}
-#canvas-wrap{flex:1;position:relative;overflow:hidden}
+.zbtn{padding:4px 9px;border-radius:8px;border:1px solid #2a4a7a;background:transparent;color:#94b8d8;cursor:pointer;font-size:13px;font-weight:700;line-height:1.4;transition:.15s}
+.zbtn:hover{background:#1d5fa0;color:#fff}
+#dateSelect{padding:4px 9px;border-radius:8px;border:1px solid #2a4a7a;background:#0d1e35;color:#c8dff5;font-size:11px;cursor:pointer;max-width:150px}
+#statusBar{font-size:10px;color:#7aa5c8;margin-left:auto;white-space:nowrap}
+.sep{width:1px;height:18px;background:#1e3a5f;flex-shrink:0}
+
+/* ── canvas ── */
+#canvas-wrap{flex:1;position:relative;overflow:hidden;cursor:grab}
+#canvas-wrap.dragging{cursor:grabbing}
 canvas{position:absolute;inset:0;width:100%;height:100%}
+
+/* ── loading ── */
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0a1628;z-index:10;flex-direction:column;gap:12px}
+.spin{width:34px;height:34px;border:3px solid #1e3a5f;border-top-color:#2d7fd0;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{color:#7aa5c8;font-size:12px}
+
+/* ── tooltip ── */
 #tooltip{position:fixed;background:rgba(10,22,48,0.97);border:1px solid #2a4a7a;border-radius:10px;padding:10px 14px;font-size:12px;pointer-events:none;display:none;z-index:100;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .tt-name{font-weight:700;font-size:13px;margin-bottom:6px;color:#a8d4ff}
 .tt-row{display:flex;justify-content:space-between;gap:16px;margin:2px 0;color:#c8dff5}
 .tt-row span:last-child{font-weight:600;color:#fff}
-#nodata{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#5a7a9a;background:#0a1628}
-.sep{width:1px;height:20px;background:#1e3a5f;flex-shrink:0}
+
+#nodata{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#5a7a9a;background:#0a1628}
+
+/* ── zoom pill ── */
+#zoomPill{position:absolute;bottom:12px;right:14px;display:flex;gap:4px;z-index:5}
 </style>
 </head>
 <body>
 <div id="loading"><div class="spin"></div><p>Ma'lumotlar yuklanmoqda...</p></div>
+
 <div id="app" style="display:none">
+  <!-- Sarlavha -->
+  <div id="header">
+    <h1>IBK Dashboard</h1>
+    <p>IBKga tovarlar oqimi</p>
+  </div>
+
+  <!-- Toolbar -->
   <div id="toolbar">
     <button class="pbtn active" id="btnGlobe" onclick="setView('globe')">&#127760; Globus</button>
     <button class="pbtn" id="btnMap" onclick="setView('map')">&#128506; Xarita</button>
     <div class="sep"></div>
-    <button class="pbtn" data-p="latest" onclick="setPeriod('latest')">Oxirgi</button>
+    <button class="pbtn active" data-p="latest" onclick="setPeriod('latest')">Oxirgi</button>
     <button class="pbtn" data-p="1m" onclick="setPeriod('1m')">1 oy</button>
     <button class="pbtn" data-p="3m" onclick="setPeriod('3m')">3 oy</button>
     <button class="pbtn" data-p="6m" onclick="setPeriod('6m')">6 oy</button>
@@ -48,23 +76,32 @@ canvas{position:absolute;inset:0;width:100%;height:100%}
     </select>
     <div id="statusBar">—</div>
   </div>
+
+  <!-- Canvas -->
   <div id="canvas-wrap">
     <canvas id="cv"></canvas>
     <div id="nodata"><span>Bu sana uchun ma'lumot mavjud emas</span></div>
+    <!-- Zoom tugmalari -->
+    <div id="zoomPill">
+      <button class="zbtn" onclick="doZoom(1.25)" title="Kattalashtirish">+</button>
+      <button class="zbtn" onclick="doZoom(0.8)"  title="Kichiklashtirish">−</button>
+      <button class="zbtn" onclick="resetZoom()"  title="Tiklash" style="font-size:11px;padding:4px 8px">⟲</button>
+    </div>
   </div>
 </div>
+
 <div id="tooltip">
   <div class="tt-name" id="tt-name"></div>
   <div class="tt-row"><span>Qiymat</span><span id="tt-val"></span></div>
   <div class="tt-row"><span>Vazn</span><span id="tt-wt"></span></div>
   <div class="tt-row"><span>Partiya</span><span id="tt-pt"></span></div>
 </div>
+
 <script>
-// ── Token (dashboard iframe URL dan) ─────────────────────────────────────
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
 
-// ── Koordinatalar xaritasi ─────────────────────────────────────────────
-const CC = [
+// ── Koordinatalar ─────────────────────────────────────────────────────────
+const CC=[
   ["xitoy",35.86,104.19],["china",35.86,104.19],
   ["rossiya",61.52,105.32],["russia",61.52,105.32],
   ["turkiya",38.96,35.24],["turkey",38.96,35.24],
@@ -93,8 +130,7 @@ const CC = [
   ["pokiston",30.38,69.35],["pakistan",30.38,69.35],
   ["ukraina",48.38,31.17],["ukraine",48.38,31.17],
   ["latviya",56.88,24.6],["litva",55.17,23.88],
-  ["avstriya",47.52,14.55],["austria",47.52,14.55],
-  ["shveytsariya",46.82,8.23],["singapur",1.35,103.82],
+  ["avstriya",47.52,14.55],["singapur",1.35,103.82],
   ["vietnam",14.06,108.28],["malayziya",4.21,101.98],
   ["tailand",15.87,100.99],["indoneziya",-0.79,113.92],
   ["braziliya",-14.24,-51.93],["meksika",23.63,-102.55],
@@ -105,137 +141,53 @@ const CC = [
   ["chexiya",49.82,15.47],["vengriya",47.16,19.50],
   ["kanada",56.13,-106.35],["canada",56.13,-106.35],
   ["tayvan",23.70,121.00],["taiwan",23.70,121.00],
-  ["misr",26.82,30.8],["nigeria",9.08,8.68],
-  ["avstralyia",-25.27,133.78],["australia",-25.27,133.78],
+  ["australia",-25.27,133.78],["nigeria",9.08,8.68],
 ];
 const UZ_LON=69.2797, UZ_LAT=41.3111;
-const COLORS=["#22d3ee","#f59e0b","#4ade80","#fb7185","#a78bfa","#60a5fa","#34d399","#fbbf24","#f87171","#c084fc","#38bdf8","#86efac","#fca5a5","#fdba74","#a5b4fc","#67e8f9","#fde68a"];
+const COLORS=["#22d3ee","#f59e0b","#4ade80","#fb7185","#a78bfa","#60a5fa","#34d399","#fbbf24","#f87171","#c084fc","#38bdf8","#86efac","#fca5a5","#fdba74","#a5b4fc","#67e8f9"];
 
 function getLL(name){
   const s=String(name||'').toLowerCase();
-  for(const r of CC){ if(s.includes(r[0])) return [r[1],r[2]]; }
+  for(const r of CC){if(s.includes(r[0]))return[r[1],r[2]];}
   return null;
 }
-
 function fmtN(v){
-  if(v==null)return '—';
-  v=+v;
-  if(v>=1e6)return (v/1e6).toFixed(2)+' mln';
-  if(v>=1e3)return (v/1e3).toFixed(1)+' ming';
+  if(v==null)return'—';v=+v;
+  if(v>=1e6)return(v/1e6).toFixed(2)+' mln';
+  if(v>=1e3)return(v/1e3).toFixed(1)+' ming';
   return v.toFixed(1);
 }
 function fmtI(v){return v!=null?(+v).toLocaleString():'—';}
-
 function parseDMY(s){
   const p=String(s||'').split('.');
-  if(p.length===3) return new Date(+p[2],+p[1]-1,+p[0]);
-  return null;
+  return p.length===3?new Date(+p[2],+p[1]-1,+p[0]):null;
 }
 
 // ── Holat ─────────────────────────────────────────────────────────────────
 let S={view:'globe',date:'',available:[],countries:[],period:'latest'};
-let W=0,H=0,cv,ctx,proj,gpath,world=null,particles=[],hovered=null,animId=null;
+let W=0,H=0,cv,ctx,proj,gpath,world=null,particles=[],hovered=null;
 
-// ── API ───────────────────────────────────────────────────────────────────
-async function apiGet(date){
-  const url='/api/country_flow?token='+encodeURIComponent(TOKEN)+(date?'&date='+encodeURIComponent(date):'');
-  const r=await fetch(url,{headers:{'X-Token':TOKEN}});
-  if(!r.ok) throw new Error('HTTP '+r.status);
-  return r.json();
-}
-
-async function loadDate(date){
-  document.getElementById('loading').style.display='flex';
-  try{
-    const j=await apiGet(date);
-    S.countries=j.countries||[];
-    S.date=j.date||date||'';
-    if(j.available&&j.available.length&&!S.available.length){
-      S.available=j.available;
-      buildSel(j.available);
-    }
-    document.getElementById('dateSelect').value=S.date;
-    updateStatus();
-    buildParticles();
-    document.getElementById('nodata').style.display=S.countries.length?'none':'flex';
-  }catch(e){
-    document.getElementById('statusBar').textContent='Xato: '+e.message;
-  }finally{
-    document.getElementById('loading').style.display='none';
-  }
-}
-
-// ── Period tanlash ────────────────────────────────────────────────────────
-function setPeriod(p){
-  S.period=p;
-  document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
-  if(!S.available.length) return;
-  if(p==='latest'){selectDate(S.available[0]);return;}
-  const latest=parseDMY(S.available[0]);
-  if(!latest)return;
-  const off={'1m':30,'3m':90,'6m':182,'1y':365}[p]||0;
-  const target=new Date(latest-off*864e5);
-  let best=S.available[0],bestD=Infinity;
-  S.available.forEach(d=>{
-    const dt=parseDMY(d);
-    if(!dt)return;
-    const df=Math.abs(dt-target);
-    if(df<bestD){bestD=df;best=d;}
-  });
-  selectDate(best);
-}
-
-function onDateSelect(v){
-  document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('active'));
-  S.period='';
-  selectDate(v);
-}
-
-function selectDate(d){
-  S.date=d;
-  document.getElementById('dateSelect').value=d;
-  loadDate(d);
-}
-
-function buildSel(dates){
-  const sel=document.getElementById('dateSelect');
-  sel.innerHTML=dates.map(d=>`<option value="${d}">${d}</option>`).join('');
-  if(S.date) sel.value=S.date;
-}
-
-function updateStatus(){
-  const n=S.countries.length;
-  const total=S.countries.reduce((s,c)=>s+(+c.qiymat||0),0);
-  document.getElementById('statusBar').textContent=
-    S.date?`${S.date} · ${n} ta davlat · jami ${fmtN(total)} ming $`:'Ma\'lumot yo\'q';
-}
-
-// ── Zarralar ──────────────────────────────────────────────────────────────
-function buildParticles(){
-  particles=[];
-  const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
-  S.countries.forEach((c,i)=>{
-    const ll=getLL(c.name);
-    if(!ll)return;
-    const cnt=Math.max(1,Math.round(3+(+c.qiymat/maxQ)*10));
-    for(let k=0;k<cnt;k++){
-      particles.push({lat:ll[0],lon:ll[1],color:COLORS[i%COLORS.length],t:Math.random(),sp:0.002+Math.random()*0.003,c});
-    }
-  });
-}
+// Zoom & drag
+let zoom=1;
+let globeRot=[-UZ_LON,-UZ_LAT,0];  // [λ, φ, γ]
+let mapTx=[0,0];                     // pan offset for map mode
+let drag={active:false,x0:0,y0:0,rot0:null,tx0:null};
 
 // ── Proyeksiya ────────────────────────────────────────────────────────────
+function baseGlobeScale(){return Math.min(W,H)*0.38;}
+function baseMapScale(){return Math.min(W/6.4,H/3.4);}
+
 function buildProj(){
   if(S.view==='globe'){
     proj=d3.geoOrthographic()
-      .scale(Math.min(W,H)*0.38)
-      .translate([W/2,H/2])
+      .scale(baseGlobeScale()*zoom)
+      .translate([W/2+mapTx[0], H/2+mapTx[1]])
       .clipAngle(90)
-      .rotate([-UZ_LON,-UZ_LAT,0]);
+      .rotate(globeRot);
   } else {
     proj=d3.geoNaturalEarth1()
-      .scale(Math.min(W/6.4,H/3.4))
-      .translate([W/2,H/2]);
+      .scale(baseMapScale()*zoom)
+      .translate([W/2+mapTx[0], H/2+mapTx[1]]);
   }
   gpath=d3.geoPath(proj,ctx);
 }
@@ -247,20 +199,72 @@ function resize(){
   buildProj();
 }
 
+// ── Zoom ──────────────────────────────────────────────────────────────────
+function doZoom(factor){
+  zoom=Math.max(0.25,Math.min(8,zoom*factor));
+  buildProj();
+}
+function resetZoom(){
+  zoom=1;globeRot=[-UZ_LON,-UZ_LAT,0];mapTx=[0,0];
+  buildProj();
+}
+
+// ── Drag ──────────────────────────────────────────────────────────────────
+function onDown(e){
+  drag.active=true;
+  drag.x0=e.clientX;drag.y0=e.clientY;
+  drag.rot0=[...globeRot];
+  drag.tx0=[...mapTx];
+  document.getElementById('canvas-wrap').classList.add('dragging');
+}
+function onDrag(e){
+  if(!drag.active)return;
+  const dx=e.clientX-drag.x0, dy=e.clientY-drag.y0;
+  if(S.view==='globe'){
+    const sc=baseGlobeScale()*zoom;
+    const sens=90/sc;
+    globeRot=[drag.rot0[0]+dx*sens, drag.rot0[1]-dy*sens, drag.rot0[2]];
+    buildProj();
+  } else {
+    mapTx=[drag.tx0[0]+dx, drag.tx0[1]+dy];
+    buildProj();
+  }
+}
+function onUp(){
+  drag.active=false;
+  document.getElementById('canvas-wrap').classList.remove('dragging');
+}
+function onWheel(e){
+  e.preventDefault();
+  doZoom(e.deltaY<0?1.12:0.89);
+}
+
+// ── Zarralar ──────────────────────────────────────────────────────────────
+function buildParticles(){
+  particles=[];
+  const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
+  S.countries.forEach((c,i)=>{
+    const ll=getLL(c.name);if(!ll)return;
+    const cnt=Math.max(1,Math.round(3+(+c.qiymat/maxQ)*10));
+    for(let k=0;k<cnt;k++){
+      particles.push({lat:ll[0],lon:ll[1],color:COLORS[i%COLORS.length],t:Math.random(),sp:0.002+Math.random()*0.003,c});
+    }
+  });
+}
+
 // ── Rasm ──────────────────────────────────────────────────────────────────
 function draw(){
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#0a1628';
-  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#0a1628';ctx.fillRect(0,0,W,H);
 
   if(S.view==='globe'){
-    const sc=proj.scale(), [cx,cy]=proj.translate();
-    const gr=ctx.createRadialGradient(cx,cy,0,cx,cy,sc);
+    const sc=proj.scale(), tr=proj.translate();
+    const gr=ctx.createRadialGradient(tr[0],tr[1],0,tr[0],tr[1],sc);
     gr.addColorStop(0,'#0d2444');gr.addColorStop(1,'#061020');
-    ctx.beginPath();ctx.arc(cx,cy,sc,0,Math.PI*2);
+    ctx.beginPath();ctx.arc(tr[0],tr[1],sc,0,Math.PI*2);
     ctx.fillStyle=gr;ctx.fill();
     if(world){ctx.beginPath();gpath(world);ctx.fillStyle='#1a3a5c';ctx.fill();ctx.strokeStyle='#254a6a';ctx.lineWidth=0.5;ctx.stroke();}
-    ctx.beginPath();ctx.arc(cx,cy,sc,0,Math.PI*2);ctx.strokeStyle='#2a4a7a';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.beginPath();ctx.arc(tr[0],tr[1],sc,0,Math.PI*2);ctx.strokeStyle='#2a4a7a';ctx.lineWidth=1.5;ctx.stroke();
   } else {
     if(world){ctx.beginPath();gpath(world);ctx.fillStyle='#1a3a5c';ctx.fill();ctx.strokeStyle='#254a6a';ctx.lineWidth=0.4;ctx.stroke();}
   }
@@ -268,7 +272,6 @@ function draw(){
   const uzPt=proj([UZ_LON,UZ_LAT]);
   const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
 
-  // Chiziqlar
   S.countries.forEach((c,i)=>{
     const ll=getLL(c.name);if(!ll)return;
     const pt=proj([ll[1],ll[0]]);if(!pt||!uzPt)return;
@@ -277,19 +280,14 @@ function draw(){
     const lw=0.8+2.5*(+c.qiymat/maxQ);
     ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=col;ctx.lineWidth=lw;
     if(S.view==='globe'){
-      ctx.beginPath();
-      gpath({type:'LineString',coordinates:[[ll[1],ll[0]],[UZ_LON,UZ_LAT]]});
-      ctx.stroke();
+      ctx.beginPath();gpath({type:'LineString',coordinates:[[ll[1],ll[0]],[UZ_LON,UZ_LAT]]});ctx.stroke();
     } else {
-      const mx=(pt[0]+uzPt[0])/2, my=(pt[1]+uzPt[1])/2-60;
-      ctx.beginPath();ctx.moveTo(pt[0],pt[1]);
-      ctx.quadraticCurveTo(mx,my,uzPt[0],uzPt[1]);
-      ctx.stroke();
+      const mx=(pt[0]+uzPt[0])/2,my=(pt[1]+uzPt[1])/2-60;
+      ctx.beginPath();ctx.moveTo(pt[0],pt[1]);ctx.quadraticCurveTo(mx,my,uzPt[0],uzPt[1]);ctx.stroke();
     }
     ctx.restore();
   });
 
-  // Davlat markerlar
   S.countries.forEach((c,i)=>{
     const ll=getLL(c.name);if(!ll)return;
     const pt=proj([ll[1],ll[0]]);if(!pt)return;
@@ -298,16 +296,15 @@ function draw(){
     ctx.beginPath();ctx.arc(pt[0],pt[1],r,0,Math.PI*2);
     ctx.fillStyle=col;ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.stroke();
-    if(r>7||(hovered&&hovered===c)){
+    if(r>6||hovered===c){
       ctx.fillStyle='#fff';
-      ctx.font=(hovered===c?'bold ':'')+(Math.max(9,Math.min(12,r+3)))+'px Segoe UI,sans-serif';
+      ctx.font=(hovered===c?'bold ':'')+Math.max(9,Math.min(12,r+3))+'px Segoe UI,sans-serif';
       ctx.textAlign='center';ctx.textBaseline='top';
       const lbl=c.name.length>16?c.name.slice(0,15)+'…':c.name;
       ctx.fillText(lbl,pt[0],pt[1]+r+2);
     }
   });
 
-  // O'zbekiston
   if(uzPt){
     ctx.beginPath();ctx.arc(uzPt[0],uzPt[1],8,0,Math.PI*2);
     ctx.fillStyle='#22d3ee';ctx.fill();
@@ -317,16 +314,13 @@ function draw(){
     ctx.fillText('UZ',uzPt[0],uzPt[1]-11);
   }
 
-  // Zarralar
   particles.forEach(p=>{
     const ll=getLL(p.c.name);if(!ll)return;
     const lat=ll[0]+(UZ_LAT-ll[0])*p.t;
     const lon=ll[1]+(UZ_LON-ll[1])*p.t;
     const pt=proj([lon,lat]);if(!pt)return;
     ctx.beginPath();ctx.arc(pt[0],pt[1],2,0,Math.PI*2);
-    ctx.fillStyle=p.color;
-    ctx.globalAlpha=Math.sin(p.t*Math.PI)*0.85;
-    ctx.fill();ctx.globalAlpha=1;
+    ctx.fillStyle=p.color;ctx.globalAlpha=Math.sin(p.t*Math.PI)*0.85;ctx.fill();ctx.globalAlpha=1;
     p.t=(p.t+p.sp)%1;
   });
 }
@@ -334,11 +328,12 @@ function draw(){
 let lastT=0;
 function loop(ts=0){
   if(ts-lastT>16){draw();lastT=ts;}
-  animId=requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 }
 
-// ── Mouse ──────────────────────────────────────────────────────────────────
+// ── Mouse ─────────────────────────────────────────────────────────────────
 function onMove(e){
+  if(drag.active){onDrag(e);return;}
   const rect=cv.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   const maxQ=Math.max(1,...S.countries.map(c=>+c.qiymat||0));
@@ -346,13 +341,12 @@ function onMove(e){
   S.countries.forEach(c=>{
     const ll=getLL(c.name);if(!ll)return;
     const pt=proj([ll[1],ll[0]]);if(!pt)return;
-    const r=4+6*(+c.qiymat/maxQ)+4;
+    const r=4+6*(+c.qiymat/maxQ)+5;
     const dx=pt[0]-mx,dy=pt[1]-my;
     if(dx*dx+dy*dy<r*r)found=c;
   });
   hovered=found;
-  if(found)showTip(e.clientX,e.clientY,found);
-  else hideTip();
+  if(found)showTip(e.clientX,e.clientY,found);else hideTip();
 }
 
 function showTip(x,y,c){
@@ -367,12 +361,63 @@ function showTip(x,y,c){
 }
 function hideTip(){document.getElementById('tooltip').style.display='none';}
 
-// ── Ko'rinish ─────────────────────────────────────────────────────────────
+// ── Ko'rinish ──────────────────────────────────────────────────────────────
 function setView(v){
   S.view=v;
   document.getElementById('btnGlobe').classList.toggle('active',v==='globe');
   document.getElementById('btnMap').classList.toggle('active',v==='map');
   buildProj();
+}
+
+// ── Sana / davr ───────────────────────────────────────────────────────────
+function setPeriod(p){
+  S.period=p;
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  if(!S.available.length)return;
+  if(p==='latest'){selectDate(S.available[0]);return;}
+  const latest=parseDMY(S.available[0]);if(!latest)return;
+  const off={'1m':30,'3m':90,'6m':182,'1y':365}[p]||0;
+  const target=new Date(latest-off*864e5);
+  let best=S.available[0],bestD=Infinity;
+  S.available.forEach(d=>{const dt=parseDMY(d);if(!dt)return;const df=Math.abs(dt-target);if(df<bestD){bestD=df;best=d;}});
+  selectDate(best);
+}
+function onDateSelect(v){
+  document.querySelectorAll('[data-p]').forEach(b=>b.classList.remove('active'));
+  S.period='';selectDate(v);
+}
+function selectDate(d){S.date=d;document.getElementById('dateSelect').value=d;loadDate(d);}
+
+function buildSel(dates){
+  const sel=document.getElementById('dateSelect');
+  sel.innerHTML=dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  if(S.date)sel.value=S.date;
+}
+function updateStatus(){
+  const n=S.countries.length;
+  const total=S.countries.reduce((s,c)=>s+(+c.qiymat||0),0);
+  document.getElementById('statusBar').textContent=S.date?`${S.date} · ${n} davlat · ${fmtN(total)} ming $`:'—';
+}
+
+// ── API ───────────────────────────────────────────────────────────────────
+async function apiGet(date){
+  const url='/api/country_flow?token='+encodeURIComponent(TOKEN)+(date?'&date='+encodeURIComponent(date):'');
+  const r=await fetch(url,{headers:{'X-Token':TOKEN}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+async function loadDate(date){
+  document.getElementById('loading').style.display='flex';
+  try{
+    const j=await apiGet(date);
+    S.countries=j.countries||[];
+    S.date=j.date||date||'';
+    if(j.available&&j.available.length&&!S.available.length){S.available=j.available;buildSel(j.available);}
+    document.getElementById('dateSelect').value=S.date;
+    updateStatus();buildParticles();
+    document.getElementById('nodata').style.display=S.countries.length?'none':'flex';
+  }catch(e){document.getElementById('statusBar').textContent='Xato: '+e.message;}
+  finally{document.getElementById('loading').style.display='none';}
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -381,31 +426,27 @@ async function init(){
   ctx=cv.getContext('2d');
   resize();
   window.addEventListener('resize',resize,{passive:true});
-  cv.addEventListener('mousemove',onMove);
-  cv.addEventListener('mouseleave',()=>{hovered=null;hideTip();});
 
-  // Dunyo topojson
+  // Mouse
+  cv.addEventListener('mousedown',onDown);
+  cv.addEventListener('mousemove',onMove);
+  cv.addEventListener('mouseup',onUp);
+  cv.addEventListener('mouseleave',()=>{onUp();hovered=null;hideTip();});
+  cv.addEventListener('wheel',onWheel,{passive:false});
+
+  // Dunyo haritasi
   try{
     const topo=await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
     world=topojson.feature(topo,topo.objects.countries);
   }catch(_){}
 
-  // Ma'lumotlarni yukla
+  // Dastlabki ma'lumot
   try{
     const j=await apiGet('');
-    S.available=j.available||[];
-    S.date=j.date||'';
-    S.countries=j.countries||[];
-    buildSel(S.available);
-    updateStatus();
-    buildParticles();
+    S.available=j.available||[];S.date=j.date||'';S.countries=j.countries||[];
+    buildSel(S.available);updateStatus();buildParticles();
     document.getElementById('nodata').style.display=S.countries.length?'none':'flex';
-    // "Oxirgi" tugmasini faol qil
-    const btn=document.querySelector('[data-p="latest"]');
-    if(btn)btn.classList.add('active');
-  }catch(e){
-    document.getElementById('statusBar').textContent='Server bilan ulanish yo\'q';
-  }
+  }catch(e){document.getElementById('statusBar').textContent='Server bilan ulanish yo\'q';}
 
   document.getElementById('loading').style.display='none';
   document.getElementById('app').style.display='flex';
