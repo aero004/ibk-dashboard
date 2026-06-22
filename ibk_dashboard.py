@@ -70,6 +70,346 @@ TAS_ICAO = "UTTT"  # Toshkent (Islom Karimov) xalqaro aeroporti
 FLIGHTS_CACHE: dict = {"ts": 0.0, "data": None}
 FLIGHTS_CACHE_TTL = 300  # 5 daqiqa
 
+WAREHOUSE_REGISTRY_PATH: Path | None = None
+WAREHOUSE_REGISTRY_CACHE: list[dict] | None = None
+
+_WAREHOUSE_TYPE_MAP = {
+    "очик турдаги": "ochiq",
+    "очик": "ochiq",
+    "yopiq": "yopiq",
+    "ёпик турдаги": "yopiq",
+    "ёпик": "yopiq",
+    "бож олинмайдиган": "dutyfree",
+    "savdo": "dutyfree",
+    "эркин омбор": "erkin",
+    "erkin": "erkin",
+}
+
+
+def _parse_date(val) -> str | None:
+    if val is None or str(val).strip() in ("", "nan", "None"):
+        return None
+    try:
+        return pd.to_datetime(str(val), dayfirst=True).strftime("%d.%m.%Y")
+    except Exception:
+        return str(val).strip()
+
+
+def _days_until(date_str: str | None) -> int | None:
+    if not date_str:
+        return None
+    try:
+        d = datetime.strptime(date_str, "%d.%m.%Y").date()
+        return (d - datetime.today().date()).days
+    except Exception:
+        return None
+
+
+def _wr_type(raw: str) -> str:
+    r = str(raw or "").lower().strip()
+    for key, val in _WAREHOUSE_TYPE_MAP.items():
+        if key in r:
+            return val
+    return "ochiq"
+
+
+def _wr_file_date(path: Path) -> str:
+    name = path.stem
+    import re as _re
+    m = _re.search(r"(\d{2}[.\-]\d{2}[.\-]\d{4})", name)
+    return m.group(1).replace("-", ".") if m else datetime.today().strftime("%d.%m.%Y")
+
+
+def load_warehouse_registry(path: Path | None = None) -> dict:
+    global WAREHOUSE_REGISTRY_CACHE, WAREHOUSE_REGISTRY_PATH
+    try:
+        target = path or WAREHOUSE_REGISTRY_PATH
+        if target is None:
+            found = sorted(
+                DASHBOARD_DIR.glob("omborlarReestri*.xlsx"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if not found:
+                return {"warehouses": [], "file_date": "", "loaded": False}
+            target = found[0]
+        WAREHOUSE_REGISTRY_PATH = target
+        file_date = _wr_file_date(target)
+        df = pd.read_excel(target, header=0)
+        rows = []
+        today = datetime.today().date()
+        for _, row in df.iterrows():
+            lat = row.iloc[15] if len(row) > 15 else None
+            lon = row.iloc[16] if len(row) > 16 else None
+            if pd.isna(lat) or pd.isna(lon):
+                continue
+            tur = _wr_type(str(row.iloc[7]) if len(row) > 7 else "")
+            ins_sum = float(row.iloc[28]) if len(row) > 28 and not pd.isna(row.iloc[28]) else 0
+            ins_exp = _parse_date(row.iloc[29] if len(row) > 29 else None)
+            lic_exp = _parse_date(row.iloc[10] if len(row) > 10 else None)
+            area_open = float(row.iloc[21]) if len(row) > 21 and not pd.isna(row.iloc[21]) else 0
+            area_closed = float(row.iloc[22]) if len(row) > 22 and not pd.isna(row.iloc[22]) else 0
+            fvv = str(row.iloc[30]).strip() if len(row) > 30 and not pd.isna(row.iloc[30]) else ""
+            ssv = str(row.iloc[32]).strip() if len(row) > 32 and not pd.isna(row.iloc[32]) else ""
+            ins_days = _days_until(ins_exp)
+            lic_days = _days_until(lic_exp)
+            risk = "green"
+            if (ins_days is not None and ins_days < 0) or (lic_days is not None and lic_days < 0):
+                risk = "red"
+            elif (ins_days is not None and ins_days < 90) or (lic_days is not None and lic_days < 90):
+                risk = "orange"
+            director = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else ""
+            phone = str(row.iloc[5]).strip() if len(row) > 5 and not pd.isna(row.iloc[5]) else ""
+            lic_num = str(row.iloc[8]).strip() if len(row) > 8 and not pd.isna(row.iloc[8]) else ""
+            lic_date = _parse_date(row.iloc[9] if len(row) > 9 else None)
+            rows.append({
+                "name": str(row.iloc[1]).strip() if len(row) > 1 else "",
+                "lat": float(lat),
+                "lon": float(lon),
+                "type": tur,
+                "type_raw": str(row.iloc[7]).strip() if len(row) > 7 else "",
+                "area_open": area_open,
+                "area_closed": area_closed,
+                "ins_sum": ins_sum,
+                "ins_exp": ins_exp or "",
+                "ins_days": ins_days,
+                "lic_num": lic_num,
+                "lic_date": lic_date or "",
+                "lic_exp": lic_exp or "",
+                "lic_days": lic_days,
+                "director": director,
+                "phone": phone,
+                "fvv": fvv,
+                "ssv": ssv,
+                "risk": risk,
+            })
+        WAREHOUSE_REGISTRY_CACHE = rows
+        return {"warehouses": rows, "file_date": file_date, "loaded": True}
+    except Exception as exc:
+        return {"warehouses": [], "file_date": "", "loaded": False, "error": str(exc)}
+
+
+AVIA_AWB_PATH: Path | None = None
+AVIA_AWB_CACHE: dict | None = None
+
+_AVIA_COUNTRY_LAT: dict[str, str] = {
+    "НИДЕРЛАНДЫ": "Niderlandiya", "АКШ": "AQSH", "США": "AQSH",
+    "СЯНГАН": "Gonkong", "ГОНКОНГ": "Gonkong", "ТУРКИЯ": "Turkiya",
+    "ТУРЦИЯ": "Turkiya", "ХИТОЙ": "Xitoy", "КИТАЙ": "Xitoy",
+    "ФРАНЦИЯ": "Frantsiya", "ЧЕХИЯ": "Chexiya", "ИЗРАИЛЬ": "Isroil",
+    "БРАЗИЛИЯ": "Braziliya", "ИТАЛИЯ": "Italiya", "АВСТРИЯ": "Avstriya",
+    "КАНАДА": "Kanada", "БОСНИЯ И ГЕРЦЕГОВИНА": "Bosniya va Gersegovina",
+    "ИНДИЯ": "Hindiston", "ГЕРМАНИЯ": "Germaniya", "ВЬЕТНАМ": "Vyetnam",
+    "ИСПАНИЯ": "Ispaniya", "ШВЕЦИЯ": "Shvetsiya", "БЕЛЬГИЯ": "Belgiya",
+    "ПОКИСТОН": "Pokiston", "ПАКИСТАН": "Pokiston", "ЭКВАДОР": "Ekvador",
+    "ВЕЛИКОБРИТАНИЯ": "Buyuk Britaniya", "РОССИЯ": "Rossiya",
+    "ЯПОНИЯ": "Yaponiya", "АЗЕРБАЙДЖАН": "Ozarbayjon", "ПОЛЬША": "Polsha",
+    "БИРЛАШГАН АРАБ АМИР.": "BAA", "ОАЭ": "BAA",
+    "ОБЪЕДИНЕННЫЕ АРАБСКИЕ ЭМИРАТЫ": "BAA",
+    "КОРЕЯ РЕСП.": "Janubiy Koreya", "РЕСПУБЛИКА КОРЕЯ": "Janubiy Koreya",
+    "ТАЙВАНЬ": "Tayvan", "ЛАТВИЯ": "Latviya",
+    "КИРГИЗИСТОН": "Qirgʻiziston", "КЫРГЫЗСТАН": "Qirgʻiziston",
+    "КОЛУМБИЯ": "Kolumbiya", "ТОЖИКИСТОН": "Tojikiston",
+    "ТАДЖИКИСТАН": "Tojikiston", "КОЗОГИСТОН": "Qozogʻiston",
+    "КАЗАХСТАН": "Qozogʻiston", "ПОРТУГАЛИЯ": "Portugaliya",
+    "СИНГАПУР": "Singapur", "БЕЛАРУСЬ": "Belarus",
+    "ШВЕЙЦАРИЯ": "Shveytsariya", "САУДОВСКАЯ АРАВИЯ": "Saudiya Arabistoni",
+    "УЗБЕКИСТОН": "Oʻzbekiston", "УЗБЕКИСТАН": "Oʻzbekiston",
+    "КЕНИЯ": "Keniya", "ЛИТВА": "Litva", "НОВАЯ ЗЕЛАНДИЯ": "Yangi Zelandiya",
+    "МАЛАЙЗИЯ": "Malayziya", "СЛОВАКИЯ РЕСПУБЛИКАСИ": "Slovakiya",
+    "СЛОВАКИЯ": "Slovakiya", "ИРЛАНДИЯ": "Irlandiya", "ДАНИЯ": "Daniya",
+    "ГРУЗИЯ": "Gruziya", "АВСТРАЛИЯ": "Avstraliya",
+    "ФИНЛЯНДИЯ": "Finlandiya", "ВЕНГРИЯ": "Vengriya",
+    "УКРАИНА": "Ukraina", "ЭСТОНИЯ": "Estoniya", "УГАНДА": "Uganda",
+    "РУМЫНИЯ": "Ruminiya", "ИНДОНЕЗИЯ": "Indoneziya",
+    "ТАИЛАНД": "Tailand", "КАТАР": "Qatar", "КУВЕЙТ": "Quvayt",
+    "КОНГО": "Kongo", "АНГИЛЬЯ": "Angilya",
+    "ИРАН": "Eron", "ИРОН": "Eron", "ЭРОН": "Eron",
+}
+
+
+def _norm_ru(s: str) -> str:
+    return str(s).upper().strip().replace("H", "Н")
+
+
+def _avia_country_latin(raw: str) -> str:
+    normed = _norm_ru(raw)
+    if normed in _AVIA_COUNTRY_LAT:
+        return _AVIA_COUNTRY_LAT[normed]
+    for key, val in _AVIA_COUNTRY_LAT.items():
+        if key in normed:
+            return val
+    return raw.strip()
+
+
+_LEGAL_FORM_RE = re.compile(
+    r'\b(LLC|OOO|МЧЖ|MCHJ|MChJ|AJ|АЖ|AO|АО|LTD|CO|INC|CORP|GmbH|JSC|ЗАО|ОАО|ООО|ЧП|ИП|SP|SA|NV|PLC|SRL|BV|AG|PJSC|OJSC|XK|Xk)\b',
+    re.IGNORECASE,
+)
+# Indicators that the rest of the string is an address / phone
+_ADDR_SPLIT_RE = re.compile(
+    r'\b(MFY|MFY\.|KUCHASI|KO[\'`]CHASI|STREET|STR\b|AVE\b|AVENUE|BLVD|PROSPEKT|MAHALLASI|'
+    r'TASHKENT\s+TE|TE\s+00|00998|\+998)\b',
+    re.IGNORECASE,
+)
+
+def _normalize_company(name: str) -> str:
+    """Strip address/phone suffix; keep only the legal entity name."""
+    name = str(name).strip()
+    # Truncate at first address indicator
+    addr_m = _ADDR_SPLIT_RE.search(name)
+    if addr_m:
+        name = name[:addr_m.start()].strip()
+    matches = list(_LEGAL_FORM_RE.finditer(name))
+    if not matches:
+        words = name.split()
+        return ' '.join(words[:5]) if len(words) > 5 else name
+    last = matches[-1]
+    # Legal form is at the START (Russian/CIS style: "LLC Company Name")
+    if last.start() == 0:
+        suffix = name[:last.end()]  # e.g. "LLC"
+        rest = name[last.end():].strip()
+        # Take up to 4 words of the rest as the actual name
+        rest_words = rest.split()
+        return (suffix + ' ' + ' '.join(rest_words[:4])).strip() if rest_words else suffix
+    # Legal form is in the middle or end (English style: "Company Name LLC")
+    return name[:last.end()].strip()
+
+
+def load_avia_awb(path: Path | None = None) -> dict:
+    global AVIA_AWB_PATH, AVIA_AWB_CACHE
+    today = datetime.today().date()
+    try:
+        target = path or AVIA_AWB_PATH
+        if target is None:
+            found = sorted(
+                DASHBOARD_DIR.glob("Yuklarni qabul qilish*.xlsx"),
+                key=lambda p: p.stat().st_mtime, reverse=True,
+            )
+            if not found:
+                return {"loaded": False, "error": "AWB Excel fayl topilmadi"}
+            target = found[0]
+        AVIA_AWB_PATH = target
+        df = pd.read_excel(target, header=1)
+        rows_raw = []
+        for _, row in df.iterrows():
+            try:
+                awb = str(row.iloc[10]).strip()
+                if not awb or awb in ("nan", "None", "AWB raqami"):
+                    continue
+                arr_raw = str(row.iloc[6]).strip()
+                try:
+                    arr_date = datetime.strptime(arr_raw, "%d.%m.%Y").date()
+                except Exception:
+                    arr_date = None
+                joylar = int(float(row.iloc[11])) if pd.notna(row.iloc[11]) else 0
+                vazn_kg = float(row.iloc[12]) if pd.notna(row.iloc[12]) else 0.0
+                country_raw = str(row.iloc[8]).strip() if pd.notna(row.iloc[8]) else ""
+                company = _normalize_company(row.iloc[14]) if pd.notna(row.iloc[14]) else ""
+                goods = str(row.iloc[18]).strip() if pd.notna(row.iloc[18]) else ""
+                if goods == "nan":
+                    goods = ""
+                rows_raw.append({"awb": awb, "arr_date": arr_date, "joylar": joylar,
+                                  "vazn_kg": vazn_kg, "country_raw": country_raw,
+                                  "company": company, "goods": goods})
+            except Exception:
+                continue
+        awb_groups: dict[str, list] = {}
+        for r in rows_raw:
+            awb_groups.setdefault(r["awb"], []).append(r)
+        awb_list = []
+        for awb, recs in awb_groups.items():
+            total_joylar = sum(r["joylar"] for r in recs)
+            total_vazn_kg = sum(r["vazn_kg"] for r in recs)
+            countries = [r["country_raw"] for r in recs if r["country_raw"]]
+            country_raw = max(set(countries), key=countries.count) if countries else ""
+            company = next((r["company"] for r in recs if r["company"] and r["company"] != "nan"), "")
+            goods = next((r["goods"] for r in recs if r["goods"]), "")
+            dates = [r["arr_date"] for r in recs if r["arr_date"]]
+            arr_date = max(dates) if dates else None
+            days_ago = (today - arr_date).days if arr_date else None
+            is_overdue = (days_ago is not None and days_ago > 15)
+            awb_list.append({
+                "awb": awb, "flights": len(recs), "company": company,
+                "country": country_raw,
+                "country_latin": _avia_country_latin(country_raw) if country_raw else "",
+                "goods": goods, "joylar": total_joylar,
+                "vazn": round(total_vazn_kg / 1000, 3),
+                "arrival_date": arr_date.strftime("%d.%m.%Y") if arr_date else "",
+                "days_ago": days_ago, "is_overdue": is_overdue,
+            })
+        awb_list.sort(key=lambda x: x.get("arrival_date", ""), reverse=True)
+        total_vazn = sum(r["vazn"] for r in awb_list)
+        total_joylar_all = sum(r["joylar"] for r in awb_list)
+        active = [r for r in awb_list if not r["is_overdue"]]
+        overdue = [r for r in awb_list if r["is_overdue"]]
+        country_stats: dict[str, dict] = {}
+        for r in awb_list:
+            c = r["country_latin"] or r["country"]
+            if not c:
+                continue
+            if c not in country_stats:
+                country_stats[c] = {"name": c, "awb": 0, "vazn": 0.0, "joylar": 0}
+            country_stats[c]["awb"] += 1
+            country_stats[c]["vazn"] = round(country_stats[c]["vazn"] + r["vazn"], 3)
+            country_stats[c]["joylar"] += r["joylar"]
+        countries_list = sorted(country_stats.values(), key=lambda x: x["vazn"], reverse=True)
+        company_stats: dict[str, dict] = {}
+        for r in awb_list:
+            c = r["company"]
+            if not c or c == "nan":
+                continue
+            if c not in company_stats:
+                company_stats[c] = {"company": c, "awb": 0, "vazn": 0.0, "joylar": 0, "overdue": 0}
+            company_stats[c]["awb"] += 1
+            company_stats[c]["vazn"] = round(company_stats[c]["vazn"] + r["vazn"], 3)
+            company_stats[c]["joylar"] += r["joylar"]
+            if r["is_overdue"]:
+                company_stats[c]["overdue"] += 1
+        companies_list = sorted(company_stats.values(), key=lambda x: x["vazn"], reverse=True)
+        result = {
+            "loaded": True, "file_name": target.name,
+            "total_rows": len(rows_raw), "unique_awb": len(awb_list),
+            "multi_flight_awb": sum(1 for r in awb_list if r["flights"] > 1),
+            "total_joylar": total_joylar_all,
+            "total_vazn": round(total_vazn, 3),
+            "active_count": len(active),
+            "active_vazn": round(sum(r["vazn"] for r in active), 3),
+            "overdue_count": len(overdue),
+            "overdue_vazn": round(sum(r["vazn"] for r in overdue), 3),
+            "awb_list": awb_list[:500],
+            "companies": companies_list[:50],
+            "countries": countries_list,
+        }
+        AVIA_AWB_CACHE = result
+        return result
+    except Exception as exc:
+        import traceback as _tb
+        return {"loaded": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def fetch_cbu_rates() -> dict:
+    try:
+        from urllib.request import Request as _Req, urlopen as _urlopen
+        req = _Req("https://cbu.uz/common/json/",
+                   headers={"User-Agent": "IBK-Dashboard/1.0"})
+        with _urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        rates = {}
+        for item in data:
+            ccy = item.get("Ccy", "")
+            if ccy:
+                rates[ccy] = {
+                    "rate": float(item.get("Rate", 0)),
+                    "nominal": int(item.get("Nominal", 1)),
+                    "name": item.get("CcyNm_UZ") or item.get("CcyNm_EN") or ccy,
+                    "diff": float(item.get("Diff", 0)),
+                }
+        date_str = data[0].get("Date", "") if data else ""
+        return {"success": True, "rates": rates, "date": date_str}
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "rates": {}, "date": ""}
+
 
 def _opensky_fetch(kind: str, begin: int, end: int) -> list[dict]:
     url = f"https://opensky-network.org/api/flights/{kind}?airport={TAS_ICAO}&begin={begin}&end={end}"
@@ -1305,12 +1645,12 @@ def run_job(job_id: str, source: Path, deposit: Path | None, report_date: dateti
 
 HTML = r"""<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IBK Dashboard</title>
 <style>
-:root{--ink:#172033;--muted:#64748b;--line:#dae2ec;--blue:#174a7c;--green:#1b9e77;--orange:#d95f02;--bg:#f6f8fb;--panel:#fff}*{box-sizing:border-box}body{margin:0;color:var(--ink);font:14px/1.45 "Segoe UI",Arial,sans-serif;background:linear-gradient(120deg,#f6f8fb,#eef6fb,#f7fbf5);background-size:280% 280%;animation:bgshift 18s ease-in-out infinite}header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);z-index:3;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:22px;margin:0}.muted{color:var(--muted)}main{max-width:1500px;margin:auto;padding:14px}.login,.upload,.panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.panel{overflow-x:auto}.upload{display:grid;grid-template-columns:1fr 1fr 170px auto;gap:10px;align-items:end}input,select{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fff}label{display:block;margin-bottom:5px;font-weight:700;color:var(--muted)}button,.btn{background:var(--blue);color:#fff;border:0;border-radius:6px;padding:10px 13px;font-weight:700;text-decoration:none;cursor:pointer}.btn.light,button.light{background:#e8eef6;color:var(--ink)}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:12px 0}.kpi{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{display:block;font-size:24px;margin-top:5px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tab.active{background:var(--blue);color:#fff}.tab{background:#e8eef6;color:#172033}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}h2{font-size:17px;margin:0 0 10px}table{width:100%;min-width:760px;border-collapse:collapse;table-layout:auto}.release-table{min-width:1120px;font-size:12px;table-layout:fixed}.release-table th,.release-table td{padding:4px 5px}.release-table th{white-space:normal!important;word-break:normal;line-height:1.12;vertical-align:middle;text-align:center}.release-table th:nth-child(1),.release-table td:nth-child(1){width:34px;text-align:center}.release-table th:nth-child(2),.release-table td:nth-child(2){width:245px}.release-table th:nth-child(3),.release-table td:nth-child(3){width:82px}.release-table th:nth-child(n+4),.release-table td:nth-child(n+4){width:82px}.release-table th:nth-child(6),.release-table td:nth-child(6),.release-table th:nth-child(9),.release-table td:nth-child(9),.release-table th:nth-child(12),.release-table td:nth-child(12){width:96px}th{background:var(--blue);color:#fff;text-align:left;padding:7px;font-size:13px}td{border:1px solid #d7e0ea;padding:5px 6px;vertical-align:middle}td.text,th.text{white-space:normal;overflow:visible;text-overflow:clip;word-break:normal}td.num,th.num{text-align:right;white-space:nowrap}tbody tr:first-child td{font-weight:800;background:#d7e8d2}tbody tr.own-row td{background:#eaf3ec!important;font-weight:800}th{white-space:normal;line-height:1.2}tr:nth-child(even) td{background:#f8fafc}tbody tr{cursor:pointer}.merged-row td{background:#dfeaf6!important;font-weight:800}.merged-row td:first-child{text-align:left}.bars{display:grid;gap:8px}.barrow{display:grid;grid-template-columns:220px 1fr 120px;gap:8px;align-items:center}.bar{height:24px;background:#e8eef6;position:relative}.bar span{display:block;height:100%;min-width:34px;background:var(--green);color:#fff;font-size:12px;font-weight:700;text-align:right;padding-right:5px;line-height:24px}dialog{width:min(1100px,96vw);border:0;border-radius:8px;padding:0}dialog .head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}dialog .body{padding:14px;max-height:72vh;overflow:auto}.hidden{display:none}@media(max-width:1000px){.upload,.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start;flex-direction:column}}
+:root{--ink:#172033;--muted:#64748b;--line:#dae2ec;--blue:#174a7c;--green:#1b9e77;--orange:#d95f02;--bg:#f6f8fb;--panel:#fff}*{box-sizing:border-box}body{margin:0;color:var(--ink);font:14px/1.45 "Segoe UI",Arial,sans-serif;background:linear-gradient(120deg,#f6f8fb,#eef6fb,#f7fbf5);background-size:280% 280%;animation:bgshift 18s ease-in-out infinite}header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);z-index:3;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:22px;margin:0}.muted{color:var(--muted)}main{max-width:1500px;margin:auto;padding:14px}.login,.upload,.panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.panel{overflow-x:auto}.upload{display:grid;grid-template-columns:1fr 1fr 170px auto;gap:10px;align-items:end}input,select{width:100%;padding:9px;border:1px solid var(--line);border-radius:6px;background:#fff}label{display:block;margin-bottom:5px;font-weight:700;color:var(--muted)}button,.btn{background:var(--blue);color:#fff;border:0;border-radius:6px;padding:10px 13px;font-weight:700;text-decoration:none;cursor:pointer}.btn.light,button.light{background:#e8eef6;color:var(--ink)}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin:12px 0}.kpi{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px}.kpi b{display:block;font-size:24px;margin-top:5px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.tab.active{background:var(--blue);color:#fff}.tab{background:#e8eef6;color:#172033}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}h2{font-size:17px;margin:0 0 10px}table{width:100%;min-width:760px;border-collapse:collapse;table-layout:auto}.release-table{min-width:1120px;font-size:12px;table-layout:fixed}.release-table th,.release-table td{padding:4px 5px}.release-table th{white-space:normal!important;word-break:normal;line-height:1.12;vertical-align:middle;text-align:center}.release-table th:nth-child(1),.release-table td:nth-child(1){width:34px;text-align:center}.release-table th:nth-child(2),.release-table td:nth-child(2){width:245px}.release-table th:nth-child(3),.release-table td:nth-child(3){width:82px}.release-table th:nth-child(n+4),.release-table td:nth-child(n+4){width:82px}.release-table th:nth-child(6),.release-table td:nth-child(6),.release-table th:nth-child(9),.release-table td:nth-child(9),.release-table th:nth-child(12),.release-table td:nth-child(12){width:96px}th{background:var(--blue);color:#fff;text-align:left;padding:7px;font-size:13px}td{border:1px solid #d7e0ea;padding:5px 6px;vertical-align:middle}td.text,th.text{white-space:normal;overflow:visible;text-overflow:clip;word-break:normal}td.num,th.num{text-align:right;white-space:nowrap}tbody tr:first-child td{font-weight:800;background:#dce8f5}tbody tr.own-row td{font-weight:700;color:#155e75}th{white-space:normal;line-height:1.2}tr:nth-child(even) td{background:#f8fafc}tbody tr{cursor:pointer}.merged-row td{background:#dfeaf6!important;font-weight:800}.merged-row td:first-child{text-align:left}.bars{display:grid;gap:8px}.barrow{display:grid;grid-template-columns:220px 1fr 120px;gap:8px;align-items:center}.bar{height:24px;background:#e8eef6;position:relative}.bar span{display:block;height:100%;min-width:34px;background:var(--green);color:#fff;font-size:12px;font-weight:700;text-align:right;padding-right:5px;line-height:24px}dialog{width:min(1100px,96vw);border:0;border-radius:8px;padding:0}dialog .head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}dialog .body{padding:14px;max-height:72vh;overflow:auto}.hidden{display:none}@media(max-width:1000px){.upload,.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start;flex-direction:column}}
  .workspace{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:start}.tabs{position:sticky;top:78px;display:flex;flex-direction:column;gap:8px;margin:12px 0}.tab{width:100%;text-align:left;background:#e8eef6;color:#172033;border-left:5px solid transparent;transition:.18s transform,.18s background,.18s box-shadow}.tab:active,button:active,.btn:active{transform:translateY(1px) scale(.99)}.tab.active{background:#174a7c;color:#fff;border-left-color:#1b9e77;box-shadow:0 2px 8px rgba(23,74,124,.18)}.chart{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.barrow{grid-template-columns:minmax(145px,220px) 1fr 110px}.barrow div:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar span{animation:growbar .55s ease-out}.wide{grid-column:1/-1}.partial{background:#fff4cc!important;color:#8a5a00;font-weight:800;border:1px solid #e6b84d}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.danger{background:#b42318!important}.dark{--ink:#e5eefb;--muted:#9fb0c6;--line:#2f3f55;--blue:#2c7fb8;--bg:#101826;--panel:#172033}.dark header,.dark .login,.dark .upload,.dark .panel,.dark .kpi{background:#172033}.dark input,.dark select{background:#101826;color:var(--ink);border-color:var(--line)}.dark tr:nth-child(even) td{background:#1d2a3d}@keyframes bgshift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}@keyframes growbar{from{width:0}to{}}@media(max-width:1000px){.workspace{grid-template-columns:1fr}.tabs{position:static;flex-direction:row;overflow:auto}.tab{min-width:max-content}.barrow{grid-template-columns:120px 1fr 82px}}
 
 /* Customs emblem + airport movement background */
-body::before{content:"";position:fixed;inset:0;z-index:-3;pointer-events:none;background:linear-gradient(120deg,rgba(246,248,251,.96),rgba(238,246,251,.94),rgba(247,251,245,.96)),url('/assets/gerb-bojxona.jpg') center 46% / min(420px,42vw) auto no-repeat;opacity:1}
-body::after{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:linear-gradient(115deg,transparent 0 43%,rgba(23,74,124,.08) 44%,transparent 45% 100%),repeating-linear-gradient(115deg,transparent 0 72px,rgba(27,158,119,.08) 74px,transparent 78px);animation:runwayMove 22s linear infinite}
+body::before{content:none;display:none}
+body::after{content:none;display:none}
 header::after{content:"";position:fixed;left:-120px;top:92px;width:110px;height:2px;background:linear-gradient(90deg,transparent,rgba(23,74,124,.45),transparent);box-shadow:24px -5px 0 -1px rgba(23,74,124,.22);transform:rotate(-12deg);animation:flightPath 18s linear infinite;pointer-events:none}
 @keyframes runwayMove{from{background-position:0 0,0 0}to{background-position:360px 0,420px 0}}
 @keyframes flightPath{0%{transform:translateX(-8vw) translateY(0) rotate(-12deg);opacity:0}12%{opacity:.5}70%{opacity:.35}100%{transform:translateX(115vw) translateY(34vh) rotate(-12deg);opacity:0}}
@@ -1330,10 +1670,7 @@ body::after{content:"";position:fixed;inset:0;z-index:-3;pointer-events:none;bac
   repeating-linear-gradient(118deg,transparent 0 118px,rgba(17,70,84,.055) 120px,transparent 124px),
   linear-gradient(180deg,rgba(255,255,255,.36),rgba(255,255,255,.72));
   animation:premiumDrift 38s linear infinite}
-main::before{content:"";position:fixed;left:calc(210px + 4vw);right:3vw;top:92px;height:130px;z-index:-2;pointer-events:none;background:
-  linear-gradient(90deg,rgba(23,74,124,.16),rgba(27,158,119,.09),transparent 70%),
-  repeating-linear-gradient(90deg,rgba(23,74,124,.10) 0 1px,transparent 1px 52px);
-  border-top:1px solid rgba(23,74,124,.13);border-bottom:1px solid rgba(23,74,124,.08);transform:skewY(-4deg);opacity:.68}
+main::before{content:none;display:none}
 header::before{content:"";position:fixed;left:-160px;top:118px;width:155px;height:3px;z-index:-1;pointer-events:none;background:linear-gradient(90deg,transparent,rgba(18,74,91,.58),rgba(27,158,119,.32),transparent);box-shadow:38px -8px 0 -1px rgba(18,74,91,.20),76px 8px 0 -2px rgba(27,158,119,.18);transform:rotate(-10deg);animation:premiumFlight 24s ease-in-out infinite}
 .panel,.kpi,.login,.upload{box-shadow:0 14px 36px rgba(23,43,77,.07);background:rgba(255,255,255,.92);backdrop-filter:blur(8px)}
 header{background:rgba(255,255,255,.88);backdrop-filter:blur(12px)}
@@ -1368,7 +1705,7 @@ body::before,body::after,header::before{content:none!important;display:none!impo
 .plane-wrap{position:absolute;top:11vh;left:-48vw;width:min(760px,58vw);animation:planeCruise 30s linear infinite;animation-delay:-10s;filter:drop-shadow(0 20px 22px rgba(24,55,72,.22));will-change:transform}
 .plane-svg{width:100%;height:auto;display:block}.plane-body{fill:url(#planeSkin);stroke:rgba(23,54,72,.38);stroke-width:2}.plane-wing{fill:#d8e9ef;stroke:rgba(23,54,72,.34);stroke-width:2}.plane-tail{fill:#c8dde6}.plane-window{fill:#183f55}.plane-text{font:700 29px Georgia,serif;fill:#155b49;letter-spacing:.4px}.seal-ring{fill:rgba(255,255,255,.78);stroke:#2b8a57;stroke-width:5}.engine{fill:#eef7fa;stroke:#35596a;stroke-width:2}.engine-dark{fill:#264b5c}.bird{position:absolute;width:38px;height:18px;opacity:.58;animation:birdFly 26s linear infinite}.bird:before,.bird:after{content:"";position:absolute;top:8px;width:18px;height:8px;border-top:2px solid rgba(38,78,94,.72);border-radius:50%}.bird:before{left:2px;transform:rotate(18deg)}.bird:after{right:2px;transform:rotate(-18deg)}.b1{top:14vh;left:-5vw;animation-delay:-4s}.b2{top:25vh;left:-12vw;animation-delay:-14s;transform:scale(.72)}.b3{top:18vh;left:-20vw;animation-delay:-22s;transform:scale(.55)}
 header,main,dialog{position:relative;z-index:2}.panel,.kpi,.login,.upload{background:rgba(255,255,255,.9);backdrop-filter:blur(18px) saturate(1.15)}.dark .sky-scene{filter:brightness(.72) saturate(.82)}.dark .panel,.dark .kpi,.dark .login,.dark .upload{background:rgba(23,32,51,.9)}
-.exec-summary{grid-column:1/-1}.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:10px}.summary-item{border:1.5px solid rgba(25,100,180,.28);border-radius:16px;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(240,248,255,.72));box-shadow:0 2px 10px rgba(18,72,160,.1)}.summary-item b{display:block;color:var(--green);margin-bottom:5px}.kpi{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}.kpi:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(19,67,91,.14)}
+.exec-summary{grid-column:1/-1}.summary-grid{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:10px}.summary-item{border:1.5px solid rgba(25,100,180,.28);border-radius:16px;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(240,248,255,.72));box-shadow:0 2px 10px rgba(18,72,160,.1);color:#12304e!important}.summary-item b{display:block;color:var(--green);margin-bottom:5px}.summary-item span{color:#445566!important}.kpi{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}.kpi:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(19,67,91,.14)}
 @keyframes planeCruise{0%{transform:translate3d(-18vw,8vh,0) scale(.76) rotate(-4deg)}45%{transform:translate3d(58vw,-1vh,0) scale(.95) rotate(-1deg)}100%{transform:translate3d(155vw,-8vh,0) scale(1.08) rotate(-3deg)}}
 @keyframes cityDrift{from{transform:translateX(0)}to{transform:translateX(-50%)}}@keyframes waterMove{from{background-position:0 0,0 0}to{background-position:0 0,260px 80px}}@keyframes birdFly{from{transform:translateX(0) translateY(0) scale(.8)}50%{transform:translateX(58vw) translateY(-4vh) scale(1)}to{transform:translateX(112vw) translateY(2vh) scale(.7)}}
 @media(max-width:900px){.plane-wrap{width:86vw;animation-duration:24s}.summary-grid{grid-template-columns:1fr 1fr}.runway{width:76vw}.city{height:18vh}}
@@ -1536,16 +1873,73 @@ body.logged-in main{
   display:block!important;
 }
 
-/* hex-bg */body{background:#f8fbff!important}body::before,body::after,header::after,header::before{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#f8fbff!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}body .sky-scene::before,body .sky-scene::after{display:none!important;content:none!important;animation:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important;animation:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.login-screen .sky-scene::before,.login-screen .sky-scene::after{display:none!important;content:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.logged-in .sky-scene::before,.logged-in .sky-scene::after{display:none!important;content:none!important;background:none!important;opacity:0!important}#bgVideo,.bg-video{display:none!important;opacity:0!important}.sky-scene>#bgCanvas{display:none!important;opacity:0!important}.login-screen .sky-scene{background:#f8fbff!important}.dark .sky-scene{background:#080f1e!important}.dark.login-screen .sky-scene{background:#080f1e!important}.panel,.kpi,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .upload{background:rgba(15,28,50,.95)!important}#login,main.login-screen-main{background:transparent!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important}header{background:rgba(255,255,255,.08)!important;backdrop-filter:none!important;border-bottom:1px solid rgba(100,160,220,.15)!important;box-shadow:none!important}.dark header{background:rgba(8,15,30,.12)!important}body.login-screen header{background:transparent!important;border-bottom:none!important;box-shadow:none!important}.kpi{display:flex!important;flex-direction:column!important;justify-content:center!important;text-align:center!important;border:1.5px solid rgba(18,72,160,.14)!important;border-top:3px solid #2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.06),rgba(255,255,255,.97))!important;box-shadow:0 3px 14px rgba(0,0,0,.08)!important;border-radius:10px!important}.kpis .kpi:nth-child(1){border-top-color:#2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(2){border-top-color:#1b9e77!important;background:linear-gradient(160deg,rgba(27,158,119,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(3){border-top-color:#e67e22!important;background:linear-gradient(160deg,rgba(230,126,34,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(4){border-top-color:#8e44ad!important;background:linear-gradient(160deg,rgba(142,68,173,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(5){border-top-color:#e74c3c!important;background:linear-gradient(160deg,rgba(231,76,60,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(6){border-top-color:#16a085!important;background:linear-gradient(160deg,rgba(22,160,133,.07),rgba(255,255,255,.97))!important}.module-parent{color:#fff!important}body.logged-in .module-parent{background:linear-gradient(135deg,#d4eaff,#dff0ff)!important;color:#0a2440!important;border:1.5px solid rgba(18,72,160,.22)!important;border-left:4px solid #2060b8!important;box-shadow:0 2px 10px rgba(18,72,160,.1)!important;font-weight:700!important}.module-parent.pay,body.logged-in .module-parent.pay{background:linear-gradient(135deg,#1d7f73,#269490)!important;color:#fff!important;border:1.5px solid #1a7a6a!important;border-left:4px solid #0dd4b4!important}.tab{color:#12304e!important}.tab.active{color:#fff!important}.tab.sub{color:#12304e!important}.tab.sub.active{color:#fff!important}.dark .tab,.dark .tab.sub{color:#eaf2ff!important}.dark .btn.light,.dark button.light{background:#1e3254!important;color:#deeeff!important;border:1px solid #3a587a!important}.dark button:not(.light):not(.danger){background:#2a6eb8!important;color:#fff!important}.dark select,.dark input{color:#deeeff!important}.dark .bar span{background:linear-gradient(90deg,#2a6eb8,#1b9e77)!important}.release-date-card{background:rgba(255,255,255,.97)!important;border:1px solid rgba(100,160,220,.18);border-radius:8px;padding:14px;margin-bottom:12px}.dark .release-date-card{background:rgba(15,28,50,.95)!important;border-color:rgba(59,81,104,.5)}.release-section-result table td{background-color:#fff}.release-section-result tr:nth-child(even) td{background-color:#f8fafc!important}.release-section-result tbody tr:first-child td{background-color:#d7e8d2!important}.dark .release-section-result table td{background-color:#1a2a3e}.dark .release-section-result tr:nth-child(even) td{background-color:#1d2a3d!important}
+/* hex-bg */body{background:#f8fbff!important}body::before,body::after,header::after,header::before,main::before,main::after{content:none!important;display:none!important;animation:none!important}.sky-scene{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;z-index:0!important;overflow:hidden!important;pointer-events:none!important;animation:none!important;transform:none!important;background:#f8fbff!important}.sky-scene *{display:none!important}#hexBg{display:block!important;position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;z-index:1!important}body .sky-scene::before,body .sky-scene::after{display:none!important;content:none!important;animation:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.sky-scene::before,.sky-scene::after{display:none!important;content:none!important;animation:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.login-screen .sky-scene::before,.login-screen .sky-scene::after{display:none!important;content:none!important;background:none!important;opacity:0!important;visibility:hidden!important}.logged-in .sky-scene::before,.logged-in .sky-scene::after{display:none!important;content:none!important;background:none!important;opacity:0!important}#bgVideo,.bg-video{display:none!important;opacity:0!important}.sky-scene>#bgCanvas{display:none!important;opacity:0!important}.login-screen .sky-scene{background:#f8fbff!important}.dark .sky-scene{background:#080f1e!important}.dark.login-screen .sky-scene{background:#080f1e!important}.panel,.kpi,.upload{background:rgba(255,255,255,.97)!important;backdrop-filter:blur(12px)}.dark .panel,.dark .kpi,.dark .upload{background:rgba(15,28,50,.95)!important}#login,main.login-screen-main{background:transparent!important;border:none!important;box-shadow:none!important;backdrop-filter:none!important}header{background:rgba(255,255,255,.08)!important;backdrop-filter:none!important;border-bottom:1px solid rgba(100,160,220,.15)!important;box-shadow:none!important}.dark header{background:rgba(8,15,30,.12)!important}body.login-screen header{background:transparent!important;border-bottom:none!important;box-shadow:none!important}.kpi{display:flex!important;flex-direction:column!important;justify-content:center!important;text-align:center!important;border:1.5px solid rgba(18,72,160,.14)!important;border-top:3px solid #2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.06),rgba(255,255,255,.97))!important;box-shadow:0 3px 14px rgba(0,0,0,.08)!important;border-radius:10px!important}.kpis .kpi:nth-child(1){border-top-color:#2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(2){border-top-color:#1b9e77!important;background:linear-gradient(160deg,rgba(27,158,119,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(3){border-top-color:#e67e22!important;background:linear-gradient(160deg,rgba(230,126,34,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(4){border-top-color:#8e44ad!important;background:linear-gradient(160deg,rgba(142,68,173,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(5){border-top-color:#e74c3c!important;background:linear-gradient(160deg,rgba(231,76,60,.07),rgba(255,255,255,.97))!important}.kpis .kpi:nth-child(6){border-top-color:#16a085!important;background:linear-gradient(160deg,rgba(22,160,133,.07),rgba(255,255,255,.97))!important}.summary-item{border:1.5px solid rgba(18,72,160,.18)!important;border-top:3px solid #2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.06),rgba(255,255,255,.97))!important;box-shadow:0 4px 16px rgba(0,0,0,.09)!important;border-radius:12px!important}.summary-grid button.summary-item:nth-child(1){border-top-color:#2a6eb8!important;background:linear-gradient(160deg,rgba(42,110,184,.07),rgba(255,255,255,.97))!important}.summary-grid button.summary-item:nth-child(2){border-top-color:#1b9e77!important;background:linear-gradient(160deg,rgba(27,158,119,.07),rgba(255,255,255,.97))!important;border-color:rgba(27,158,119,.18)!important}.summary-grid button.summary-item:nth-child(3){border-top-color:#e67e22!important;background:linear-gradient(160deg,rgba(230,126,34,.07),rgba(255,255,255,.97))!important;border-color:rgba(230,126,34,.18)!important}.summary-item *{color:#12304e!important}.summary-item b,.summary-item>b{color:#1b9e77!important}.summary-item span{color:#445566!important}.module-parent{color:#fff!important}body.logged-in .module-parent{background:linear-gradient(135deg,#d4eaff,#dff0ff)!important;color:#0a2440!important;border:1.5px solid rgba(18,72,160,.22)!important;border-left:4px solid #2060b8!important;box-shadow:0 2px 10px rgba(18,72,160,.1)!important;font-weight:700!important}.module-parent.pay,body.logged-in .module-parent.pay{background:linear-gradient(135deg,#1d7f73,#269490)!important;color:#fff!important;border:1.5px solid #1a7a6a!important;border-left:4px solid #0dd4b4!important}.tab{color:#12304e!important}.tab.active{color:#fff!important}.tab.sub{color:#12304e!important}.tab.sub.active{color:#fff!important}.dark .tab,.dark .tab.sub{color:#eaf2ff!important}.dark .btn.light,.dark button.light{background:#1e3254!important;color:#deeeff!important;border:1px solid #3a587a!important}.dark button:not(.light):not(.danger){background:#2a6eb8!important;color:#fff!important}.dark select,.dark input{color:#deeeff!important}.dark .bar span{background:linear-gradient(90deg,#2a6eb8,#1b9e77)!important}.release-date-card{background:rgba(255,255,255,.97)!important;border:1px solid rgba(100,160,220,.18);border-radius:8px;padding:14px;margin-bottom:12px}.dark .release-date-card{background:rgba(15,28,50,.95)!important;border-color:rgba(59,81,104,.5)}.release-section-result table td{background-color:#fff}.release-section-result tr:nth-child(even) td{background-color:#f8fafc!important}.release-section-result tbody tr:first-child td{background-color:#d7e8d2!important}.dark .release-section-result table td{background-color:#1a2a3e}.dark .release-section-result tr:nth-child(even) td{background-color:#1d2a3d!important}
 @keyframes cfmDash{to{stroke-dashoffset:-28}}.cfm-flow-line{animation:cfmDash 2.2s linear infinite}.cfm-legend{background:rgba(255,255,255,.93);border:1px solid #c8d8ea;border-radius:8px;padding:8px 12px;font-size:11px;line-height:1.7;color:#1a3a5c;box-shadow:0 2px 8px rgba(0,0,0,.1)}.dark .cfm-legend{background:rgba(18,32,50,.93);border-color:#3b5168;color:#eaf2ff}
+@keyframes shimBar{0%{transform:translateX(-200%)}100%{transform:translateX(550%)}}
+.bar span{position:relative!important;overflow:hidden!important}
+.bar span::after{content:'';position:absolute;top:0;left:0;width:22%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:shimBar 2.4s ease-in-out infinite;pointer-events:none;border-radius:999px}
+.dark .bar span::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent)}
+@keyframes kpiGlow{0%,100%{filter:drop-shadow(0 2px 8px rgba(42,110,184,.07))}50%{filter:drop-shadow(0 5px 22px rgba(42,110,184,.48))}}
+.kpi{animation:kpiGlow 3.5s ease-in-out infinite}
+@keyframes summaryCard{0%,100%{filter:drop-shadow(0 2px 10px rgba(42,110,184,.06))}50%{filter:drop-shadow(0 7px 28px rgba(42,110,184,.35))}}
+.exec-summary .summary-item{animation:summaryCard 4s ease-in-out infinite}
+@keyframes ringShine{0%,100%{filter:saturate(1) brightness(1)}50%{filter:saturate(1.55) brightness(1.07)}}
+.transport-ring{animation:ringShine 3.2s ease-in-out infinite!important}
+.flow-track{overflow:hidden;position:relative}
+.flow-track::after{content:'';position:absolute;top:0;left:-60%;width:45%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.48),transparent);animation:shimTrack 2.4s ease-in-out 0.8s infinite;pointer-events:none}
+@keyframes shimTrack{0%{left:-60%}100%{left:120%}}
+.exec-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}.exec-header-left{display:flex;align-items:center;gap:8px}.exec-pulse-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#1b9e77;position:relative;flex-shrink:0}.exec-pulse-dot::after{content:'';position:absolute;inset:-4px;border-radius:50%;background:rgba(27,158,119,.28);animation:execPulse 1.8s ease-out infinite}.exec-title{font-size:15px;font-weight:700;color:#0a2440}.exec-badges{display:flex;gap:6px;flex-wrap:wrap}.exec-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap}.exec-badge-blue{background:#e4effe;color:#1a4f9a}.exec-badge-red{background:#fdeaea;color:#9b2020}.exec-badge-green{background:#e5f6ee;color:#0d6640}@keyframes execPulse{0%{transform:scale(.7);opacity:1}100%{transform:scale(2.4);opacity:0}}.dark .exec-title{color:#dff0ff!important}.dark .exec-badge-blue{background:#1a3258;color:#8ec4f4}.dark .exec-badge-red{background:#3a1a1a;color:#f48c8c}.dark .exec-badge-green{background:#0d3324;color:#7ddcb0}
+.wr-map-wrap{border-radius:12px;overflow:hidden;border:1px solid var(--line);margin-bottom:16px}
+.wr-filter-bar{padding:10px 12px 0;background:#fff;border-bottom:1px solid var(--line)}.dark .wr-filter-bar{background:#172033}
+.wr-filter-row{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:10px}
+.wr-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1.5px solid #d3dde8;background:#f4f8fc;cursor:pointer;font-size:12px;font-weight:600;color:#3d5a7a;transition:.15s;user-select:none}
+.wr-filter-chip input{position:absolute;opacity:0;width:0;height:0}
+.wr-filter-chip.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.wr-filter-chip:hover{border-color:var(--blue)}
+.wr-chip-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.wr-filter-chip.active .wr-chip-dot{border:2px solid rgba(255,255,255,.6)}
+@keyframes wr-popup-in{from{opacity:0;transform:translateY(16px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.wr-popup-card{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:1200;width:320px;background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.18);overflow:hidden;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none}
+.wr-popup-card.visible{opacity:1;pointer-events:auto;animation:wr-popup-in .28s ease-out both}
+.wr-popup-head{padding:12px 16px;color:#fff;display:flex;flex-direction:column;gap:3px}
+.wr-popup-head b{font-size:13px;line-height:1.3}
+.wr-popup-head span{font-size:11px;opacity:.85}
+.wr-popup-body{padding:10px 16px 14px;display:flex;flex-direction:column;gap:6px}
+.wr-popup-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px}
+.wr-popup-row span{color:var(--muted);flex-shrink:0}
+.wr-popup-row b{text-align:right;font-size:12px}
+.dark .wr-popup-card{background:#172033;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.wr-type-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;padding:8px 0;margin-bottom:10px}
+.wr-type-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.wr-ins-table{width:100%;border-collapse:collapse;font-size:12px}
+.wr-ins-table th{background:#1d72b8;color:#fff;padding:6px 8px;text-align:left;white-space:nowrap}
+.wr-ins-table td{padding:5px 8px;border-bottom:1px solid rgba(0,0,0,.07)}
+.wr-ins-table tr:nth-child(even) td{background:#f4f8ff}
+.wr-risk-red{color:#b91c1c;font-weight:700}
+.wr-risk-orange{color:#d97706;font-weight:700}
+.wr-risk-green{color:#16a34a}
+.dark .wr-ins-table th{background:#1a3a5c}
+.dark .wr-ins-table td{border-color:rgba(255,255,255,.07)}
+.dark .wr-ins-table tr:nth-child(even) td{background:rgba(255,255,255,.04)}
+.wr-upload-form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:12px;background:rgba(42,110,184,.06);border-radius:10px;border:1px dashed rgba(42,110,184,.25)}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:#f0f4f8;color:#3d5a7a;cursor:pointer;transition:.15s}.icon-btn:hover{background:#dde8f3;color:var(--blue)}.icon-btn.del-btn{background:#fff0f0;color:#b42318;border-color:#ffd7d7}.icon-btn.del-btn:hover{background:#ffd7d7}.dark .icon-btn{background:#1e2d40;color:#9fb0c6;border-color:#2f3f55}.dark .icon-btn.del-btn{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
+.wr-badge-fvv{display:inline-block;background:#ef4444;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px}
+.wr-badge-ssv{display:inline-block;background:#16a34a;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px}
+.currency-widget{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:4px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid rgba(42,110,184,.09);min-height:22px;background:rgba(248,251,255,.7)}
+.currency-widget .cur-item{display:inline-flex;gap:4px;align-items:center;padding:2px 7px;background:rgba(42,110,184,.07);border-radius:10px}
+.currency-widget .cur-item b{color:var(--blue);font-weight:700}
+.currency-widget .cur-date{color:var(--muted);font-size:11px}
+.dark .currency-widget{background:rgba(10,18,40,.5);border-color:rgba(96,165,250,.12)}
+tr.expired-row td{background:rgba(220,38,38,.04)!important}
+.dark tr.expired-row td{background:rgba(220,38,38,.10)!important}
 </style></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
-<section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="current-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
-<section id="app" class="hidden"><div id="status" class="muted"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
+<section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="new-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
+<section id="app" class="hidden"><div id="status" class="muted"></div><div id="currencyWidget" class="currency-widget"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
 <script>
-let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]};
+let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null;
 const I18N={uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},uzc:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},ru:{archive:"Arxiv",upload:"Zagruzka",general:"Obshiy",companies:"Kompanii",expired:"Prosrochennie",released:"Snyatie s kontrolya",goods:"Tovari",food:"Produkti",profile:"Profil",settings:"Nastroyki",admin:"Admin",dark:"Temniy rejim",logout:"Vixod"}};
-function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){document.body.classList.toggle("bg-aero",v==="aero");document.body.classList.toggle("bg-classic",v==="classic");localStorage.ibk_bg=v} function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
+function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){}function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
 const fmtN=v=>Math.abs(+v||0)<.005?"0":(+v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/\u00a0/g," "), fmtI=v=>Math.round(+v||0).toLocaleString("ru-RU").replace(/\u00a0/g," "), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 function activateLogin(){let el=$("login");if(el)el.classList.add("active")}
 function togglePassword(){let p=$("pass");if(p)p.type=p.type==="password"?"text":"password"}
@@ -1570,14 +1964,15 @@ function renderKpis(){let k=DATA.kpis||{};
     </div>
   </div>`;
   let rows=[["Partiya",fmtI(k.partiya),"partiya"],["Vazn (tn)",fmtN(k.vazn),"vazn"],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat"],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov"],["Muddati o'tgan partiya",fmtI(k.expired),"expired"]];
-  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml;}
+  let aviaHtml=AVIA_DATA&&AVIA_DATA.loaded?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer"><span>✈ AVIA AWB</span><b>${fmtI(AVIA_DATA.unique_awb)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">Muddati o'tgan: <b style="color:#dc2626">${fmtI(AVIA_DATA.overdue_count)}</b></div></div>`:"";
+  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml+aviaHtml;}
 function table(h,rows,cls=""){rows=rows||[];return `<table class="${cls}"><colgroup>${h.map(x=>`<col style="${x.w?'width:'+x.w:''}">`).join("")}</colgroup><thead><tr>${h.map(x=>`<th class="${x.n?'num':'text'}">${x.t}</th>`).join("")}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${r._class||''}" onclick='detail(${JSON.stringify(r.key||{}).replaceAll("'","&#39;")})'>${h.map(x=>{let cls=x.n?'num':'text', raw=r[x.k], val=x.n&&(raw===""||raw===null||raw===undefined)?"":(x.f?x.f(raw):esc(raw)), tip=esc(raw);if(ri===0&&!x.n&&(val==="Jami"||String(val).startsWith("Jami ")))val="IBK bo'yicha Jami";if(x.k==="released_partiya"&&(+raw||0)===0&&((+r.released_qiymat||0)>0.005||(+r.released_vazn||0)>0.005)){cls+=" partial";tip="Qisman yechilgan";val="0"}return `<td class="${cls}" title="${tip}">${val}</td>`}).join("")}</tr>`).join("")}</tbody></table>`}
 function total(rows,map){rows=rows||[];let out={};for(let k in map)out[k]=rows.reduce((a,r)=>a+(+r[map[k]]||0),0);return out} function basicTotal(rows,label="IBK bo'yicha Jami",nameKey="name"){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});let r={key:{},partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov};r[nameKey]=label;return [r].concat(rows||[])} function companyTotal(rows){let k=DATA.kpis||{};return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",partiya:k.partiya||0,vazn:k.vazn||0,qiymat:k.qiymat||0,tolov:k.tolov||0,depozit:k.depozit_matched||0}].concat(rows||[])}function expiredTotal(rows){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",rejim:"",post:"",kun:"",partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov}].concat(rows||[])} function foodRows(){let t=DATA.food_total||{name:"IBK bo'yicha Jami",vazn:0,qiymat:0,over_vazn:0,over_qiymat:0,ulush:100};return [t].concat(DATA.food||[])} function regimeSummaryRows(){let rows=(DATA.summary||basicTotal(DATA.regimes||[])).map(r=>{if(["IM70","IM74","TR80"].includes(r.name||r.rejim))return Object.assign({key:{view:"regime_posts",regime:r.name||r.rejim}},r);return r});return rows}
 function expiredSummaryRows(){return (DATA.expired_summary||basicTotal(DATA.expired||[])).map((r,i)=>i===0?Object.assign({key:{view:"expired_inline"}},r):r)} function periodRows(r){let rows=(r&&r.rows)||[], t=total(rows,{partiya:"partiya",qiymat:"qiymat",tolov:"tolov"});return [{key:{},company:"IBK bo'yicha Jami",stir:"",decl:"",partiya:t.partiya,qiymat:t.qiymat,tolov:t.tolov}].concat(rows)} function expiredPostRegimeRows(){let rows=DATA.expired_post_regime||[], t=total(rows,{jami_partiya:"jami_partiya",jami_qiymat:"jami_qiymat",expired_partiya:"expired_partiya",expired_qiymat:"expired_qiymat",im70_partiya:"im70_partiya",im74_partiya:"im74_partiya",tr80_partiya:"tr80_partiya"});t.ulush=t.jami_qiymat? t.expired_qiymat/t.jami_qiymat*100:0;t.post="IBK bo'yicha Jami";t.key={};return [t].concat(rows)} function executiveSummary(){if(!DATA)return "";let k=DATA.kpis||{}, top=(DATA.top_value||[])[0]||{}, dep=(DATA.top_deposit||[])[0]||{}, own=(DATA.warehouse||[]).find(r=>(r.name||"")==="O'z ombor")||{}, exp=(DATA.expired_post_regime||[])[0]||{};let items=[['Umumiy nazorat',`${fmtI(k.partiya)} partiya, ${fmtN(k.qiymat)} ming $ qiymat.`],['Muddati o\'tgan',`${fmtI(k.expired)} partiya. Asosiy kesim: ${esc(exp.post||'postlar')}.`],['Eng yirik korxona',`${esc(top.korxona||'-')} - ${fmtN(top.qiymat||0)} ming $.`],['O\'z ombor',`${fmtI(own.partiya||0)} partiya, ${fmtN(own.qiymat||0)} ming $.`],['Depozit yetakchisi',`${esc(dep.korxona||'-')} - ${fmtN(dep.depozit||0)} mln so\'m.`]];return `<div class="panel exec-summary"><h2>Rahbar uchun qisqa xulosa</h2><div class="summary-grid">${items.map(x=>`<div class="summary-item"><b>${x[0]}</b><span>${x[1]}</span></div>`).join("")}</div></div>`}
 function showKpi(kind){if(!DATA)return;let titles={partiya:"Partiya kelib chiqishi",vazn:"Vazn kelib chiqishi",qiymat:"Qiymat kelib chiqishi",tolov:"Kutilayotgan to'lov kelib chiqishi",depozit:"Depozit kelib chiqishi",expired:"Muddati o'tgan partiya kelib chiqishi"};dlgTitle.textContent=titles[kind]||"KPI asosi";if(kind==="depozit"){dlgBody.innerHTML=table(companyCols(),companyTotal(DATA.top_deposit||[]));dlg.showModal();return}if(kind==="expired"){dlgBody.innerHTML=table([{k:"post",t:"Post",w:"22%"},{k:"jami_partiya",t:"Jami partiya",n:1,f:fmtI},{k:"jami_qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN},{k:"expired_partiya",t:"Muddati o'tgan partiya",n:1,f:fmtI},{k:"expired_qiymat",t:"Muddati o'tgan qiymat (ming $)",n:1,f:fmtN},{k:"ulush",t:"Partiyadagi ulushi (%)",n:1,f:fmtN},{k:"im70_partiya",t:"IM70 partiya",n:1,f:fmtI},{k:"im74_partiya",t:"IM74 partiya",n:1,f:fmtI},{k:"tr80_partiya",t:"TR80 partiya",n:1,f:fmtI}],expiredPostRegimeRows());dlg.showModal();return}dlgBody.innerHTML=table([{k:"rejim",t:"Rejim",w:"24%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.regimes||[],"IBK bo'yicha Jami","rejim"));dlg.showModal()}
  function numbered(rows){return (rows||[]).map((r,i)=>Object.assign({rn:i?i:""},r))} function dateOptions(){let seen=new Set();return ARCHIVE.filter(r=>!seen.has(r.date)&&seen.add(r.date)).map(r=>`<option value="${r.date}">${r.date}</option>`).join("")} function xls(kind){return DATA?`<a class="btn light" href="/api/export?kind=${kind}&report=${DATA.id}&token=${TOKEN}">Excel</a>`:""}
 function bars(rows,label,value,fmt){rows=(rows||[]).filter(r=>(+r[value]||0)>0);let max=rows.reduce((m,r)=>Math.max(m,+r[value]||0),0)||1,sum=rows.reduce((a,r)=>a+(+r[value]||0),0)||1;return `<div class=bars>${rows.map(r=>{let pct=(+r[value]||0)/sum*100,w=(+r[value]||0)/max*100;return `<div class=barrow><div title="${esc(r[label])}">${esc(r[label])}</div><div class=bar><span style="width:${Math.max(5,w)}%">${pct.toFixed(1)}%</span></div><b>${fmt(r[value])}</b></div>`}).join("")}</div>`} function by(rows,k){return (rows||[]).slice().sort((a,b)=>(+b[k]||0)-(+a[k]||0))} function expiredBlockTable(rows){rows=rows||[];let body=rows.map(r=>{let group=!r.korxona&&!r.stir&&r.name;if(group)return `<tr class="merged-row"><td colspan="3" title="${esc(r.name)}">${esc(r.name)}</td><td class="num">${fmtI(r.partiya)}</td><td class="num">${fmtN(r.qiymat)}</td><td class="num">${fmtN(r.vazn)}</td><td class="num">${fmtN(r.tolov)}</td><td></td></tr>`;return `<tr title="${esc((r.korxona||'')+' '+(r.reason||''))}"><td class="num">${esc(r.name)}</td><td class="text col-korxona">${esc(r.korxona)}</td><td class="num">${esc(r.stir)}</td><td class="num">${fmtI(r.partiya)}</td><td class="num">${fmtN(r.qiymat)}</td><td class="num">${fmtN(r.vazn)}</td><td class="num">${fmtN(r.tolov)}</td><td class="text col-reason">${esc(r.reason)}</td></tr>`}).join("");return `<table class="sample-like expired-detail-sample"><colgroup><col style="width:44px"><col style="width:330px"><col style="width:116px"><col style="width:74px"><col style="width:96px"><col style="width:96px"><col style="width:116px"><col style="width:320px"></colgroup><thead><tr><th rowspan=2>T/r</th><th colspan=2>Korxona ma'lumotlari</th><th rowspan=2>Partiya</th><th rowspan=2>Qiymati<br>(ming $)</th><th rowspan=2>Vazni<br>(tn)</th><th rowspan=2>Kutilayotgan<br>(mln so'm)</th><th rowspan=2>Saqlanish sababi</th></tr><tr><th>Korxona nomi</th><th>STIR</th></tr></thead><tbody>${body}</tbody></table>`}
-function uploadPanel(){return `<div class=stack><div class=panel><h2>Fayl yuklash</h2><div class=muted>Bu modul umumiy: BNRTE va To'lovlar uchun fayllar alohida yuklanadi.</div></div><div class=panel><h2>BNRTE jamlanma</h2><form class="upload" id="upload"><div><label>Asos fayl</label><input name="source" type="file" accept=".xls,.xlsx,.html,.htm" required></div><div><label>Depozit fayl</label><input name="deposit" type="file" accept=".xlsx"></div><div></div><button>BNRTE yuklash</button></form><div class=muted>Hisobot sanasi asos fayl nomidan avtomatik aniqlanadi.</div></div><div class=panel><h2>To'lovlar jadvallari</h2><form class="upload" id="tolovUpload"><div><label>To'lov baza fayli</label><input name="source" type="file" accept=".xlsx,.xls" required></div><div class=muted>04.06+07.06.2026 kabi asos fayl yuklanadi.</div><div></div><button>To'lov jadvallarini shakllantirish</button></form><div id="tolovUploadResult" class=muted>Natijada 13 ta Excel fayl shakllanadi va To'lovlar modulidagi yuklash tugmalariga ulanadi.</div></div></div>`} function bindUpload(){let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)};let tf=$("tolovUpload");if(tf)tf.onsubmit=async e=>{e.preventDefault();$("status").textContent="To'lovlar shakllantirilyapti...";let j=await api("/api/tolov",{method:"POST",body:new FormData(tf)});PAYMENTS=j.payments||[];$("tolovUploadResult").innerHTML=`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm. <button class="light" onclick="GROUP='payments';TAB='pay_lists';render()">To'lovlar jadvaliga o'tish</button>`;$("status").textContent="To'lovlar tayyor"}}
+function uploadPanel(){return `<div class=stack><div class=panel><h2>Fayl yuklash</h2><div class=muted>Bu modul umumiy: BNRTE va To'lovlar uchun fayllar alohida yuklanadi.</div></div><div class=panel><h2>BNRTE jamlanma</h2><form class="upload" id="upload"><div><label>Asos fayl</label><input name="source" type="file" accept=".xls,.xlsx,.html,.htm" required></div><div><label>Depozit fayl</label><input name="deposit" type="file" accept=".xlsx"></div><div></div><button>BNRTE yuklash</button></form><div class=muted>Hisobot sanasi asos fayl nomidan avtomatik aniqlanadi.</div></div><div class=panel><h2>To'lovlar jadvallari</h2><form class="upload" id="tolovUpload"><div><label>To'lov baza fayli</label><input name="source" type="file" accept=".xlsx,.xls" required></div><div class=muted>04.06+07.06.2026 kabi asos fayl yuklanadi.</div><div></div><button>To'lov jadvallarini shakllantirish</button></form><div id="tolovUploadResult" class=muted>Natijada 13 ta Excel fayl shakllanadi va To'lovlar modulidagi yuklash tugmalariga ulanadi.</div></div><div class=panel><h2>Omborlar reestri</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">Yangi reestri faylini yuklash:</label><input type="file" id="wrFile" accept=".xlsx,.xls" style="font-size:12px"><button onclick="uploadWrRegistry()">Yuklash</button><span class="muted" id="wrUploadStatus"></span></div><div class=muted style="font-size:12px">omborlarReestri*.xlsx formatidagi fayl yuklanadi. Yuklangandan so'ng Omborlar → Reestri bo'limida aks etadi.</div></div><div class=panel><h2>✈ AVIA AWB</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">AWB Excel yuklash:</label><input type="file" id="aviaFile" accept=".xlsx,.xls" style="font-size:12px" onchange="uploadAviaAwbDirect(this.files[0])"><span class="muted" id="aviaUploadStatus"></span></div><div class=muted style="font-size:12px">"Yuklarni qabul qilish*.xlsx" formatidagi fayl yuklanadi. Yuklangandan so'ng BNRTE → AVIA AWB bo'limida aks etadi.</div></div></div>`} function bindUpload(){let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)};let tf=$("tolovUpload");if(tf)tf.onsubmit=async e=>{e.preventDefault();$("status").textContent="To'lovlar shakllantirilyapti...";let j=await api("/api/tolov",{method:"POST",body:new FormData(tf)});PAYMENTS=j.payments||[];$("tolovUploadResult").innerHTML=`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm. <button class="light" onclick="GROUP='payments';TAB='pay_lists';render()">To'lovlar jadvaliga o'tish</button>`;$("status").textContent="To'lovlar tayyor"}}
 const ownCols=[{k:"korxona",t:"Korxona nomi",w:"20%"},{k:"stir",t:"STIR",w:"9%"},{k:"muddat",t:"Muddat",w:"9%"},{k:"kun_hisobi",t:"Kun hisobi",w:"7%",n:1,f:fmtI},{k:"partiya",t:"Partiya",w:"7%",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"9%",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"10%",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",w:"10%",n:1,f:fmtN},{k:"tovar",t:"Tovar",w:"19%"}];
 function companyCols(){let k=DATA&&DATA.kpis||{};let dh=k.depozit?`Depozit ${fmtN(k.depozit)} (mln so'm)`:"Depozit (mln so'm)";return [{k:"korxona",t:"Korxona nomi",w:"48%"},{k:"stir",t:"STIR",w:"10%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN},{k:"depozit",t:dh,n:1,f:fmtN}]}
 const sumCols=[{k:"name",t:"Ko'rsatkich",w:"38%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}];
@@ -1591,12 +1986,160 @@ function paymentModule(mode="overview"){let rows=paymentRows(), t=paymentTotal()
 
 function overviewPanels(){return `<div class="grid2">${executiveSummary()}<div class=panel><h2>Jami va 70-74-80</h2>${table(sumCols,regimeSummaryRows())}<div class=overview-note>Rejim ustiga bosilganda postlar kesimida asos ochiladi.</div></div><div class=panel><h2 onclick="detail({view:'expired_inline'})">Jami muddati o'tgan</h2>${table(sumCols,expiredSummaryRows())}<div id="expiredInline" class="chart"></div></div><div class="panel wide"><h2>TOP 20 korxona: qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN)}</div><div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div><div class=panel><h2>Muddati o'tgan postlar</h2>${bars(DATA.post_summary||[],"post","partiya",fmtI)}</div><div class=panel><h2>Tovar guruhlari partiya ulushi</h2>${bars(by(DATA.goods||[],"partiya"),"name","partiya",fmtI)}</div></div>`}
 
-function render(){if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","archive"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim","Rejimlar"],["korxona",tr("companies")],["ombor","Omborlar"],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat","Muddatlar"],["archive",tr("archive")]], payTabs=[["payments","Umumiy"],["pay_lists","Hosil bo'lgan jadvallar"],["pay_analysis","Tahlil"]], commonTabs=[["upload",tr("upload")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view()}
-function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=panel><h2>Profil</h2><b>${esc(ME.full_name||ME.user)}</b><p>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).join(", ")}</p></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button><label>Fon</label><select onchange="setBg(this.value)"><option value="premium">Premium: rasmiy aeroport</option><option value="aero">Premium: runway xaritasi</option><option value="classic">Klassik: yengil gerb</option></select></div></div>`;return}if(TAB==="admin"){v.innerHTML=adminPanel();bindUserForm();loadUsers();return}if(!DATA){v.innerHTML=landingPanel();return}
+let WR_MAP=null,WR_DATA=null;
+function wrTypeColor(t){return {ochiq:'#1d72b8',yopiq:'#0f4c8a',dutyfree:'#d97706',erkin:'#7c3aed'}[t]||'#1d72b8'}
+function wrTypeName(t){return {ochiq:"Ochiq bojxona ombori",yopiq:"Yopiq bojxona ombori",dutyfree:"Boj olinmaydigan savdo",erkin:"Erkin ombor"}[t]||t}
+function wrRiskColor(r){return {red:'#dc2626',orange:'#d97706',green:'#16a34a'}[r]||'#16a34a'}
+function wrMarkerHtml(w){
+  let clr=wrTypeColor(w.type),rClr=wrRiskColor(w.risk);
+  let area=Math.max(w.area_open||0,w.area_closed||0);
+  let sz=Math.round(Math.max(22,Math.min(42,22+Math.sqrt(area/10000)*20)));
+  let border=w.risk==='red'?'3px solid #dc2626':w.risk==='orange'?'3px solid #d97706':'2px solid rgba(255,255,255,.8)';
+  let badges='';
+  if(w.fvv)badges+=`<div style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">🔥 FVV</div>`;
+  if(w.ssv)badges+=`<div style="position:absolute;bottom:-6px;right:-6px;background:#16a34a;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">GSP</div>`;
+  let icon={ochiq:'📦',yopiq:'🔒',dutyfree:'🛍',erkin:'⭐'}[w.type]||'📦';
+  return `<div style="position:relative;width:${sz}px;height:${sz}px;transform:translate(-50%,-50%)">${badges}<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:${border};display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.44)}px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;box-sizing:border-box">${icon}</div></div>`
+}
+function wrInsTable(wrs,fileDate){
+  let sorted=[...wrs].sort((a,b)=>(b.ins_sum||0)-(a.ins_sum||0));
+  let rows=sorted.map(w=>{
+    let dCls=w.ins_days===null?'':(w.ins_days<0?'wr-risk-red':w.ins_days<90?'wr-risk-orange':'wr-risk-green');
+    let dTxt=w.ins_days===null?'—':(w.ins_days<0?`${Math.abs(w.ins_days)} kun o'tgan!`:`${w.ins_days} kun qoldi`);
+    let fvvBadge=w.fvv?`<span class="wr-badge-fvv">FVV</span>`:'';
+    let ssvBadge=w.ssv?`<span class="wr-badge-ssv">GSP</span>`:'';
+    return `<tr><td>${esc(w.name)}${fvvBadge}${ssvBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
+  }).join('');
+  return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta summasi</th><th>Muddat</th><th>Holat</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function wrDeadlineTable(wrs,fileDate){
+  let at_risk=wrs.filter(w=>w.ins_days!==null&&w.ins_days<90).sort((a,b)=>(a.ins_days||0)-(b.ins_days||0));
+  if(!at_risk.length)return '<div class="muted" style="padding:12px">Yaqin 90 kunda muddati tugaydigan sug\'urta yo\'q.</div>';
+  let rows=at_risk.map(w=>{
+    let dCls=w.ins_days<0?'wr-risk-red':'wr-risk-orange';
+    let dTxt=w.ins_days<0?`${Math.abs(w.ins_days)} kun o'tgan!`:`${w.ins_days} kun qoldi`;
+    let fvvBadge=w.fvv?`<span class="wr-badge-fvv">FVV</span>`:'';
+    let ssvBadge=w.ssv?`<span class="wr-badge-ssv">GSP</span>`:'';
+    return `<tr><td>${esc(w.name)}${fvvBadge}${ssvBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
+  }).join('');
+  return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta muddati</th><th>Holat</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+let WR_ACTIVE_TYPES=new Set(['ochiq','yopiq','dutyfree','erkin']);
+let WR_POPUP_EL=null;
+function wrSvgMarker(w){
+  let clr=wrTypeColor(w.type);
+  let ring=w.risk==='red'?'#dc2626':w.risk==='orange'?'#f59e0b':'#22c55e';
+  let sz=32;
+  let icons={ochiq:'M4 20h16M8 4h8v12H8z',yopiq:'M12 2L4 7v6c0 5.25 3.58 10.15 8 11.34C16.42 23.15 20 18.25 20 13V7L12 2z',dutyfree:'M6 2l.5 4.5H9l.5-4.5h5l.5 4.5h2.5L18 2M3 7h18l-1.5 13H4.5L3 7z',erkin:'M12 2a7 7 0 0 1 7 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 0 1 7-7z'};
+  let path=icons[w.type]||icons.ochiq;
+  return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.28));cursor:pointer"><circle cx="16" cy="16" r="15" fill="${clr}" stroke="${ring}" stroke-width="3"/><g transform="translate(4,4)" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></g></svg>`;
+}
+function buildWrMap(wrs){
+  let el=document.getElementById('wrMap');if(!el)return;
+  if(WR_MAP){try{WR_MAP.remove()}catch(e){}WR_MAP=null}
+  el.innerHTML='';
+  // Build filter bar
+  let fb=document.getElementById('wrFilterBar');
+  if(fb){
+    let types=['ochiq','yopiq','dutyfree','erkin'];
+    fb.innerHTML=`<div class="wr-filter-row">${types.map(t=>`<label class="wr-filter-chip ${WR_ACTIVE_TYPES.has(t)?'active':''}"><input type="checkbox" ${WR_ACTIVE_TYPES.has(t)?'checked':''} onchange="wrToggleType('${t}',this.checked)"><span class="wr-chip-dot" style="background:${wrTypeColor(t)}"></span>${wrTypeName(t)}</label>`).join('')}</div>`;
+  }
+  _loadLeaflet(function(){
+    try{
+      let map=L.map(el,{center:[41.27,69.27],zoom:11,zoomControl:true});
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+      WR_MAP=map;
+      WR_MAP._wrMarkers=[];
+      wrs.forEach(w=>{
+        if(!w.lat||!w.lon)return;
+        let icon=L.divIcon({html:wrSvgMarker(w),className:'',iconSize:[32,32],iconAnchor:[16,16]});
+        let m=L.marker([w.lat,w.lon],{icon,title:w.name});
+        m._wrType=w.type;
+        m._wrData=w;
+        if(!WR_ACTIVE_TYPES.has(w.type))m.options.opacity=0;
+        m.on('click',function(e){L.DomEvent.stopPropagation(e);showWrPopup(w,e.originalEvent)});
+        m.addTo(map);
+        WR_MAP._wrMarkers.push(m);
+      });
+      map.on('click',function(){hideWrPopup()});
+    }catch(err){console.error('WR map error:',err)}
+  });
+}
+function wrToggleType(type,on){
+  if(on)WR_ACTIVE_TYPES.add(type);else WR_ACTIVE_TYPES.delete(type);
+  document.querySelectorAll('.wr-filter-chip').forEach(el=>{
+    let inp=el.querySelector('input');
+    if(inp)el.classList.toggle('active',inp.checked);
+  });
+  if(!WR_MAP||!WR_MAP._wrMarkers)return;
+  WR_MAP._wrMarkers.forEach(m=>{
+    if(WR_ACTIVE_TYPES.has(m._wrType))m.setOpacity(1);else m.setOpacity(0);
+  });
+}
+function showWrPopup(w,evt){
+  hideWrPopup();
+  let riskClr=w.risk==='red'?'#dc2626':w.risk==='orange'?'#f59e0b':'#16a34a';
+  let insDays=w.ins_days===null?'—':w.ins_days<0?`<span style="color:#dc2626">${Math.abs(w.ins_days)} kun o'tgan!</span>`:`<span style="color:#d97706">${w.ins_days} kun qoldi</span>`;
+  let fvvRow=w.fvv?`<div class="wr-popup-row"><span>FVV:</span><b>${esc(w.fvv)}</b></div>`:'';
+  let ssvRow=w.ssv?`<div class="wr-popup-row"><span>SSV:</span><b>${esc(w.ssv)}</b></div>`:'';
+  let div=document.createElement('div');
+  div.className='wr-popup-card';
+  div.innerHTML=`<div class="wr-popup-head" style="background:${wrTypeColor(w.type)}"><b>${esc(w.name)}</b><span>${esc(wrTypeName(w.type))}</span></div><div class="wr-popup-body"><div class="wr-popup-row"><span>Litsenziya №:</span><b>${esc(w.lic_num||'—')}</b></div><div class="wr-popup-row"><span>Direktor:</span><b>${esc(w.director||'—')}</b></div><div class="wr-popup-row"><span>Telefon:</span><b>${esc(w.phone||'—')}</b></div><div class="wr-popup-row"><span>Sug'urta:</span><b>${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln so\'m':'—'}</b></div><div class="wr-popup-row"><span>Sug'urta muddati:</span><b>${esc(w.ins_exp||'—')}</b></div><div class="wr-popup-row"><span>Holat:</span><b>${insDays}</b></div>${fvvRow}${ssvRow}</div>`;
+  let mapEl=document.getElementById('wrMap');
+  if(mapEl){mapEl.style.position='relative';mapEl.appendChild(div);}
+  WR_POPUP_EL=div;
+  setTimeout(()=>div.classList.add('visible'),10);
+}
+function hideWrPopup(){
+  if(WR_POPUP_EL){WR_POPUP_EL.classList.remove('visible');setTimeout(()=>{if(WR_POPUP_EL&&WR_POPUP_EL.parentNode)WR_POPUP_EL.parentNode.removeChild(WR_POPUP_EL);WR_POPUP_EL=null},300);}
+}
+async function loadWarehouseRegistry(){
+  let panel=document.getElementById('wrRegistryPanel');if(!panel)return;
+  try{
+    let j=await api('/api/warehouses');
+    WR_DATA=j;
+    let wrs=j.warehouses||[];
+    let fd=j.file_date||'';
+    let dateLabel=fd?` (${fd} holatiga)`:'';
+    let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length};
+    let statHtml=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
+      <span><b style="color:#1d72b8">${stats.total}</b> ombor</span>
+      <span style="color:#dc2626"><b>${stats.red}</b> muddati o'tgan</span>
+      <span style="color:#d97706"><b>${stats.orange}</b> diqqat talab</span>
+      <span style="color:#16a34a"><b>${stats.ssv}</b> SSV</span>
+      ${stats.fvv?`<span style="color:#ef4444"><b>${stats.fvv}</b> FVV</span>`:''}
+    </div>`;
+    panel.innerHTML=`<h2>Omborlar reestri${dateLabel}</h2>
+      ${statHtml}
+      <div class="wr-map-wrap">
+        <div class="wr-filter-bar" id="wrFilterBar"></div>
+        <div id="wrMap" style="height:480px;width:100%"></div>
+      </div>
+      <div style="margin-top:20px"><h3 style="font-size:14px;margin-bottom:8px">Kafolat muddati yaqinlashayotganlar${dateLabel}</h3>${wrDeadlineTable(wrs,fd)}</div>
+      <div style="margin-top:20px"><h3 style="font-size:14px;margin-bottom:8px">Sug'urta summasi bo'yicha${dateLabel}</h3>${wrInsTable(wrs,fd)}</div>`;
+    buildWrMap(wrs);
+  }catch(e){let panel=document.getElementById('wrRegistryPanel');if(panel)panel.innerHTML=`<h2>Omborlar reestri</h2><div class="muted">Ma'lumot yuklanmadi: ${esc(String(e))}</div>`}
+}
+async function uploadWrRegistry(){
+  let inp=document.getElementById('wrFile'),st=document.getElementById('wrUploadStatus');
+  if(!inp||!inp.files[0])return;
+  if(st)st.textContent='Yuklanmoqda...';
+  let fd=new FormData();fd.append('file',inp.files[0]);
+  try{
+    let j=await api('/api/upload_warehouses',{method:'POST',body:fd});
+    WR_DATA=j;
+    if(st)st.textContent=`Tayyor: ${(j.warehouses||[]).length} ta ombor yuklandi`;
+    await loadWarehouseRegistry();
+  }catch(e){if(st)st.textContent='Xatolik: '+String(e)}
+}
+
+function render(){if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","archive","avia"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim","Rejimlar"],["korxona",tr("companies")],["ombor","Omborlar"],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat","Muddatlar"],["archive",tr("archive")],["avia","✈ AVIA AWB"]], payTabs=[["payments","Umumiy"],["pay_lists","Hosil bo'lgan jadvallar"],["pay_analysis","Tahlil"]], commonTabs=[["upload",tr("upload")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view()}
+function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=panel><h2>Profil</h2><b>${esc(ME.full_name||ME.user)}</b><p>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).join(", ")}</p></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button></div></div>`;return}if(TAB==="admin"){v.innerHTML=adminPanel();bindUserForm();loadUsers();return}if(!DATA){v.innerHTML=landingPanel();return}
 if(TAB==="umumiy"){v.innerHTML=overviewPanels();return}
+if(TAB==="avia"){v.innerHTML=aviaPanel();loadAviaAwb();return}
 if(TAB==="payments"){v.innerHTML=paymentModule("overview");return}if(TAB==="pay_lists"){v.innerHTML=paymentModule("lists");return}if(TAB==="pay_analysis"){v.innerHTML=paymentModule("analysis");return}
 if(TAB==="rejim"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami va 70-74-80</h2>${table(sumCols,regimeSummaryRows())}</div><div class=panel><h2>70-74-80 rejimlar kesimida</h2>${table(regimeCols,basicTotal(DATA.regimes||[],"IBK bo'yicha Jami","rejim"))}</div><div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div><div class=panel><h2>Rejimlar to'lov ulushi</h2>${bars(DATA.regimes||[],"rejim","tolov",fmtN)}</div></div>`;return}
-if(TAB==="ombor"){v.innerHTML=`<div class=stack><div class=panel><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();return}
+if(TAB==="ombor"){v.innerHTML=`<div class=stack><div class=panel><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="wrRegistryPanel"><h2>Omborlar reestri</h2><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();loadWarehouseRegistry();return}
 if(TAB==="muddat"){v.innerHTML=`<div class=stack><div class=panel><h2>Muddatlar kesimida</h2>${table([{k:"muddat",t:"Muddat",w:"30%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.ages||[],"IBK bo'yicha Jami","muddat"))}</div><div class=panel><h2>Saqlanish sabablari</h2>${table(sumCols,basicTotal(DATA.reason||[]))}</div><div class=panel><h2>Muddatlar partiya ulushi</h2>${bars(DATA.ages||[],"muddat","partiya",fmtI)}</div><div class=panel><h2>Saqlanish sabablari qiymat ulushi</h2>${bars(DATA.reason||[],"name","qiymat",fmtN)}</div></div>`;return}
 if(TAB==="korxona"){v.innerHTML=`<div class=stack><div class=panel><h2>TOP 20 korxona (qiymat) ${xls("top_value")}</h2>${table(companyCols(),companyTotal(DATA.top_value||[]))}</div><div class=panel><h2>TOP 20 korxona (depozit mablag'lari) ${xls("top_deposit")}</h2>${table(companyCols(),companyTotal(DATA.top_deposit||[]))}</div><div class=panel><h2>Qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN)}</div></div><div class="panel" id="trendPanel"><h3>Korxonalar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportCompanyPanel"><h3>Transport kesimida korxonalar — yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportTrendPanel"><h3>Transport turi bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div>`;loadCompanyTrends();loadTransportCompanyTrends();loadTransportTrends();return}
 if(TAB==="expired"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}<div class=overview-note>Jadval ustunlari jamlanma Excel vkladkasidagi ko'rinishga yaqin qat'iy kenglikda berildi.</div></div><div class=panel><h2>Muddati o'tgan postlar kesimida</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"90px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"120px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"130px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"135px"}],basicTotal(DATA.post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}${bars(DATA.post_summary||[],"post","qiymat",fmtN)}${miniChart(DATA.post_summary||[],"qiymat","post")}</div><div class=panel><h2>Muddati o'tgan jamlanma ${xls("expired")}</h2>${expiredBlockTable(DATA.expired_block||[])}</div><div class=panel><h2>Muddati o'tgan korxonalar</h2>${table([{k:"korxona",t:"Korxona nomi",w:"300px"},{k:"stir",t:"STIR",w:"92px"},{k:"rejim",t:"Rejim",w:"70px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"kun",t:"Kun hisobi",n:1,f:fmtI,w:"80px"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"78px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"120px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"125px"}],expiredTotal(DATA.expired||[]),"fixed-table")}</div></div>`;return}
@@ -1658,7 +2201,7 @@ countryRows=function(){return topNWithOther(DATA.countries||DATA.country||[],30,
 bars=function(rows,label,value,fmt){rows=(rows||[]).filter(r=>(+r[value]||0)>0);let sum=rows.reduce((a,r)=>a+(+r[value]||0),0)||1;return `<div class=bars>${rows.map((r,i)=>{let pct=(+r[value]||0)/sum*100;return `<div class=barrow style="animation-delay:${i*.03}s"><div title="${esc(r[label])}">${esc(r[label])}</div><div class=bar><span style="width:${Math.max(6,pct)}%">${pct.toFixed(1)}%</span></div><b>${fmt(r[value])}</b></div>`}).join("")}</div>`}
 miniChart=function(rows,k,label){rows=by(rows||[],k).slice(0,8);let sum=rows.reduce((a,r)=>a+(+r[k]||0),0)||1, pts=rows.map((r,i)=>[18+i*(260/Math.max(1,rows.length-1)),140-(+r[k]||0)/Math.max(...rows.map(x=>+x[k]||0),1)*104]);let path=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '), area=pts.length?`M18 150 ${path.slice(1)} L278 150 Z`:"";let p1=((+rows[0]?.[k]||0)/sum*100).toFixed(0)+"%";return `<div class="viz-card"><div class="donut" style="--p:${p1}" data-label="${p1}"></div><svg class="trend-svg" viewBox="0 0 300 170"><defs><linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ecdc4"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><path class="trend-area" d="${area}"></path><path class="trend-line" d="${path}"></path>${pts.map(p=>`<circle class="trend-dot" cx="${p[0]}" cy="${p[1]}" r="4"></circle>`).join("")}</svg></div>`}
 chartBlock=function(title,rows,label,value,fmt){return `<div class=panel><h2>${title}</h2>${miniChart(rows,value,label)}${bars(rows,label,value,fmt)}</div>`}
-executiveSummary=function(){if(!DATA)return "";let k=DATA.kpis||{},top=(DATA.top_value||[])[0]||{},dep=(DATA.top_deposit||[])[0]||{},own=(DATA.warehouse||[]).find(r=>(r.name||"")==="O'z ombor")||{},exp=by(DATA.post_summary||[],"partiya")[0]||{};let items=[["Umumiy nazorat",`${fmtI(k.partiya)} partiya, ${fmtN(k.qiymat)} ming $ qiymat.`],["Muddati o'tgan",`${fmtI(k.expired)} partiya. Eng ko'p partiya qayd etilgan post: ${esc(exp.post||'-')}.`],["Eng yirik korxona",`${esc(top.korxona||'-')} - ${fmtN(top.qiymat||0)} ming $.`],["O'z ombor",`${fmtI(own.partiya||0)} partiya, ${fmtN(own.qiymat||0)} ming $.`],["Depozit yetakchisi",`${esc(dep.korxona||'-')} - ${fmtN(dep.depozit||0)} mln so'm.`]];return `<div class="panel exec-summary"><h2>Rahbar uchun qisqa xulosa</h2><div class="summary-grid">${items.map(x=>`<div class="summary-item"><b>${x[0]}</b><span>${x[1]}</span></div>`).join("")}</div></div>`}
+executiveSummary=function(){if(!DATA)return "";let k=DATA.kpis||{},top=(DATA.top_value||[])[0]||{},dep=(DATA.top_deposit||[])[0]||{},own=(DATA.warehouse||[]).find(r=>(r.name||"")==="O'z ombor")||{},exp=by(DATA.post_summary||[],"partiya")[0]||{};let items=[["Umumiy nazorat",`${fmtI(k.partiya)} partiya, ${fmtN(k.qiymat)} ming $ qiymat.`],["Muddati o'tgan",`${fmtI(k.expired)} partiya. Eng ko'p partiya qayd etilgan post: ${esc(exp.post||'-')}.`],["Eng yirik korxona",`${esc(top.korxona||'-')} - ${fmtN(top.qiymat||0)} ming $.`],["O'z ombor",`${fmtI(own.partiya||0)} partiya, ${fmtN(own.qiymat||0)} ming $.`],["Depozit yetakchisi",`${esc(dep.korxona||'-')} - ${fmtN(dep.depozit||0)} mln so'm.`]];let dateStr=DATA.meta&&DATA.meta.date?DATA.meta.date:"bugun";return `<div class="panel exec-summary"><div class="exec-header"><div class="exec-header-left"><span class="exec-pulse-dot" aria-hidden="true"></span><span class="exec-title">Joriy holat</span></div><div class="exec-badges"><span class="exec-badge exec-badge-blue">${fmtI(k.partiya)} partiya</span><span class="exec-badge exec-badge-red">${fmtI(k.expired)} muddati o'tgan</span><span class="exec-badge exec-badge-green">Yangilangan: ${esc(dateStr)}</span></div></div><div class="summary-grid">${items.map(x=>`<div class="summary-item"><b>${x[0]}</b><span>${x[1]}</span></div>`).join("")}</div></div>`}
 uploadPanel=function(){return `<div class=stack><div class=panel><h2>Fayl yuklash</h2><div class=muted>BNRTE, To'lovlar va yil davomida yig'ilgan asos fayllarni shu yerdan yuklaysiz.</div></div><div class=panel><h2>BNRTE jamlanma</h2><form class="upload" id="upload"><div><label>Asos fayl</label><input name="source" type="file" accept=".xls,.xlsx,.html,.htm" required></div><div><label>Depozit fayl</label><input name="deposit" type="file" accept=".xlsx"></div><div></div><button>BNRTE yuklash</button></form></div><div class=panel><h2>Yillik arxivni birdan yuklash</h2><form class="upload" id="bulkUpload"><div><label>Asos fayllar</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div><div><label>Depozit fayl ixtiyoriy</label><input name="deposit" type="file" accept=".xlsx"></div><div></div><button>Hammasini yuklash</button></form><div id=bulkResult class=muted>Fayllar sanasi nomidan olinadi va arxivga qo'shiladi.</div></div><div class=panel><h2>To'lovlar jadvallari</h2><form class="upload" id="tolovUpload"><div><label>To'lov baza fayli</label><input name="source" type="file" accept=".xlsx,.xls" required></div><div class=muted>04.06+07.06.2026 kabi asos fayl yuklanadi.</div><div></div><button>To'lov jadvallarini shakllantirish</button></form><div id="tolovUploadResult" class=muted>Natijada Excel fayllar shakllanadi.</div></div></div>`}
 bindUpload=function(){let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)};let bf=$("bulkUpload");if(bf)bf.onsubmit=async e=>{e.preventDefault();$("status").textContent="Yillik asos fayllar yuklanyapti...";let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});$("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo'shildi. Arxiv sanalari yangilanadi.`;$("status").textContent="Bulk yuklash boshlandi";await loadArchive();};let tf=$("tolovUpload");if(tf)tf.onsubmit=async e=>{e.preventDefault();$("status").textContent="To'lovlar shakllantirilyapti...";let j=await api("/api/tolov",{method:"POST",body:new FormData(tf)});PAYMENTS=j.payments||[];$("tolovUploadResult").innerHTML=`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm.`;$("status").textContent="To'lovlar tayyor"}}
 buildRelease=async function(){let base=$("relBase").value,final=$("relFinal").value;if(parseUzDate(base)>=parseUzDate(final)){$("releaseResult").innerHTML=`<div class=muted>Boshlang'ich sana yakuniy sanadan oldin bo'lishi kerak.</div>`;return}let j=await api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`);if(j.missing){$("releaseResult").innerHTML=`<div class=muted>Arxivda yo'q sana: ${j.missing.join(", ")}. Shu davr uchun asos fayl yuklash kerak.</div>`;return}let raw=(j.rows||[]).map(r=>Object.assign({korxona:r.korxona||r.company||"",partiya:r.released_partiya,qiymat:r.released_qiymat,vazn:r.released_vazn},r));let rows=numbered([Object.assign({korxona:"IBK bo'yicha Jami",stir:"",decl:"",regime:"",partiya:(j.total||{}).released_partiya,qiymat:(j.total||{}).released_qiymat,vazn:(j.total||{}).released_vazn},j.total||{})].concat(raw));let cols=[{k:"rn",t:"T/r",n:1,f:v=>v,w:"38px"},{k:"korxona",t:"Korxona nomi",w:"280px"},{k:"stir",t:"STIR",w:"90px"},{k:"decl",t:"Deklaratsiya",w:"145px"},{k:"regime",t:"Rejim",w:"70px"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"80px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"120px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"110px"}];$("releaseResult").innerHTML=`<h2>${base} - ${final} <a class="btn light" href="/api/export?kind=release&base=${base}&final=${final}&token=${TOKEN}">Excel</a></h2>${table(cols,rows,"release-table fixed-table")}${releaseAnalytics(raw)}${miniChart(raw,"qiymat","korxona")}`}
@@ -1670,68 +2213,78 @@ const COUNTRY_COORDS=[["xitoy",35.86,104.19],["china",35.86,104.19],["rossiya",6
 function countryLatLon(name){let s=String(name||"").toLowerCase();for(let c of COUNTRY_COORDS){if(s.includes(c[0]))return {lat:c[1],lon:c[2]}}return null}
 const COUNTRY_FLAGS={"xitoy":"🇨🇳","china":"🇨🇳","rossiya":"🇷🇺","russia":"🇷🇺","turkiya":"🇹🇷","turkey":"🇹🇷","koreya":"🇰🇷","germaniya":"🇩🇪","germany":"🇩🇪","italiya":"🇮🇹","fransiya":"🇫🇷","aqsh":"🇺🇸","usa":"🇺🇸","amerika":"🇺🇸","hindiston":"🇮🇳","india":"🇮🇳","qozog":"🇰🇿","kazakh":"🇰🇿","baa":"🇦🇪","amirlik":"🇦🇪","eron":"🇮🇷","iran":"🇮🇷","polsha":"🇵🇱","ispaniya":"🇪🇸","yaponiya":"🇯🇵","japan":"🇯🇵","belarus":"🇧🇾","latviya":"🇱🇻","litva":"🇱🇹","ukraina":"🇺🇦","misr":"🇪🇬","egypt":"🇪🇬","pokiston":"🇵🇰","pakistan":"🇵🇰","vietnam":"🇻🇳","malayziya":"🇲🇾","tailand":"🇹🇭","indoneziya":"🇮🇩","braziliya":"🇧🇷","meksika":"🇲🇽","saudiya":"🇸🇦","gretsiya":"🇬🇷","gruziya":"🇬🇪","britaniya":"🇬🇧"};
 function countryFlag(name){let s=String(name||"").toLowerCase();for(let k in COUNTRY_FLAGS){if(s.includes(k))return COUNTRY_FLAGS[k]}return "🌐"}
-let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;let _YMAP_LOADED=false;let _YMAP_CBS=[];
-function _loadYMaps(cb){
-  if(typeof ymaps3!=='undefined'){ymaps3.ready.then(cb);return}
-  _YMAP_CBS.push(cb);
-  if(_YMAP_LOADED)return;
-  _YMAP_LOADED=true;
+const COUNTRY_LATIN={"ўзбекистон":"O'zbekiston","австралия":"Avstraliya","австрия":"Avstriya","ангилъя":"Angilya","аргентина":"Argentina","арманистон":"Armaniston","афғонистон":"Afg'oniston","ақш":"AQSh","баа":"BAA","бангладеш":"Bangladesh","бахрейн":"Bahreyn","белгия":"Belgiya","белоруссия":"Belorussiya","болгария":"Bolgariya","ботсвана":"Botsvana","бразилия":"Braziliya","британия территорияси":"Britaniya territoriyasi","буюк британия":"Buyuk Britaniya","вануату":"Vanuatu","венгрия":"Vengriya","въетнам":"Vyetnam","германия":"Germaniya","гонконг":"Gonkong","греция":"Gretsiya","грузия":"Gruziya","дания":"Daniya","жар":"JAR","индонезия":"Indoneziya","иордания":"Iordaniya","ирландия":"Irlandiya","исландия":"Islandiya","испания":"Ispaniya","исроил":"Isroil","италия":"Italiya","канада":"Kanada","кипр":"Kipr","корея (кхдр)":"Koreya (KXDR)","корея республикаси":"Koreya Respublikasi","куба":"Kuba","латвия":"Latviya","ливан":"Livan","литва":"Litva","лихтенштейн":"Lixtenshteyn","люксембург":"Lyuksemburg","мар":"MAR","маврикий":"Mavrikiy","мавритания":"Mavritaniya","македония":"Makedoniya","малайзия":"Malayziya","малдива":"Maldiva","малъта":"Malta","маршал ороллари":"Marshal orollari","мексика":"Meksika","миср":"Misr","молдова":"Moldova","монголия":"Mongoliya","нигерия":"Nigeriya","нидерландия":"Niderlandiya","озарбайжон":"Ozarbayjon","покистон":"Pokiston","полша":"Polsha","португалия":"Portugaliya","россия":"Rossiya","руминия":"Ruminiya","сан-марино":"San-Marino","саудия арабистони":"Saudiya Arabistoni","сейшел ороллари":"Seyshel orollari","сербия":"Serbiya","сингапур":"Singapur","сирия":"Siriya","словакия":"Slovakiya","словения":"Sloveniya","тайван":"Tayvan","тайланд":"Tayland","тожикистон":"Tojikiston","тунис":"Tunis","туркия":"Turkiya","туркманистон":"Turkmaniston","украина":"Ukraina","уругвай":"Urugvay","финландия":"Finlandiya","франция":"Fransiya","хитой":"Xitoy","хорватия":"Xorvatiya","черногория":"Chernogoriya","чеҳия":"Chexiya","чили":"Chili","швейцария":"Shveytsariya","швеция":"Shvetsiya","эквадор":"Ekvador","эрон":"Eron","эстония":"Estoniya","янги зеландия":"Yangi Zelandiya","япония":"Yaponiya","қатар":"Qatar","қирғизистон":"Qirg'iziston","қозоғистон":"Qozog'iston","ҳиндистон":"Hindiston","中国":"Xitoy","日本":"Yaponiya","한국":"Koreya","대한민국":"Koreya Respublikasi","الصين":"Xitoy","الهند":"Hindiston","روسيا":"Rossiya","ألمانيا":"Germaniya","فرنسا":"Fransiya","إيطاليا":"Italiya","البرازيل":"Braziliya","كندا":"Kanada","المملكة المتحدة":"Buyuk Britaniya","أمريكا":"AQSh","الولايات المتحدة":"AQSh","تركيا":"Turkiya","إيران":"Eron","باكستان":"Pokiston","بنغلاديش":"Bangladesh","إندونيسيا":"Indoneziya"};
+function countryLatinName(name){let s=String(name||"").toLowerCase().trim();if(COUNTRY_LATIN[s])return COUNTRY_LATIN[s];for(let k in COUNTRY_LATIN){if(s===k.toLowerCase()||s.includes(k)||k.includes(s))return COUNTRY_LATIN[k]}return name}
+let _CFM_ROWS=[];let COUNTRY_FLOW_MAP=null;let _LEAFLET_LOADED=false;let _LEAFLET_CBS=[];let COUNTRY_TRANSPORT_DATA={};let CFM_VEHICLE_ANIMS=[];
+function stopCFMAnimations(){CFM_VEHICLE_ANIMS.forEach(a=>{a.cancelled=true;try{if(a.marker)a.marker.remove()}catch(e){}});CFM_VEHICLE_ANIMS=[]}
+function cfmVehicleIcon(transport,size,bearing){let emoji=transport==='Avia'?'✈':transport==="Temir yo'l"?'🚂':'🚛';let s=Math.round(size);let rot=bearing!=null?`transform:rotate(${bearing.toFixed(1)}deg);transform-origin:center;`:'';return L.divIcon({html:`<div style="font-size:${s}px;line-height:1;user-select:none;pointer-events:none;display:inline-block;${rot}">${emoji}</div>`,className:'',iconSize:[s,s],iconAnchor:[s/2,s/2]})}
+function animateCFMVehicle(map,fromLL,toLL,transport,size,idx,weight,maxWeight){let anim={cancelled:false,marker:null};let emojiNE=transport==='Avia'?45:0;let bearing=emojiNE-Math.atan2(toLL[0]-fromLL[0],toLL[1]-fromLL[1])*180/Math.PI;let icon=cfmVehicleIcon(transport,size,bearing);try{anim.marker=L.marker(fromLL,{icon,interactive:false}).addTo(map)}catch(e){return}let dlat=toLL[0]-fromLL[0],dlon=toLL[1]-fromLL[1];let dist=Math.sqrt(dlat*dlat+dlon*dlon*0.6);let wFactor=(weight&&maxWeight&&maxWeight>0)?1+(weight/maxWeight)*0.65:1;let duration=Math.max(7000,Math.min(30000,dist*700*wFactor));let offset=(idx*0.17+Math.random()*0.08)%1;let startT=null;function step(ts){if(anim.cancelled)return;if(!startT)startT=ts-(offset*duration);let t=((ts-startT)%duration)/duration;let lat=fromLL[0]+dlat*t;let lon=fromLL[1]+dlon*t;try{anim.marker.setLatLng([lat,lon])}catch(e){anim.cancelled=true;return}requestAnimationFrame(step)}requestAnimationFrame(step);CFM_VEHICLE_ANIMS.push(anim)}
+function _loadLeaflet(cb){
+  if(typeof L!=='undefined'){cb();return}
+  _LEAFLET_CBS.push(cb);
+  if(_LEAFLET_LOADED)return;
+  _LEAFLET_LOADED=true;
+  let lnk=document.createElement('link');lnk.rel='stylesheet';lnk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(lnk);
   let s=document.createElement('script');
-  s.src='https://api-maps.yandex.ru/v3/?apikey=0b5695bd-89cd-4d0e-8945-11b2472402ba&lang=ru_RU';
-  s.onload=function(){ymaps3.ready.then(function(){let cbs=_YMAP_CBS;_YMAP_CBS=[];cbs.forEach(fn=>fn())})};
-  s.onerror=function(){let el=document.getElementById('cfmMap');if(el)el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Yandex Maps yuklanmadi</div>'};
+  s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  s.onload=function(){let cbs=_LEAFLET_CBS;_LEAFLET_CBS=[];cbs.forEach(fn=>fn())};
+  s.onerror=function(){['cfmMap','flightsMap'].forEach(id=>{let el=document.getElementById(id);if(el)el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Xarita kutubxonasi yuklanmadi</div>'})};
   document.head.appendChild(s);
 }
 function countryFlowMap(rows){
   _CFM_ROWS=by(rows||[],"qiymat").slice(0,15);
   return `<div style="border-radius:12px;overflow:hidden;border:1px solid var(--line)"><div id="cfmMap" style="height:480px;width:100%"><div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita yuklanmoqda...</div></div></div><div class="globe-caption">Davlatlardan O\'zbekistonga yo\'nalgan yuk oqimi</div>`
 }
-function initCountryFlowMap(){
+async function initCountryFlowMap(){
   let el=document.getElementById("cfmMap");if(!el)return;
   let rows=_CFM_ROWS;if(!rows.length)return;
-  _loadYMaps(function(){_buildCFM(el,rows)});
+  try{COUNTRY_TRANSPORT_DATA=await api("/api/country_transport")}catch(e){COUNTRY_TRANSPORT_DATA={}}
+  _loadLeaflet(function(){_buildCFM(el,rows)});
 }
 function _buildCFM(el,rows){
   try{
-    if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.destroy()}catch(e){}COUNTRY_FLOW_MAP=null}
+    stopCFMAnimations();
+    if(COUNTRY_FLOW_MAP){try{COUNTRY_FLOW_MAP.remove()}catch(e){}COUNTRY_FLOW_MAP=null}
     el.innerHTML='';
-    const {YMap,YMapDefaultSchemeLayer,YMapDefaultFeaturesLayer,YMapMarker,YMapFeature}=ymaps3;
-    let map=new YMap(el,{location:{center:[58,41],zoom:2},behaviors:['drag','scrollZoom','pinchZoom']});
-    map.addChild(new YMapDefaultSchemeLayer());
-    map.addChild(new YMapDefaultFeaturesLayer());
+    let map=L.map(el,{center:[35,55],zoom:2});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:10}).addTo(map);
     COUNTRY_FLOW_MAP=map;
-    let UZ=[69.3,41.3];
-    let uzEl=document.createElement('div');
-    uzEl.innerHTML='<div style="background:#1d72b8;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%)">🇺🇿 O\'zbekiston</div>';
-    map.addChild(new YMapMarker({coordinates:UZ},uzEl));
+    let UZ=[41.3,69.3];
+    let uzIcon=L.divIcon({html:'<div style="background:#1d72b8;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:900;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%)">🇺🇿 O\'zbekiston</div>',className:'',iconSize:[0,0]});
+    L.marker(UZ,{icon:uzIcon}).addTo(map);
     let maxQ=Math.max(1,...rows.map(r=>+r.qiymat||0));
     let maxV=Math.max(1,...rows.map(r=>+r.vazn||0));
-    let allCoords=[];
-    rows.forEach(r=>{
+    let allLatLons=[];
+    rows.forEach((r,ri)=>{
       let ll=countryLatLon(r.name);if(!ll)return;
       let q=+r.qiymat||0,v=+r.vazn||0,p=+r.partiya||0;
       let qS=q/maxQ;
       let clr=qS>=.6?'#16a34a':qS>=.3?'#d97706':'#1d72b8';
-      let coord=[ll.lon,ll.lat];
-      allCoords.push(coord);
-      map.addChild(new YMapFeature({id:'cfmline_'+r.name,geometry:{type:'LineString',coordinates:[coord,UZ]},style:{stroke:[{color:clr,width:1.5+qS*2.5,opacity:.72}]}}));
-      let sz=Math.round(Math.max(30,Math.min(54,30+Math.sqrt(v/maxV)*24)));
+      let coord=[ll.lat,ll.lon];
+      allLatLons.push(coord);
+      L.polyline([coord,UZ],{color:clr,weight:1+qS*2.5,opacity:.5}).addTo(map);
+      let sz=Math.round(Math.max(28,Math.min(50,28+Math.sqrt(v/maxV)*22)));
       let fs=sz>44?12:sz>36?11:10;
-      let flag=countryFlag(r.name);let nm=esc(r.name).slice(0,16);
-      let mEl=document.createElement('div');
-      mEl.style.cssText='transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer';
-      mEl.title=`${flag} ${esc(r.name)}\nPartiya: ${fmtI(p)}\nQiymat: ${fmtN(q)} ming $\nVazn: ${fmtN(v)} tn`;
-      mEl.innerHTML=`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box">${fmtI(p)}</div><div style="white-space:nowrap;background:rgba(255,255,255,.93);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#1a3a5c;box-shadow:0 1px 3px rgba(0,0,0,.2)">${flag} ${nm}</div>`;
-      map.addChild(new YMapMarker({coordinates:coord},mEl));
+      let flag=countryFlag(r.name);
+      let latinNm=countryLatinName(r.name);
+      let nm=esc(latinNm).slice(0,18);
+      let tip=`${flag} ${esc(latinNm)}\nPartiya: ${fmtI(p)}\nQiymat: ${fmtN(q)} ming $\nVazn: ${fmtN(v)} tn`;
+      let html=`<div style="transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer"><div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:${fs}px;font-weight:800;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box">${fmtI(p)}</div><div style="white-space:nowrap;background:rgba(255,255,255,.93);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;color:#1a3a5c;box-shadow:0 1px 3px rgba(0,0,0,.2)">${flag} ${nm}</div></div>`;
+      let cIcon=L.divIcon({html,className:'',iconSize:[0,0]});
+      L.marker(coord,{icon:cIcon,title:tip}).addTo(map);
+      let ctData=COUNTRY_TRANSPORT_DATA[r.name]||null;
+      let transport=ctData?ctData.dominant:'Avia';
+      let vSize=Math.round(Math.max(14,Math.min(32,14+Math.sqrt(v/maxV)*18)));
+      animateCFMVehicle(map,coord,UZ,transport,vSize,ri,v,maxV);
     });
-    if(allCoords.length){
-      let lons=allCoords.map(c=>c[0]).concat([UZ[0]]),lats=allCoords.map(c=>c[1]).concat([UZ[1]]),pad=4;
-      map.setLocation({bounds:[[Math.min(...lons)-pad,Math.min(...lats)-pad],[Math.max(...lons)+pad,Math.max(...lats)+pad]],duration:400});
+    if(allLatLons.length){
+      let lats=allLatLons.map(c=>c[0]).concat([UZ[0]]),lons=allLatLons.map(c=>c[1]).concat([UZ[1]]),pad=4;
+      map.fitBounds([[Math.min(...lats)-pad,Math.min(...lons)-pad],[Math.max(...lats)+pad,Math.max(...lons)+pad]]);
     }
     let lgEl=document.createElement('div');
     lgEl.className='cfm-legend';
-    lgEl.style.cssText='position:absolute;bottom:12px;right:12px;z-index:10';
-    lgEl.innerHTML='<b>Rang — qiymat ulushi:</b><br><span style="color:#16a34a">● Yuqori (60%+)</span><br><span style="color:#d97706">● O\'rta (30-60%)</span><br><span style="color:#1d72b8">● Quyi (&lt;30%)</span><hr style="margin:4px 0"><b>Doira:</b> partiya / vazn';
+    lgEl.style.cssText='position:absolute;bottom:12px;right:12px;z-index:1000';
+    lgEl.innerHTML='<b>Qiymat ulushi:</b><br><span style="color:#16a34a">● Yuqori (60%+)</span><br><span style="color:#d97706">● O\'rta (30-60%)</span><br><span style="color:#1d72b8">● Quyi (&lt;30%)</span><hr style="margin:4px 0"><b>Transport:</b> ✈ Avia · 🚛 Avto · 🚂 Temir yo\'l';
     el.style.position='relative';
     el.appendChild(lgEl);
   }catch(err){console.error('CFM map error:',err)}
@@ -1740,13 +2293,13 @@ const POST_NAMES={"35001":"Nukus aeroporti chegara bojxona posti","35002":"Nukus
 function namedSourcePosts(){return (DATA.source_posts||[]).map(r=>{let nm=r.post_nomi;if(!nm||nm===r.post_kodi||/^\d{5}$/.test(String(nm||""))){nm=POST_NAMES[r.post_kodi]||(r.post_kodi?"Post №"+r.post_kodi:"-")}return Object.assign({},r,{post_nomi:nm})})}
 function sourcePostInfographics(){let posts=by(namedSourcePosts(),"qiymat").slice(0,12),trans=DATA.transport||[],tp=trans.reduce((a,r)=>a+(+r.qiymat||0),0)||1,pp=posts.reduce((a,r)=>a+(+r.qiymat||0),0)||1;let rings=trans.map((r,i)=>{let pct=Math.round((+r.qiymat||0)/tp*100),dash=Math.max(0,Math.min(100,pct));return `<div class=transport-ring style="--p:${dash};--delay:${i*.12}s" onclick='detail(${JSON.stringify(r.key||{transport:r.name})})'><b>${esc(r.name||"-")}</b><span>${pct}%</span><small>${fmtI(r.partiya||0)} partiya В· ${fmtN(r.qiymat||0)} ming $</small></div>`}).join("");let barsHtml=posts.map((r,i)=>{let pct=Math.max(2,(+r.qiymat||0)/pp*100);return `<div class=flow-row onclick='detail(${JSON.stringify(r.key||{})})' title="${esc(r.post_nomi||r.post_kodi||"-")}"><div class=flow-name><b>${esc(r.post_kodi||"-")}</b><span>${esc(r.post_nomi||"-")}</span></div><div class=flow-track><i style="width:${pct.toFixed(1)}%;animation-delay:${i*.05}s"></i><em>${pct.toFixed(1)}%</em></div><div class=flow-num>${fmtN(r.qiymat||0)}</div></div>`}).join("");return `<div class="panel wide"><h2>Nazoratga qo'yilgan postlar va transport turlari</h2><div class=transport-viz><div class=ring-grid>${rings}</div><div class=flow-list>${barsHtml}</div></div></div>`}
 function transportPanel(){let cols=[{k:"post_kodi",t:"Post kodi",w:"78px"},{k:"post_nomi",t:"Post nomi",w:"260px"},{k:"transport",t:"Transport turi",w:"92px"},{k:"partiya",t:"Partiya",w:"78px",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"92px",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"112px",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",w:"112px",n:1,f:fmtN},{k:"korxona",t:"Korxona",w:"82px",n:1,f:fmtI}];let rows=namedSourcePosts();return `<div class=panel><h2>Deklaratsiya post kodi bo'yicha tahlil</h2>${table(cols,basicTotal(rows,"IBK bo'yicha Jami","post_nomi"),"fixed-table transport-table")}</div>${sourcePostInfographics()}${chartBlock("Transport turi bo'yicha ulushi",DATA.transport||[],"name","qiymat",fmtN)}`}
-const overviewPanelsWithMap=overviewPanels;overviewPanels=function(){let html=overviewPanelsWithMap();let countries=countryRows();let countryBlock=`<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countries,"name","qiymat",fmtN)}</div></div>${transportPanel()}`;return html.replace(`<div class=panel><h2>Davlatlar bo'yicha tahlil</h2>${bars(countryRows(),"name","qiymat",fmtN)}</div>`,countryBlock)}
+const overviewPanelsWithMap=overviewPanels;overviewPanels=function(){let html=overviewPanelsWithMap();let countries=countryRows();let countriesLatin=countries.map(r=>Object.assign({},r,{name:countryLatinName(r.name)}));let countryBlock=`<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countriesLatin,"name","qiymat",fmtN)}</div></div>${transportPanel()}`;return html.replace(`<div class=panel><h2>Davlatlar bo'yicha tahlil</h2>${bars(countryRows(),"name","qiymat",fmtN)}</div>`,countryBlock)}
 function flightsPanelShell(){
   return `<div class="panel wide" id="flightsPanelWrap">
 <h2>Toshkent xalqaro aeroporti — jonli parvozlar</h2>
 <div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px">
   <div id="flightsMap" style="height:520px;width:100%">
-    <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Yandex xarita yuklanmoqda...</div>
+    <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita yuklanmoqda...</div>
   </div>
 </div>
 <div id="flightsMeta" class="muted" style="font-size:12px;margin-top:4px">Jonli parvozlar, real vaqtda yangilanadi · Toshkent aeroporti (TAS) · manba: OpenSky Network</div>
@@ -1754,20 +2307,17 @@ function flightsPanelShell(){
 let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
 function initFlightsMap(){
   if(!document.getElementById("flightsMap"))return;
-  _loadYMaps(function(){
+  _loadLeaflet(function(){
     let el=document.getElementById("flightsMap");
     if(!el)return;
-    if(FLIGHTS_MAP){try{FLIGHTS_MAP.destroy()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
+    if(FLIGHTS_MAP){try{FLIGHTS_MAP.remove()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
     el.innerHTML='';
-    const {YMap,YMapDefaultSchemeLayer,YMapDefaultFeaturesLayer,YMapMarker}=ymaps3;
     try{
-      let map=new YMap(el,{location:{center:[69.27,41.3],zoom:6},behaviors:['drag','scrollZoom','pinchZoom']});
-      map.addChild(new YMapDefaultSchemeLayer());
-      map.addChild(new YMapDefaultFeaturesLayer());
+      let map=L.map(el,{center:[41.3,69.27],zoom:6});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:18}).addTo(map);
       FLIGHTS_MAP=map;
-      let tasEl=document.createElement('div');
-      tasEl.innerHTML='<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%);cursor:default" title="Toshkent xalqaro aeroporti (TAS)">TAS</div>';
-      map.addChild(new YMapMarker({coordinates:[69.2401,41.2995]},tasEl));
+      let tasIcon=L.divIcon({html:'<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%);cursor:default">TAS</div>',className:'',iconSize:[0,0]});
+      L.marker([41.2995,69.2401],{icon:tasIcon,title:'Toshkent xalqaro aeroporti (TAS)'}).addTo(map);
       refreshFlightsMap();
       if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
       FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
@@ -1775,21 +2325,18 @@ function initFlightsMap(){
   });
 }
 async function refreshFlightsMap(){
-  if(!FLIGHTS_MAP||typeof ymaps3==='undefined')return;
+  if(!FLIGHTS_MAP||typeof L==='undefined')return;
   let meta=document.getElementById("flightsMeta");
   try{
     let j=await api("/api/flights_live");
-    FLIGHTS_MARKERS.forEach(m=>{try{FLIGHTS_MAP.removeChild(m)}catch(e){}});
+    FLIGHTS_MARKERS.forEach(m=>{try{m.remove()}catch(e){}});
     FLIGHTS_MARKERS=[];
-    const {YMapMarker}=ymaps3;
     (j.planes||[]).forEach(p=>{
+      if(p.lat==null||p.lon==null)return;
       let h=+(p.heading||0);
-      let mEl=document.createElement('div');
-      mEl.style.cssText='transform:translate(-50%,-50%)';
-      mEl.title=esc(p.callsign||p.icao24||'-')+'\nBalandlik: '+Math.round(p.alt||0)+' m\nTezlik: '+Math.round((p.speed||0)*3.6)+' km/soat\nDavlat: '+esc(p.country||'-');
-      mEl.innerHTML='<div style="transform:rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>';
-      let marker=new YMapMarker({coordinates:[p.lon,p.lat]},mEl);
-      FLIGHTS_MAP.addChild(marker);
+      let tip=esc(p.callsign||p.icao24||'-')+'\nBalandlik: '+Math.round(p.alt||0)+' m\nTezlik: '+Math.round((p.speed||0)*3.6)+' km/soat\nDavlat: '+esc(p.country||'-');
+      let icon=L.divIcon({html:'<div style="transform:translate(-50%,-50%) rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>',className:'',iconSize:[0,0]});
+      let marker=L.marker([p.lat,p.lon],{icon,title:tip}).addTo(FLIGHTS_MAP);
       FLIGHTS_MARKERS.push(marker);
     });
     if(meta)meta.textContent=j.error?'Xatolik: '+j.error:'Jonli parvozlar: '+(j.planes||[]).length+' ta \xb7 yangilangan: '+new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"});
@@ -1803,7 +2350,7 @@ function resetUserForm(){let f=$("userForm");if(!f)return;f.reset();f.edit_mode.
 bindUserForm=function(){let f=$("userForm");if(!f)return;f.onsubmit=async e=>{e.preventDefault();let perms=[];["view","upload","export","release"].forEach(p=>{if(f[`perm_${p}`]?.checked)perms.push(p)});let body={user:f.user.value,pass:f.password.value,full_name:f.full_name.value,position:f.position.value,phone:f.phone.value,post_code:f.post_code.value,role:f.role.value,lang:f.lang.value,perms,enabled:true};await api(f.edit_mode.value?"/api/users/update":"/api/users",{method:"POST",body:JSON.stringify(body)});resetUserForm();loadUsers()}}
 window.editUser=function(login){api("/api/users").then(j=>{let u=(j.users||[]).find(x=>x.user===login),f=$("userForm");if(!u||!f)return;f.edit_mode.value="1";f.user.value=u.user;f.user.disabled=true;f.password.value="";f.full_name.value=u.full_name||"";f.position.value=u.position||"";f.phone.value=u.phone||"";f.post_code.value=u.post_code||"";f.role.value=u.role||"foydalanuvchi";f.lang.value=u.lang||"uz";["view","upload","export","release"].forEach(p=>f[`perm_${p}`].checked=(u.perms||[]).includes(p));window.scrollTo({top:0,behavior:"smooth"})})}
 window.deleteUser=async function(login){if(!confirm(`${login} hodimini o'chirasizmi?`))return;await api("/api/users/delete",{method:"POST",body:JSON.stringify({user:login})});loadUsers()}
-loadUsers=async function(){let box=$("users");if(!box)return;try{let j=await api("/api/users");let rows=(j.users||[]).filter(u=>u.enabled!==false).map(u=>Object.assign({},u,{role_text:roleTitle(u.role),perms_text:(u.perms||[]).map(permTitle).join(", "),actions:`<button class="light" onclick="editUser('${u.user.replaceAll("'","")}')">Tahrirlash</button> <button class="danger" onclick="deleteUser('${u.user.replaceAll("'","")}')">O'chirish</button>`}));box.innerHTML=table([{k:"user",t:"Login",w:"90px"},{k:"full_name",t:"F.I.Sh.",w:"210px"},{k:"role_text",t:"Rol",w:"110px"},{k:"post_code",t:"Post",w:"70px"},{k:"perms_text",t:"Vakolatlar",w:"230px"},{k:"actions",t:"Amal",w:"160px"}],rows,"fixed-table").replaceAll("&lt;button class=&quot;light&quot;","<button class=\"light\"").replaceAll("&lt;button class=&quot;danger&quot;","<button class=\"danger\"").replaceAll("&lt;/button&gt;","</button>").replaceAll("&quot;&gt;","\">")}catch(e){box.innerHTML="Admin vakolati kerak"}}
+loadUsers=async function(){let box=$("users");if(!box)return;try{let j=await api("/api/users");let users=(j.users||[]).filter(u=>u.enabled!==false);let rows=users.map(u=>{let su=esc(u.user||''),ju=(u.user||'').replaceAll("'","");return `<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 9px;font-family:monospace;font-size:12px">${su}</td><td style="padding:7px 9px">${esc(u.full_name||'')}</td><td style="padding:7px 9px">${esc(roleTitle(u.role))}</td><td style="padding:7px 9px;text-align:center">${esc(u.post_code||'')}</td><td style="padding:7px 9px;font-size:11px;color:#5a7a9a">${(u.perms||[]).map(p=>esc(permTitle(p))).join(', ')}</td><td style="padding:4px 8px;text-align:center;white-space:nowrap"><button class="icon-btn edit-btn" onclick="editUser('${ju}')" title="Tahrirlash"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3d5a7a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> <button class="icon-btn del-btn" onclick="deleteUser('${ju}')" title="O\x27chirish"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b42318" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></td></tr>`}).join('');box.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><colgroup><col style="width:90px"><col style="width:200px"><col style="width:110px"><col style="width:70px"><col><col style="width:80px"></colgroup><thead><tr style="background:#f0f4fb;border-bottom:2px solid var(--line)"><th style="padding:8px 9px;text-align:left;font-weight:700">Login</th><th style="padding:8px 9px;text-align:left;font-weight:700">F.I.Sh.</th><th style="padding:8px 9px;text-align:left;font-weight:700">Rol</th><th style="padding:8px 9px;text-align:center;font-weight:700">Post</th><th style="padding:8px 9px;text-align:left;font-weight:700">Vakolatlar</th><th style="padding:8px 9px;text-align:center;font-weight:700">Amal</th></tr></thead><tbody>${rows}</tbody></table></div>`}catch(e){box.innerHTML="Admin vakolati kerak"}}
 const bindUploadFinal=bindUpload;bindUpload=function(){bindUploadFinal();let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)}catch(err){$("status").textContent=err.message}};let bf=$("bulkUpload");if(bf)bf.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="Yillik asos fayllar yuklanyapti...";let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});let skip=(j.skipped||[]).length?` O'tkazib yuborildi: ${j.skipped.map(x=>x.filename).join(", ")}`:"";$("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo'shildi.${skip}`;$("status").textContent="Bulk yuklash boshlandi";await loadArchive()}catch(err){$("status").textContent=err.message}}}
 const renderClean=render;render=function(){renderClean();cleanTopActions();if(LANG==="ru")translateRuPage()}
 function releaseCompanyRows(data){
@@ -1995,6 +2542,9 @@ ${refreshHtml}
 <div></div><button>To\'lov jadvallarini shakllantirish</button>
 </form>
 <div id="tolovUploadResult" class=muted></div>
+</div>
+<div class=panel><h2>Omborlar reestri</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">Yangi reestri faylini yuklash:</label><input type="file" id="wrFile" accept=".xlsx,.xls" style="font-size:12px"><button onclick="uploadWrRegistry()">Yuklash</button><span class="muted" id="wrUploadStatus"></span></div><div class=muted style="font-size:12px">omborlarReestri*.xlsx formatidagi fayl yuklanadi. Yuklangandan so\x27ng Omborlar bo\x27limida aks etadi.</div></div>
+<div class=panel><h2>✈ AVIA AWB</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">AWB Excel yuklash:</label><input type="file" id="aviaFile" accept=".xlsx,.xls" style="font-size:12px" onchange="uploadAviaAwbDirect(this.files[0])"><span class="muted" id="aviaUploadStatus"></span></div><div class=muted style="font-size:12px">"Yuklarni qabul qilish*.xlsx" formatidagi fayl yuklanadi. BNRTE → AVIA AWB bo\x27limida aks etadi.</div></div>
 </div></div>`;
 };
 const bindUploadFull=bindUpload;bindUpload=function(){
@@ -2122,7 +2672,7 @@ function resetAutoLogout(){clearTimeout(autoLogoutTimer);if(TOKEN)autoLogoutTime
 const showAppAutoLogout=showApp;showApp=async function(){await showAppAutoLogout();resetAutoLogout()}
 const logoutAutoBase=logout;logout=function(){clearTimeout(autoLogoutTimer);logoutAutoBase();}
 const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(()=>{initFlightsMap();initCountryFlowMap();},80)}
-setBg(localStorage.ibk_bg||"premium");
+document.body.classList.remove("bg-aero","bg-classic");localStorage.removeItem("ibk_bg");
 startBackgroundVideo();
 function releaseDatePair(id,title){return `<div class="release-date-card"><h3>${title}</h3><div class="filters compact-filters"><select id="${id}Base">${dateOptions()}</select><select id="${id}Final">${dateOptions()}</select><button onclick="buildReleaseSection('${id}')">Shakllantirish</button></div><div id="${id}Result" class="release-section-result"></div></div>`}
 function releaseDashboardPanel(){return `<div class="stack"><div class="panel"><h2>Nazoratdan yechish</h2><div class="overview-note">Tepadagi sanalar barcha jadvallar uchun umumiy ishlashi yoki har jadval alohida muddat bilan shakllanishi mumkin.</div><div class="filters compact-filters"><label class="inline-check"><input type="checkbox" id="relGlobalUse" checked onchange="syncReleaseDates()"> Barcha jadvallar uchun</label><select id="relGlobalBase" onchange="syncReleaseDates()">${dateOptions()}</select><select id="relGlobalFinal" onchange="syncReleaseDates()">${dateOptions()}</select><button onclick="buildAllReleaseSections()">Barchasini shakllantirish</button></div></div>${releaseDatePair('relMain','Nazoratdan yechilishi jadvali')}${releaseDatePair('relSpeed','Korxonalar: eng ko\'p, eng tez va eng sekin')}${releaseDatePair('relWh','Omborlar oboroti')}</div>`}
@@ -2158,6 +2708,7 @@ function forceAppView(){
 
 const showLoginFinalBase = showLogin;
 showLogin = function(){
+  let p=$("pass"); if(p) p.value='';
   forceLoginView();
 }
 
@@ -2167,6 +2718,7 @@ showApp = async function(){
   await showAppFinalBase();
   forceAppView();
   window.scrollTo({top:0, behavior:"auto"});
+  loadExchangeRates();
 }
 
 /* doLogin final version is set above */
@@ -2240,6 +2792,101 @@ forceLoginView();
   }
   resize();window.addEventListener('resize',resize,{passive:true});draw();
 })();
+
+/* ===== AVIA AWB MODULE ===== */
+function aviaPanel(){
+  return `<div class=stack><div class=panel><h2>✈ AVIA AWB — Nazoratdagi havo yuklar</h2><div class=muted>Havo yuki AWB (Air Waybill) ro'yxati. Har bir AWB bir necha reysda bo'linishi mumkin — ular yig'ilib ko'rsatiladi. 15 kun o'tgan AWBlar muddati o'tgan hisoblanadi.</div></div><div id=aviaContainer><div class=muted style="padding:16px">Yuklanmoqda...</div></div></div>`;
+}
+
+async function loadAviaAwb(){
+  let box=$('aviaContainer');
+  if(!box)return;
+  try{
+    let j=await api('/api/avia_awb');
+    AVIA_DATA=j;
+    if(!j.loaded){
+      box.innerHTML=`<div class="panel"><div class=muted>${esc(j.error||"Ma'lumot topilmadi")}<br><br><button class=light onclick="GROUP='common';TAB='upload';render()">Boshqaruv → Fayl yuklashga o'tish</button></div></div>`;
+      return;
+    }
+    box.innerHTML=renderAviaContent(j);
+    if($('kpis'))$('kpis').innerHTML=renderKpis();
+  }catch(e){
+    if(box)box.innerHTML=`<div class=panel><div class=muted>Xatolik: ${esc(e.message||String(e))}</div></div>`;
+  }
+}
+
+async function uploadAviaAwb(file){
+  if(!file)return;
+  let box=$('aviaContainer');
+  if(box)box.innerHTML='<div class=panel><div class=muted>Yuklanmoqda...</div></div>';
+  let fd=new FormData();fd.append('file',file);
+  try{
+    let j=await api('/api/upload_avia_awb',{method:'POST',body:fd});
+    AVIA_DATA=j;
+    if(box)box.innerHTML=j.loaded?renderAviaContent(j):`<div class=panel><div class=muted>Xatolik: ${esc(j.error||'Yuklanmadi')}</div></div>`;
+    if(j.loaded&&$('kpis'))$('kpis').innerHTML=renderKpis();
+  }catch(e){
+    if(box)box.innerHTML=`<div class=panel><div class=muted>Xatolik: ${esc(e.message||String(e))}</div></div>`;
+  }
+}
+async function uploadAviaAwbDirect(file){
+  if(!file)return;
+  let st=$('aviaUploadStatus');
+  if(st)st.textContent='Yuklanmoqda...';
+  let fd=new FormData();fd.append('file',file);
+  try{
+    let j=await api('/api/upload_avia_awb',{method:'POST',body:fd});
+    AVIA_DATA=j;
+    if(st)st.textContent=j.loaded?`Tayyor: ${fmtI(j.unique_awb)} AWB yuklandi`:`Xatolik: ${esc(j.error||'Yuklanmadi')}`;
+  }catch(e){
+    if(st)st.textContent='Xatolik: '+String(e);
+  }
+}
+
+function renderAviaContent(j){
+  let kpiHtml=`<div class=kpis style="grid-column:1/-1">
+    <div class=kpi><span>Jami unikal AWB</span><b>${fmtI(j.unique_awb)}</b></div>
+    <div class=kpi><span>Jami joylar</span><b>${fmtI(j.total_joylar)}</b></div>
+    <div class=kpi><span>Jami vazn (tn)</span><b>${fmtN(j.total_vazn)}</b></div>
+    <div class=kpi><span style="color:#16a34a">Muddati o'tmagan</span><b style="color:#16a34a">${fmtI(j.active_count)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">${fmtN(j.active_vazn)} tn</div></div>
+    <div class=kpi style="border-color:#dc2626"><span style="color:#dc2626">Muddati o'tgan (15 kun+)</span><b style="color:#dc2626">${fmtI(j.overdue_count)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">${fmtN(j.overdue_vazn)} tn</div></div>
+    <div class=kpi><span>Ko'p reysli AWB</span><b>${fmtI(j.multi_flight_awb)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">2+ reys bilan yetkazilgan</div></div>
+  </div>`;
+  let compCols=[{k:'company',t:'Qabul qiluvchi korxona',w:'44%'},{k:'awb',t:'AWB',n:1,f:fmtI,w:'8%'},{k:'joylar',t:'Joylar',n:1,f:fmtI,w:'8%'},{k:'vazn',t:'Vazn (tn)',n:1,f:fmtN,w:'12%'},{k:'overdue',t:'Muddati o\'tgan',n:1,f:fmtI,w:'12%'}];
+  let compRows=(j.companies||[]).slice(0,30).map(r=>Object.assign({_class:r.overdue>0?'expired-row':'',key:{}},r));
+  let compTotal={key:{},company:'Jami (TOP 30)',awb:compRows.reduce((a,r)=>a+(r.awb||0),0),joylar:compRows.reduce((a,r)=>a+(r.joylar||0),0),vazn:compRows.reduce((a,r)=>a+(r.vazn||0),0),overdue:compRows.reduce((a,r)=>a+(r.overdue||0),0),_class:''};
+  let awbCols=[{k:'awb',t:'AWB raqami',w:'16%'},{k:'flights',t:'Reys',n:1,f:fmtI,w:'6%'},{k:'company',t:'Qabul qiluvchi',w:'26%'},{k:'country_latin',t:'Davlat',w:'12%'},{k:'joylar',t:'Joylar',n:1,f:fmtI,w:'6%'},{k:'vazn',t:'Vazn (tn)',n:1,f:fmtN,w:'10%'},{k:'arrival_date',t:'Kelgan sana',w:'10%'},{k:'status_label',t:'Holat',w:'12%'}];
+  let allAwbRows=(j.awb_list||[]).map(r=>Object.assign({status_label:r.is_overdue?'🔴 O\'tgan':'🟢 Kuzatuvda',_class:r.is_overdue?'expired-row':'',key:{}},r));
+  let overdueAwbRows=allAwbRows.filter(r=>r.is_overdue);
+  let countries15=topNWithOther(j.countries||[],15,'vazn','name');
+  let countryHtml=`<div class=panel><h2>Davlatlar bo'yicha (vazn, tn) — TOP 15</h2>${bars(countries15,'name','vazn',fmtN)}</div>`;
+  let overdueTableHtml=overdueAwbRows.length?table(awbCols,overdueAwbRows,'fixed-table'):'<div class=muted style="padding:12px">Muddati o\'tgan AWB yo\'q.</div>';
+  return `<div class=grid2>
+    ${kpiHtml}
+    ${countryHtml}
+    <div class="panel wide"><h2>Korxonalar bo'yicha (TOP 30)</h2>${table(compCols,[compTotal].concat(compRows),'fixed-table')}</div>
+    <div class="panel wide"><h2>Muddati o'tgan AWBlar — ${fmtI(overdueAwbRows.length)} ta</h2>${overdueTableHtml}</div>
+  </div>`;
+}
+
+/* ===== VALYUTA KURSLARI ===== */
+let EXCHANGE_RATES=null;
+async function loadExchangeRates(force=false){
+  if(EXCHANGE_RATES&&!force)return;
+  try{
+    let j=await api('/api/exchange_rates');
+    EXCHANGE_RATES=j;
+    renderCurrencyWidget(j);
+  }catch(e){}
+}
+
+function renderCurrencyWidget(j){
+  let el=$('currencyWidget');
+  if(!el||!j||!j.rates)return;
+  let keys=['USD','EUR','RUB','CNY','GBP'];
+  let html=keys.map(k=>{let r=j.rates[k];return r?`<span class="cur-item"><b>${k}</b> ${fmtI(Math.round(r.rate))}</span>`:''}).filter(Boolean).join('');
+  el.innerHTML=`<span class=cur-date>${j.date||''}</span> ${html}`;
+}
 </script></main></body></html>"""
 
 
@@ -2407,6 +3054,38 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"countries": countries, "date": date_text, "available": dates})
             except Exception as exc:
                 self.json({"countries": [], "date": "", "available": [], "error": str(exc)})
+            return
+        if parsed.path == "/api/country_transport":
+            if not self.require_user():
+                return
+            try:
+                if STORE is None:
+                    STORE = IBKStore(DB_PATH)
+                self.json(STORE.country_transport_summary())
+            except Exception as exc:
+                self.json({"error": str(exc)})
+            return
+        if parsed.path == "/api/warehouses":
+            if not self.require_user():
+                return
+            try:
+                self.json(load_warehouse_registry())
+            except Exception as exc:
+                self.json({"error": str(exc), "warehouses": []})
+            return
+        if parsed.path == "/api/avia_awb":
+            if not self.require_user():
+                return
+            try:
+                self.json(AVIA_AWB_CACHE if AVIA_AWB_CACHE is not None else load_avia_awb())
+            except Exception as exc:
+                self.json({"error": str(exc), "loaded": False})
+            return
+        if parsed.path == "/api/exchange_rates":
+            try:
+                self.json(fetch_cbu_rates())
+            except Exception as exc:
+                self.json({"success": False, "error": str(exc), "rates": {}, "date": ""})
             return
         if parsed.path == "/api/tolov":
             if not self.require_user():
@@ -2895,6 +3574,40 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=_rebuild_with_deposit, daemon=True).start()
             self.json({"job_id": job_id, "report_id": report_id})
             return
+        if parsed.path == "/api/upload_warehouses":
+            if not self.require_perm("upload"):
+                return
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            if "file" not in form or not form["file"].get("filename"):
+                self.json({"error": "Excel fayl kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            dest = DASHBOARD_DIR / safe_name(form["file"]["filename"])
+            dest.write_bytes(form["file"]["content"])
+            try:
+                result = load_warehouse_registry(dest)
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self.json(result)
+            return
+        if parsed.path == "/api/upload_avia_awb":
+            if not self.require_perm("upload"):
+                return
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            if "file" not in form or not form["file"].get("filename"):
+                self.json({"error": "Excel fayl kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            dest = DASHBOARD_DIR / safe_name(form["file"]["filename"])
+            dest.write_bytes(form["file"]["content"])
+            try:
+                result = load_avia_awb(dest)
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self.json(result)
+            return
         if parsed.path == "/api/reports":
             if not self.require_perm("upload"):
                 return
@@ -2932,6 +3645,15 @@ def main():
     ensure_dirs()
     STORE = IBKStore(DB_PATH)
     SESSIONS.update(load_json(SESSION_PATH, {}))
+    # Pre-load cached files silently
+    try:
+        load_warehouse_registry()
+    except Exception:
+        pass
+    try:
+        load_avia_awb()
+    except Exception:
+        pass
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"IBK_Dashboard: http://localhost:{PORT}", flush=True)
     server.serve_forever()

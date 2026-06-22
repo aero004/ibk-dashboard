@@ -1,6 +1,20 @@
 {
   "reports": [
     {
+      "id": "20260622_1782105962025",
+      "date": "22.06.2026",
+      "source": "C:\\Users\\User1\\Claude Code\\ibk-dashboard\\data\\reports\\20260622_1782105962025\\NazoratdagiTovarlarTovarlarKesimida2026.06.22 10.22.14.xls",
+      "deposit": "",
+      "dir": "C:\\Users\\User1\\Claude Code\\ibk-dashboard\\data\\reports\\20260622_1782105962025"
+    },
+    {
+      "id": "20260620_1781948911003",
+      "date": "20.06.2026",
+      "source": "C:\\Users\\User1\\Claude Code\\ibk-dashboard\\data\\reports\\20260620_1781948911003\\NazoratdagiTovarlarTovarlarKesimida2026.06.20 14.47.28.xls",
+      "deposit": "",
+      "dir": "C:\\Users\\User1\\Claude Code\\ibk-dashboard\\data\\reports\\20260620_1781948911003"
+    },
+    {
       "id": "20260619_1781845491857",
       "date": "19.06.2026",
       "source": "C:\\Users\\User1\\Claude Code\\ibk-dashboard\\data\\reports\\20260619_1781845491857\\NazoratdagiTovarlarTovarlarKesimida2026.06.19 09.47.49.xls",

@@ -376,6 +376,41 @@ class IBKStore:
         transports.sort(key=lambda x: sum(c["total_value"] for c in x["companies"]), reverse=True)
         return {"periods": periods, "transports": transports}
 
+    def country_transport_summary(self) -> dict[str, Any]:
+        """Har bir davlat uchun dominant transport turi (post ustunidan olinadi)."""
+        with self.connect() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT a.country, a.post,
+                       SUM(a.weight) as weight
+                FROM active_items a
+                WHERE a.country IS NOT NULL AND a.country != ''
+                  AND a.post    IS NOT NULL AND a.post    != ''
+                GROUP BY a.country, a.post
+                """,
+                conn,
+            )
+        if df.empty:
+            return {}
+
+        def _post_transport(post: str) -> str:
+            p = str(post).lower()
+            if "temir" in p or "railroad" in p:
+                return "Temir yo'l"
+            # Toshkent-AERO aeroport bojxonasi: barcha postlar havo transporti
+            return "Avia"
+
+        df["transport"] = df["post"].apply(_post_transport)
+        result: dict[str, Any] = {}
+        for country, group in df.groupby("country"):
+            transports: dict[str, float] = {}
+            for _, row in group.iterrows():
+                t = row["transport"]
+                transports[t] = transports.get(t, 0.0) + float(row["weight"])
+            dominant = max(transports, key=lambda k: transports[k])
+            result[str(country)] = {"dominant": dominant, "transports": transports}
+        return result
+
     def compute_released(self, base_snapshot_id: int, final_snapshot_id: int) -> dict[str, Any]:
         with self.connect() as conn:
             base = pd.read_sql_query("SELECT * FROM active_items WHERE snapshot_id=?", conn, params=(base_snapshot_id,))
