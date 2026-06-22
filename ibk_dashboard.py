@@ -2027,7 +2027,7 @@ function wrDeadlineTable(wrs,fileDate){
   return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta muddati</th><th>Holat</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 let WR_ACTIVE_TYPES=new Set(['ochiq','yopiq','dutyfree','erkin']);
-let WR_POPUP_EL=null;
+let WR_POPUP_EL=null,WR_HIDE_TIMER=null;
 function wrSvgMarker(w){
   let clr=wrTypeColor(w.type);
   let ring=w.risk==='red'?'#dc2626':w.risk==='orange'?'#f59e0b':'#22c55e';
@@ -2059,13 +2059,13 @@ function buildWrMap(wrs){
         m._wrType=w.type;
         m._wrData=w;
         if(!WR_ACTIVE_TYPES.has(w.type))m.options.opacity=0;
-        m.on('mouseover',function(e){showWrPopup(w,e.originalEvent)});
-        m.on('mouseout',function(){hideWrPopup()});
-        m.on('click',function(e){L.DomEvent.stopPropagation(e);showWrPopup(w,e.originalEvent)});
+        m.on('mouseover',function(e){clearTimeout(WR_HIDE_TIMER);showWrPopup(w,e.originalEvent)});
+        m.on('mouseout',function(){WR_HIDE_TIMER=setTimeout(hideWrPopup,220)});
+        m.on('click',function(e){L.DomEvent.stopPropagation(e);clearTimeout(WR_HIDE_TIMER);showWrPopup(w,e.originalEvent)});
         m.addTo(map);
         WR_MAP._wrMarkers.push(m);
       });
-      map.on('click',function(){hideWrPopup()});
+      map.on('click',function(){clearTimeout(WR_HIDE_TIMER);hideWrPopup()});
     }catch(err){console.error('WR map error:',err)}
   });
 }
@@ -2081,8 +2081,8 @@ function wrToggleType(type,on){
   });
 }
 function showWrPopup(w,evt){
-  hideWrPopup();
-  let riskClr=w.risk==='red'?'#dc2626':w.risk==='orange'?'#f59e0b':'#16a34a';
+  clearTimeout(WR_HIDE_TIMER);
+  if(WR_POPUP_EL&&WR_POPUP_EL.parentNode){WR_POPUP_EL.parentNode.removeChild(WR_POPUP_EL);WR_POPUP_EL=null;}
   let insDays=w.ins_days===null?'—':w.ins_days<0?`<span style="color:#dc2626">${Math.abs(w.ins_days)} kun o'tgan!</span>`:`<span style="color:#d97706">${w.ins_days} kun qoldi</span>`;
   let fvvRow=w.fvv?`<div class="wr-popup-row"><span>FVV:</span><b>${esc(w.fvv)}</b></div>`:'';
   let ssvRow=w.ssv?`<div class="wr-popup-row"><span>SSV:</span><b>${esc(w.ssv)}</b></div>`:'';
@@ -2095,13 +2095,24 @@ function showWrPopup(w,evt){
   let div=document.createElement('div');
   div.className='wr-popup-card';
   div.innerHTML=`<div class="wr-popup-head" style="background:${wrTypeColor(w.type)}"><b>${esc(w.name)}</b><span>${esc(wrTypeName(w.type))}</span></div><div class="wr-popup-body"><div class="wr-popup-row"><span>Litsenziya №:</span><b>${esc(w.lic_num||'—')}</b></div><div class="wr-popup-row"><span>Sug'urta muddati:</span><b>${esc(w.ins_exp||'—')}</b></div><div class="wr-popup-row"><span>Holat:</span><b>${insDays}</b></div>${bnrteRow}${fvvRow}${ssvRow}</div>`;
-  let mapEl=document.getElementById('wrMap');
-  if(mapEl){mapEl.style.position='relative';mapEl.appendChild(div);}
+  // Append to body with fixed positioning to avoid overflow:hidden clipping from map container
+  document.body.appendChild(div);
+  if(evt){
+    let left=evt.clientX+14, top=evt.clientY+14;
+    if(left+328>window.innerWidth-4) left=evt.clientX-340;
+    if(top+260>window.innerHeight-4) top=evt.clientY-268;
+    div.style.cssText=`position:fixed;left:${Math.max(2,left)}px;top:${Math.max(2,top)}px;bottom:auto;transform:none;z-index:9999`;
+  } else {
+    div.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9999';
+  }
   WR_POPUP_EL=div;
   setTimeout(()=>div.classList.add('visible'),10);
+  div.addEventListener('mouseenter',()=>clearTimeout(WR_HIDE_TIMER));
+  div.addEventListener('mouseleave',()=>{WR_HIDE_TIMER=setTimeout(hideWrPopup,220)});
 }
 function hideWrPopup(){
-  if(WR_POPUP_EL){WR_POPUP_EL.classList.remove('visible');setTimeout(()=>{if(WR_POPUP_EL&&WR_POPUP_EL.parentNode)WR_POPUP_EL.parentNode.removeChild(WR_POPUP_EL);WR_POPUP_EL=null},300);}
+  clearTimeout(WR_HIDE_TIMER);WR_HIDE_TIMER=null;
+  if(WR_POPUP_EL){let el=WR_POPUP_EL;WR_POPUP_EL=null;el.classList.remove('visible');setTimeout(()=>{if(el.parentNode)el.parentNode.removeChild(el)},300);}
 }
 async function loadWarehouseRegistry(){
   let panel=document.getElementById('wrRegistryPanel');if(!panel)return;
@@ -2307,50 +2318,10 @@ function flightsPanelShell(){
   return `<div class="panel wide" id="flightsPanelWrap">
 <h2>Toshkent xalqaro aeroporti — jonli parvozlar</h2>
 <div style="border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:8px">
-  <div id="flightsMap" style="height:520px;width:100%">
-    <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;background:#ddeeff">Xarita yuklanmoqda...</div>
-  </div>
+  <iframe src="/assets/tas_parvozlar.html?token=${TOKEN}" style="width:100%;height:580px;border:none;display:block" id="tasFrame"></iframe>
 </div>
-<div id="flightsMeta" class="muted" style="font-size:12px;margin-top:4px">Jonli parvozlar, real vaqtda yangilanadi · Toshkent aeroporti (TAS) · manba: OpenSky Network</div>
 </div>`}
-let FLIGHTS_MAP=null,FLIGHTS_MARKERS=[],FLIGHTS_TIMER=null;
-function initFlightsMap(){
-  if(!document.getElementById("flightsMap"))return;
-  _loadLeaflet(function(){
-    let el=document.getElementById("flightsMap");
-    if(!el)return;
-    if(FLIGHTS_MAP){try{FLIGHTS_MAP.remove()}catch(e){}FLIGHTS_MAP=null;FLIGHTS_MARKERS=[]}
-    el.innerHTML='';
-    try{
-      let map=L.map(el,{center:[41.3,69.27],zoom:6});
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:18}).addTo(map);
-      FLIGHTS_MAP=map;
-      let tasIcon=L.divIcon({html:'<div style="background:#1d72b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;transform:translate(-50%,-50%);cursor:default">TAS</div>',className:'',iconSize:[0,0]});
-      L.marker([41.2995,69.2401],{icon:tasIcon,title:'Toshkent xalqaro aeroporti (TAS)'}).addTo(map);
-      refreshFlightsMap();
-      if(FLIGHTS_TIMER)clearInterval(FLIGHTS_TIMER);
-      FLIGHTS_TIMER=setInterval(refreshFlightsMap,30000);
-    }catch(err){el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px">Xarita yuklanmadi: '+err.message+'</div>';console.error('FlightsMap error:',err)}
-  });
-}
-async function refreshFlightsMap(){
-  if(!FLIGHTS_MAP||typeof L==='undefined')return;
-  let meta=document.getElementById("flightsMeta");
-  try{
-    let j=await api("/api/flights_live");
-    FLIGHTS_MARKERS.forEach(m=>{try{m.remove()}catch(e){}});
-    FLIGHTS_MARKERS=[];
-    (j.planes||[]).forEach(p=>{
-      if(p.lat==null||p.lon==null)return;
-      let h=+(p.heading||0);
-      let tip=esc(p.callsign||p.icao24||'-')+'\nBalandlik: '+Math.round(p.alt||0)+' m\nTezlik: '+Math.round((p.speed||0)*3.6)+' km/soat\nDavlat: '+esc(p.country||'-');
-      let icon=L.divIcon({html:'<div style="transform:translate(-50%,-50%) rotate('+h+'deg);font-size:18px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.5)">&#9992;</div>',className:'',iconSize:[0,0]});
-      let marker=L.marker([p.lat,p.lon],{icon,title:tip}).addTo(FLIGHTS_MAP);
-      FLIGHTS_MARKERS.push(marker);
-    });
-    if(meta)meta.textContent=j.error?'Xatolik: '+j.error:'Jonli parvozlar: '+(j.planes||[]).length+' ta \xb7 yangilangan: '+new Date((j.updated||Date.now()/1000)*1000).toLocaleTimeString("uz-UZ",{timeZone:"Asia/Tashkent"});
-  }catch(e){if(meta)meta.textContent="Ma'lumot yuklanmadi"}
-}
+function initFlightsMap(){}
 detail=async function(key){if(!DATA||!key||Object.keys(key).length===0)return;if(key.view==="expired_inline"){let el=$("expiredInline");if(el)el.innerHTML=expiredTotalExcelTable();return}if(key.view==="regime_posts"){let rows=(DATA.regime_posts||{})[key.regime]||[];dlgTitle.textContent=`${key.regime} - postlar kesimida`;dlgBody.innerHTML=table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}],basicTotal(rows,"IBK bo'yicha Jami","post"));dlg.showModal();return}let filterText=JSON.stringify(key),q=new URLSearchParams({report:DATA.id,filters:filterText}),j=await api("/api/details?"+q);dlgTitle.textContent="Asos deklaratsiyalar";dlgBody.innerHTML=`<p><a class="btn light" href="/api/export_details?report=${DATA.id}&filters=${encodeURIComponent(filterText)}&token=${TOKEN}">Excelga yuklash</a></p>`+table([{k:"decl",t:"Deklaratsiya",w:"160px"},{k:"source_post",t:"Boshlang'ich post kodi",w:"90px"},{k:"source_post_name",t:"Boshlang'ich post nomi",w:"220px"},{k:"transport",t:"Transport",w:"92px"},{k:"date",t:"Sana",w:"86px"},{k:"regime",t:"Rejim",w:"64px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"stir",t:"STIR",w:"105px"},{k:"company",t:"Korxona",w:"220px"},{k:"hs",t:"TIF TN",w:"105px"},{k:"goods",t:"Tovar",w:"240px"},{k:"partiya",t:"Partiya",w:"70px",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"90px",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"105px",n:1,f:fmtN}],j.rows,"fixed-table details-wide");dlg.showModal()}
 function cleanTopActions(){let a=$("actions");if(!a)return;[...a.querySelectorAll("button")].forEach(b=>{if(["Sozlamalar","Nastroyki","Settings"].includes(b.textContent.trim()))b.remove()});[...a.querySelectorAll("a")].forEach(x=>{let t=x.textContent.trim();if(/^PNG\s+\d+$/i.test(t)||t==="Barcha PNG")x.remove()});if(DATA){let f=DATA.files||{};let has=a.querySelector("[data-pngzip]");if(!has&&(f.pngs||[]).length){let href=(f.pngs||[]).length>1?`/download/${DATA.id}/_pngs?token=${TOKEN}`:`/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}`;a.insertAdjacentHTML("afterbegin",`<a data-pngzip class=btn href="${href}">PNG</a> `)}}}
 function translateRuPage(){if(LANG!=="ru")return;let pairs=[["Kirish","Р’С…РѕРґ"],["Chiqish","Р’С‹С…РѕРґ"],["Ombor ma'lumot","РЎРєР»Р°РґСЃРєР°СЏ СЃРІРѕРґРєР°"],["Fayl yuklash","Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»РѕРІ"],["Umumiy","РћР±С‰РµРµ"],["Korxonalar","РџСЂРµРґРїСЂРёСЏС‚РёСЏ"],["Muddati o'tgan","РџСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ"],["Nazoratdan yechish","РЎРЅСЏС‚РёРµ СЃ РєРѕРЅС‚СЂРѕР»СЏ"],["Tovarlar","РўРѕРІР°СЂС‹"],["Omborlar","РЎРєР»Р°РґС‹"],["Rejimlar","Р РµР¶РёРјС‹"],["Oziq-ovqat","РџСЂРѕРґРѕРІРѕР»СЊСЃС‚РІРёРµ"],["Muddatlar","РЎСЂРѕРєРё"],["Boshqaruv","РЈРїСЂР°РІР»РµРЅРёРµ"],["Arxiv","РђСЂС…РёРІ"],["To'lovlar","РџР»Р°С‚РµР¶Рё"],["Davlatlar bo'yicha yo'nalishlar","РњР°СЂС€СЂСѓС‚С‹ РїРѕ СЃС‚СЂР°РЅР°Рј"],["Deklaratsiya post kodi bo'yicha tahlil","РђРЅР°Р»РёР· РїРѕ РєРѕРґСѓ РїРѕСЃС‚Р° РґРµРєР»Р°СЂР°С†РёРё"],["Transport turi bo'yicha ulushi","Р”РѕР»СЏ РїРѕ РІРёРґСѓ С‚СЂР°РЅСЃРїРѕСЂС‚Р°"],["Qiymat bo'yicha TOP 30 korxona","РўРћРџ-30 РїСЂРµРґРїСЂРёСЏС‚РёР№ РїРѕ СЃС‚РѕРёРјРѕСЃС‚Рё"],["Rahbar uchun qisqa xulosa","РљСЂР°С‚РєР°СЏ СЃРІРѕРґРєР° РґР»СЏ СЂСѓРєРѕРІРѕРґРёС‚РµР»СЏ"]];document.querySelectorAll("button,h2,h1,b,label,.muted,.btn").forEach(el=>{let s=el.childNodes.length===1?el.textContent.trim():"";let p=pairs.find(x=>x[0]===s);if(p)el.textContent=p[1]})}
@@ -2673,14 +2644,14 @@ showApp=async function(){
   if(tabsEl)tabsEl.innerHTML=`<button class="module-parent" onclick="openGroup('bnrte','umumiy')"><span>▦</span>BNRTE</button><button class="module-parent pay" onclick="openGroup('payments','payments')"><span>$</span>To'lovlar</button><button class="module-parent" onclick="openGroup('common','upload')"><span>⚙</span>Boshqaruv</button>`;
   if(actionsEl)actionsEl.innerHTML=`<button class="light lang-btn" onclick="setLang('uz')">O'zb</button><button class="light lang-btn" onclick="setLang('uzc')">Ўзб</button><button class="light lang-btn" onclick="setLang('ru')">Рус</button><button class="light lang-btn" onclick="document.body.classList.toggle('dark')">◐</button> <button class="logout-btn" onclick="logout()">Chiqish</button>`;
   if(viewEl) viewEl.innerHTML=landingPanel();
-  setTimeout(()=>{initFlightsMap();initCountryFlowMap();},200);
+  setTimeout(()=>{initCountryFlowMap();},200);
 }
 let AUTO_LOGOUT_MS=20*60*1000,autoLogoutTimer=null;
 function resetAutoLogout(){clearTimeout(autoLogoutTimer);if(TOKEN)autoLogoutTimer=setTimeout(()=>{logout();let e=$("loginError");if(e)e.textContent="20 daqiqa faollik bo'lmagani uchun qayta kirish kerak."},AUTO_LOGOUT_MS)}
 ["click","keydown","mousemove","touchstart","scroll"].forEach(ev=>document.addEventListener(ev,resetAutoLogout,{passive:true}));
 const showAppAutoLogout=showApp;showApp=async function(){await showAppAutoLogout();resetAutoLogout()}
 const logoutAutoBase=logout;logout=function(){clearTimeout(autoLogoutTimer);logoutAutoBase();}
-const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(()=>{initFlightsMap();initCountryFlowMap();},80)}
+const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(()=>{initCountryFlowMap();},80)}
 document.body.classList.remove("bg-aero","bg-classic");localStorage.removeItem("ibk_bg");
 startBackgroundVideo();
 function releaseDatePair(id,title){return `<div class="release-date-card"><h3>${title}</h3><div class="filters compact-filters"><select id="${id}Base">${dateOptions()}</select><select id="${id}Final">${dateOptions()}</select><button onclick="buildReleaseSection('${id}')">Shakllantirish</button></div><div id="${id}Result" class="release-section-result"></div></div>`}
@@ -3059,6 +3030,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not date_text and dates:
                     date_text = dates[0]
                 countries = STORE.country_flow_by_date(date_text) if date_text else []
+                countries = [dict(c, name=core.to_latin(c['name'])) for c in countries]
                 self.json({"countries": countries, "date": date_text, "available": dates})
             except Exception as exc:
                 self.json({"countries": [], "date": "", "available": [], "error": str(exc)})
@@ -3069,7 +3041,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
-                self.json(STORE.country_transport_summary())
+                tr = STORE.country_transport_summary()
+                self.json({core.to_latin(k): v for k, v in tr.items()})
             except Exception as exc:
                 self.json({"error": str(exc)})
             return
