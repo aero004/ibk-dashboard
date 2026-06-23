@@ -97,8 +97,37 @@ tr:nth-child(even) td{background:var(--alt)}
 const TOKEN=new URLSearchParams(location.search).get('token')||'';
 const UTTT={lat:41.2579,lon:69.2819};
 
+const COUNTRY_UZ={
+  'Russia':'Rossiya','Russian Federation':'Rossiya',
+  'Germany':'Germaniya','Turkey':'Turkiya','China':"Xitoy",
+  'Kazakhstan':"Qozog'iston",'India':'Hindiston','Japan':'Yaponiya',
+  'South Korea':'Janubiy Koreya','Korea':'Koreya',
+  'United Arab Emirates':'BAA','UAE':'BAA',
+  'France':'Fransiya','United Kingdom':'Britaniya','Great Britain':'Britaniya',
+  'United States':'AQSH','USA':'AQSH','Netherlands':'Niderlandiya',
+  'Italy':'Italiya','Spain':'Ispaniya','Poland':'Polsha',
+  'Belgium':'Belgiya','Switzerland':'Shveytsariya','Sweden':'Shvetsiya',
+  'Norway':'Norvegiya','Denmark':'Daniya','Finland':'Finlandiya',
+  'Austria':'Avstriya','Czech Republic':'Chexiya','Czechia':'Chexiya',
+  'Hungary':'Vengriya','Romania':'Ruminiya','Bulgaria':'Bolgariya',
+  'Serbia':'Serbiya','Greece':'Gretsiya','Portugal':'Portugaliya',
+  'Iran':'Eron','Iraq':'Iroq','Saudi Arabia':'Saudiya Arabistoni',
+  'Egypt':'Misr','Israel':'Isroil','Pakistan':'Pokiston',
+  'Afghanistan':"Afg'oniston",'Kyrgyzstan':"Qirg'iziston",
+  'Tajikistan':'Tojikiston','Turkmenistan':'Turkmaniston',
+  'Azerbaijan':'Ozarbayjon','Georgia':'Gruziya','Armenia':'Armaniston',
+  'Belarus':'Belarus','Ukraine':'Ukraina',
+  'Latvia':'Latviya','Lithuania':'Litva','Estonia':'Estoniya',
+  'Singapore':'Singapur','Malaysia':'Malayziya','Thailand':'Tailand',
+  'Vietnam':'Vetnam','Indonesia':'Indoneziya','Philippines':'Filippin',
+  'Taiwan':'Tayvan','Hong Kong':'Gonkong',
+  'Canada':'Kanada','Australia':'Avstraliya',
+  'Bangladesh':'Bangladesh','Cyprus':'Kipr','Malta':'Malta',
+};
+function cUz(n){return COUNTRY_UZ[n]||n||''}
+
 const S={
-  theme:'dark',view:'xarita',
+  theme:'light',view:'xarita',
   arrivals:[],departures:[],planes:[],
   updAt:0,loading:false,error:'',
   map:null,layers:[],tileLayer:null,rafId:null,sweep:0,
@@ -289,17 +318,29 @@ function applyMapTheme(){
 }
 
 function popupHtml(f,typ){
+  const city=f.city?cUz(f.city):'';
+  const country=f.country?cUz(f.country):'';
+  const place=city||f.airport_name||'';
   const route=typ==='arr'
-    ?`${f.airport_name||f.from} → TAS`
-    :`TAS → ${f.airport_name||f.to}`;
+    ?`${place||f.from||'?'} → TAS`
+    :`TAS → ${place||f.to||'?'}`;
   const arrow=typ==='arr'?'↓':'↑';
   const col=typ==='arr'?'var(--arr)':'var(--dep)';
   const ts=typ==='arr'?f.last_seen:f.first_seen;
   return `<div class="popup-flight" style="color:${col}">${arrow} ${f.flight||f.callsign||'—'}</div>
 <div class="popup-route">${route}</div>
+${country?`<div style="font-size:11px;margin-top:3px;opacity:.65">🌍 ${country}</div>`:''}
 ${f.aircraft?`<div style="font-size:11px;margin-top:4px;opacity:.7">${f.aircraft}${f.reg?' · '+f.reg:''}</div>`:''}
 <div style="margin-top:6px">${statusTag(f,typ)}</div>
-${ts?`<div style="font-size:11px;margin-top:4px;opacity:.7">Vaqt: ${fmtTs(ts)}</div>`:''}`;
+${ts?`<div style="font-size:11px;margin-top:4px;opacity:.7">Vaqt: ${fmtTs(ts)}</div>`:''}
+${f.terminal?`<div style="font-size:11px;opacity:.6">Terminal ${f.terminal}${f.gate?' · Eshik '+f.gate:''}</div>`:''}`;
+}
+
+function tipHtml(f,typ){
+  const cs=f.flight||f.callsign||'—';
+  const city=f.city?cUz(f.city):'';
+  const route=typ==='arr'?`${city||f.from||'?'} → TAS`:`TAS → ${city||f.to||'?'}`;
+  return `<b>${cs}</b> · ${route}<br><span style="opacity:.7">${f.aircraft||''}</span>`;
 }
 
 function routeColor(f,typ){
@@ -334,68 +375,120 @@ function clearMapLayers(){
   S.layers=[];
 }
 
+function planeSvg(col,hdg){
+  // Aircraft icon pointing UP by default, rotated by heading
+  return `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(${hdg}deg)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="${col}" stroke="rgba(255,255,255,.5)" stroke-width=".8">
+      <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>
+    </svg>
+  </div>`;
+}
+
+function bearingDeg(lat1,lon1,lat2,lon2){
+  const r=Math.PI/180;
+  const dl=(lon2-lon1)*r;
+  const y=Math.sin(dl)*Math.cos(lat2*r);
+  const x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dl);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
 function updateMapRoutes(){
   if(!S.map||!window.L)return;
   clearMapLayers();
   const dark=S.theme==='dark';
 
+  // Build callsign→live plane lookup from OpenSky data
+  const livePos={};
+  (S.planes||[]).forEach(p=>{
+    if(p.callsign&&p.lat&&p.lon&&!p.on_ground)
+      livePos[p.callsign.trim().toUpperCase()]=p;
+  });
+
   // TAS central marker
   const tasCol=dark?'#2fd8c0':'#0d9488';
   const tasIcon=L.divIcon({
-    html:`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" fill="${tasCol}" fill-opacity=".2" stroke="${tasCol}" stroke-width="2"/>
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="${tasCol}" fill-opacity=".18" stroke="${tasCol}" stroke-width="2.2"/>
       <circle cx="12" cy="12" r="5" fill="${tasCol}"/>
     </svg>`,
-    iconSize:[24,24],iconAnchor:[12,12],className:''
+    iconSize:[26,26],iconAnchor:[13,13],className:''
   });
-  const tasMk=L.marker([UTTT.lat,UTTT.lon],{icon:tasIcon,zIndexOffset:1000}).addTo(S.map);
-  tasMk.bindTooltip('<b>TAS — Toshkent</b><br>Islom Karimov xalqaro aeroporti',{direction:'right',permanent:false});
+  const tasMk=L.marker([UTTT.lat,UTTT.lon],{icon:tasIcon,zIndexOffset:2000}).addTo(S.map);
+  tasMk.bindTooltip('<b>TAS — Toshkent</b><br>Islom Karimov xalqaro aeroporti',{direction:'right'});
   S.layers.push(tasMk);
 
-  // Draw routes
   const allFlights=[
     ...S.arrivals.map(f=>({...f,typ:'arr'})),
     ...S.departures.map(f=>({...f,typ:'dep'}))
   ];
 
   allFlights.forEach(f=>{
-    const lat=f.lat, lon=f.lon;
-    if(!lat||!lon)return;
+    const airLat=f.lat, airLon=f.lon;
+    if(!airLat||!airLon)return;
     const typ=f.typ;
     const col=routeColor(f,typ);
     const opac=routeOpacity(f);
-    const wt=f.live?2.5:f.status_color==='green'?1.5:1;
+    const wt=f.live?2.5:f.status_color==='green'?1.8:1;
 
-    // Route line: TAS ↔ airport
-    const from=typ==='arr'?[lat,lon]:[UTTT.lat,UTTT.lon];
-    const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[lat,lon];
-    const line=L.polyline([from,to],{color:col,weight:wt,opacity:opac,dashArray:f.live?null:'4 6'}).addTo(S.map);
+    // Route line: airport ↔ TAS
+    const from=typ==='arr'?[airLat,airLon]:[UTTT.lat,UTTT.lon];
+    const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[airLat,airLon];
+    const line=L.polyline([from,to],{color:col,weight:wt,opacity:opac,dashArray:f.live?null:'5 7'}).addTo(S.map);
+    line.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
     line.bindPopup(popupHtml(f,typ));
     S.layers.push(line);
 
-    // Airport marker
-    const sz=f.live?14:10;
-    const arrow=typ==='arr'?'↓':'↑';
-    const mkIcon=L.divIcon({
-      html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};opacity:${f.live?1:.7};border:1.5px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700">${f.live?arrow:''}</div>`,
-      iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''
-    });
-    const mk=L.marker([lat,lon],{icon:mkIcon}).addTo(S.map);
-    mk.bindPopup(popupHtml(f,typ));
-    S.layers.push(mk);
+    // Match to live OpenSky plane
+    const cs=((f.flight||f.callsign||'').trim().toUpperCase()).replace(/\s+/g,'');
+    const lp=livePos[cs]||livePos[cs.replace(/^0+/,'')];
+
+    if(lp){
+      // Real plane in air — show aircraft icon at actual position
+      const hdg=lp.heading||0;
+      const planeIcon=L.divIcon({
+        html:planeSvg(col,hdg),
+        iconSize:[28,28],iconAnchor:[14,14],className:''
+      });
+      const mk=L.marker([lp.lat,lp.lon],{icon:planeIcon,zIndexOffset:1000}).addTo(S.map);
+      mk.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      mk.bindPopup(popupHtml(f,typ));
+      S.layers.push(mk);
+      // Also mark origin/dest airport with small dot
+      const dotIcon=L.divIcon({
+        html:`<div style="width:8px;height:8px;border-radius:50%;background:${col};opacity:.55;border:1px solid rgba(255,255,255,.4)"></div>`,
+        iconSize:[8,8],iconAnchor:[4,4],className:''
+      });
+      const airMk=L.marker([airLat,airLon],{icon:dotIcon,zIndexOffset:100}).addTo(S.map);
+      airMk.bindTooltip(typ==='arr'?`Kelayotgan: ${f.from||''}`:`Ketayotgan: ${f.to||''}`,{direction:'top'});
+      S.layers.push(airMk);
+    } else {
+      // No live position — show airport marker
+      const sz=f.live?14:10;
+      const arrow=typ==='arr'?'↓':'↑';
+      const mkIcon=L.divIcon({
+        html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};opacity:${f.live?1:.65};border:1.5px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700">${f.live?arrow:''}</div>`,
+        iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''
+      });
+      const mk=L.marker([airLat,airLon],{icon:mkIcon}).addTo(S.map);
+      mk.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      mk.bindPopup(popupHtml(f,typ));
+      S.layers.push(mk);
+    }
   });
 
   // Legend
   const liveArr=S.arrivals.filter(f=>f.live).length;
   const liveDep=S.departures.filter(f=>f.live).length;
   const landedArr=S.arrivals.filter(f=>f.status_color==='green').length;
+  const inAir=Object.keys(livePos).length;
   if(S._legendControl){try{S._legendControl.remove()}catch(e){}}
   const legend=L.control({position:'bottomleft'});
   legend.onAdd=()=>{
     const d=document.createElement('div');
-    d.style.cssText=`background:${dark?'rgba(14,28,48,.92)':'rgba(255,255,255,.92)'};padding:8px 12px;border-radius:8px;font-size:11px;color:${dark?'#ddeaff':'#18273a'};border:1px solid ${dark?'#1a3050':'#cdd8ea'};line-height:1.8`;
+    d.style.cssText=`background:${dark?'rgba(14,28,48,.92)':'rgba(255,255,255,.92)'};padding:8px 13px;border-radius:9px;font-size:11px;color:${dark?'#ddeaff':'#18273a'};border:1px solid ${dark?'#1a3050':'#cdd8ea'};line-height:1.9;min-width:190px`;
     d.innerHTML=`<b>${S.arrivals.length} kelish · ${S.departures.length} ketish</b><br>`+
-      `<span style="color:${dark?'#6ea8ff':'#2563eb'}">● </span>Havoda: ${liveArr+liveDep}<br>`+
+      `<span style="color:${dark?'#6ea8ff':'#2563eb'}">✈ </span>Havoda (jadval): ${liveArr+liveDep}<br>`+
+      (inAir?`<span style="color:${dark?'#22d3ee':'#0d9488'}">✈ </span>Real pozitsiya: ${inAir}<br>`:'')+
       `<span style="color:${dark?'#22c55e':'#16a34a'}">● </span>Qo'ngan: ${landedArr}<br>`+
       `<span style="color:${dark?'#94a3b8':'#64748b'}">- - </span>Rejalashtirilgan`;
     return d;
@@ -405,20 +498,30 @@ function updateMapRoutes(){
 }
 
 // ── Data ───────────────────────────────────────────────
+async function fetchLivePlanes(){
+  try{
+    const d=await fetch(`/api/flights_live?token=${TOKEN}`).then(r=>r.json()).catch(()=>({planes:[]}));
+    S.planes=d.planes||[];
+  }catch(e){S.planes=[];}
+}
+
 async function fetchData(force){
   if(S.loading&&!force)return;
   S.loading=true;setStatus('ld','Yangilanmoqda...');
   try{
-    const fl=await fetch(`/api/flights?token=${TOKEN}`).then(r=>r.json()).catch(()=>({arrivals:[],departures:[],error:'Ulanish xatosi'}));
+    const [fl]=await Promise.all([
+      fetch(`/api/flights?token=${TOKEN}`).then(r=>r.json()).catch(()=>({arrivals:[],departures:[],error:'Ulanish xatosi'})),
+      fetchLivePlanes(),
+    ]);
     S.arrivals=fl.arrivals||[];
     S.departures=fl.departures||[];
-    S.planes=[];
     S.updAt=Math.floor(Date.now()/1000);S.error=fl.error||'';
     const tot=S.arrivals.length+S.departures.length;
     const live=S.arrivals.filter(f=>f.live).length+S.departures.filter(f=>f.live).length;
     const landed=S.arrivals.filter(f=>f.status_color==='green').length;
+    const inAir=(S.planes||[]).filter(p=>!p.on_ground).length;
     if(S.error&&!tot)setStatus('err','FR24: '+S.error.slice(0,80));
-    else setStatus('ok',`${tot} reys: ${S.arrivals.length}↓ kelish, ${S.departures.length}↑ ketish · Havoda: ${live} · Qo'ngan: ${landed}`);
+    else setStatus('ok',`${tot} reys · Havoda: ${live} · Qo'ngan: ${landed}${inAir?' · Real pozitsiya: '+inAir:''}`);
   }catch(e){S.error=String(e);setStatus('err','Xatolik: '+S.error.slice(0,70))}
   S.loading=false;
   if(S.view==='tablo')renderTablo();
@@ -427,6 +530,9 @@ async function fetchData(force){
 }
 
 function boot(){
+  // Apply light theme on start
+  document.getElementById('wrap').classList.add('light');
+  document.getElementById('thBtn').textContent="🌙 Qorongʼi";
   setView('xarita');
   fetchData();
   setInterval(fetchData,60000);

@@ -118,8 +118,8 @@ function getCoord(name) {
 
 // ── State ──────────────────────────────────────────────────────────────────
 const S = {
-  view: 'globe',
-  theme: 'dark',
+  view: 'map',
+  theme: 'light',
   f: { avia: true, temir: true, avto: true },
   rotate: [-69, -26],
   baseRot: [-69, -26],
@@ -455,9 +455,9 @@ function renderPanels() {
   // Title panel
   const dateStr = S.dateLabel || '—';
   document.getElementById('titlePanel').innerHTML = `
-    <div style="font-size:10.5px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:7px">DAVLAT BOJXONA QOʻMITASI · IBK NAZORATI</div>
-    <div style="font-size:21px;font-weight:750;letter-spacing:-.01em;line-height:1.12;color:${txt}">Oʻzbekistonga tovarlar oqimi</div>
-    <div style="font-size:12px;color:${sub};margin-top:6px;line-height:1.4">Davlatlar kesimida · ${dateStr} holatiga</div>`;
+    <div style="font-size:10.5px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:7px">IBK dashboard</div>
+    <div style="font-size:21px;font-weight:750;letter-spacing:-.01em;line-height:1.12;color:${txt}">"Toshkent-Aero" IBKga tovarlar oqimi</div>
+    <div style="font-size:12px;color:${sub};margin-top:6px;line-height:1.4">Davlatlar kesimida · yil boshidan ${dateStr} holatiga</div>`;
 
   // Seg buttons helper
   const segBase = `appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap`;
