@@ -424,6 +424,7 @@ def _fr24_parse_flight(f: dict, typ: str) -> dict:
     generic = status.get("generic", {})
     airport = fl.get("airport", {})
     aircraft = fl.get("aircraft", {})
+    times = fl.get("time", {})
     src = airport.get("origin" if typ == "arr" else "destination", {}) or {}
     pos = (src.get("position") or {})
     info = src.get("info") or {}
@@ -448,6 +449,8 @@ def _fr24_parse_flight(f: dict, typ: str) -> dict:
         "reg": aircraft.get("registration", ""),
         "terminal": info.get("terminal", ""),
         "gate": info.get("gate", ""),
+        "dep_ts": (times.get("real") or {}).get("departure") or (times.get("scheduled") or {}).get("departure"),
+        "arr_ts": (times.get("estimated") or {}).get("arrival") or (times.get("other") or {}).get("eta") or (times.get("scheduled") or {}).get("arrival"),
     }
 
 

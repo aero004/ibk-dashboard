@@ -375,10 +375,10 @@ function clearMapLayers(){
   S.layers=[];
 }
 
-function planeSvg(col,hdg){
-  // Aircraft icon pointing UP by default, rotated by heading
-  return `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform:rotate(${hdg}deg)">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="${col}" stroke="rgba(255,255,255,.5)" stroke-width=".8">
+function planeSvg(col,hdg,sz){
+  sz=sz||28;
+  return `<div style="width:${sz}px;height:${sz}px;display:flex;align-items:center;justify-content:center;transform:rotate(${hdg}deg)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${sz-4}" height="${sz-4}" viewBox="0 0 24 24" fill="${col}" stroke="rgba(255,255,255,.6)" stroke-width=".7">
       <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>
     </svg>
   </div>`;
@@ -390,6 +390,23 @@ function bearingDeg(lat1,lon1,lat2,lon2){
   const y=Math.sin(dl)*Math.cos(lat2*r);
   const x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dl);
   return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+// Interpolate current aircraft position using departure/arrival timestamps
+function calcLivePos(f,typ){
+  if(!f.live||!f.dep_ts||!f.arr_ts)return null;
+  const dur=f.arr_ts-f.dep_ts;
+  if(dur<60)return null;
+  const now=Date.now()/1000;
+  const t=Math.max(0,Math.min(1,(now-f.dep_ts)/dur));
+  const[lat1,lon1]=typ==='arr'?[f.lat,f.lon]:[UTTT.lat,UTTT.lon];
+  const[lat2,lon2]=typ==='arr'?[UTTT.lat,UTTT.lon]:[f.lat,f.lon];
+  if(!lat1||!lon1||!lat2||!lon2)return null;
+  // Great-circle interpolation (slerp approximation)
+  const lat=lat1+(lat2-lat1)*t;
+  const lon=lon1+(lon2-lon1)*t;
+  const hdg=bearingDeg(lat1,lon1,lat2,lon2);
+  return{lat,lon,heading:hdg,progress:t};
 }
 
 function updateMapRoutes(){
@@ -422,51 +439,64 @@ function updateMapRoutes(){
     ...S.departures.map(f=>({...f,typ:'dep'}))
   ];
 
+  let planeCount=0;
+
   allFlights.forEach(f=>{
     const airLat=f.lat, airLon=f.lon;
     if(!airLat||!airLon)return;
     const typ=f.typ;
     const col=routeColor(f,typ);
     const opac=routeOpacity(f);
-    const wt=f.live?2.5:f.status_color==='green'?1.8:1;
 
-    // Route line: airport ↔ TAS
-    const from=typ==='arr'?[airLat,airLon]:[UTTT.lat,UTTT.lon];
-    const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[airLat,airLon];
-    const line=L.polyline([from,to],{color:col,weight:wt,opacity:opac,dashArray:f.live?null:'5 7'}).addTo(S.map);
-    line.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
-    line.bindPopup(popupHtml(f,typ));
-    S.layers.push(line);
-
-    // Match to live OpenSky plane
+    // Try OpenSky real position first, then FR24 time-interpolation
     const cs=((f.flight||f.callsign||'').trim().toUpperCase()).replace(/\s+/g,'');
-    const lp=livePos[cs]||livePos[cs.replace(/^0+/,'')];
+    const osPlane=livePos[cs]||livePos[cs.replace(/^0+/,'')];
+    const interpPos=calcLivePos(f,typ);
+    const activePlane=osPlane||(interpPos?{lat:interpPos.lat,lon:interpPos.lon,heading:interpPos.heading,interp:true}:null);
 
-    if(lp){
-      // Real plane in air — show aircraft icon at actual position
-      const hdg=lp.heading||0;
+    if(activePlane){
+      // Draw route line with DASHED style — plane is the main marker
+      const from=typ==='arr'?[airLat,airLon]:[UTTT.lat,UTTT.lon];
+      const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[airLat,airLon];
+      const line=L.polyline([from,to],{color:col,weight:1.4,opacity:0.35,dashArray:'4 8'}).addTo(S.map);
+      line.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      line.bindPopup(popupHtml(f,typ));
+      S.layers.push(line);
+
+      // Plane icon at current position
+      const hdg=activePlane.heading||0;
       const planeIcon=L.divIcon({
-        html:planeSvg(col,hdg),
-        iconSize:[28,28],iconAnchor:[14,14],className:''
+        html:planeSvg(col,hdg,32),
+        iconSize:[32,32],iconAnchor:[16,16],className:''
       });
-      const mk=L.marker([lp.lat,lp.lon],{icon:planeIcon,zIndexOffset:1000}).addTo(S.map);
-      mk.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
-      mk.bindPopup(popupHtml(f,typ));
-      S.layers.push(mk);
-      // Also mark origin/dest airport with small dot
+      const pk=L.marker([activePlane.lat,activePlane.lon],{icon:planeIcon,zIndexOffset:1200}).addTo(S.map);
+      pk.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      pk.bindPopup(popupHtml(f,typ));
+      S.layers.push(pk);
+
+      // Small airport dot
       const dotIcon=L.divIcon({
-        html:`<div style="width:8px;height:8px;border-radius:50%;background:${col};opacity:.55;border:1px solid rgba(255,255,255,.4)"></div>`,
-        iconSize:[8,8],iconAnchor:[4,4],className:''
+        html:`<div style="width:7px;height:7px;border-radius:50%;background:${col};opacity:.5;border:1px solid rgba(255,255,255,.3)"></div>`,
+        iconSize:[7,7],iconAnchor:[3,3],className:''
       });
-      const airMk=L.marker([airLat,airLon],{icon:dotIcon,zIndexOffset:100}).addTo(S.map);
-      airMk.bindTooltip(typ==='arr'?`Kelayotgan: ${f.from||''}`:`Ketayotgan: ${f.to||''}`,{direction:'top'});
+      const airMk=L.marker([airLat,airLon],{icon:dotIcon,zIndexOffset:50}).addTo(S.map);
+      airMk.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      airMk.bindPopup(popupHtml(f,typ));
       S.layers.push(airMk);
+      planeCount++;
     } else {
-      // No live position — show airport marker
-      const sz=f.live?14:10;
-      const arrow=typ==='arr'?'↓':'↑';
+      // Landed / scheduled — solid route line + airport marker
+      const wt=f.status_color==='green'?1.8:1;
+      const from=typ==='arr'?[airLat,airLon]:[UTTT.lat,UTTT.lon];
+      const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[airLat,airLon];
+      const line=L.polyline([from,to],{color:col,weight:wt,opacity:opac,dashArray:'5 7'}).addTo(S.map);
+      line.bindTooltip(tipHtml(f,typ),{sticky:true,direction:'top'});
+      line.bindPopup(popupHtml(f,typ));
+      S.layers.push(line);
+
+      const sz=10;
       const mkIcon=L.divIcon({
-        html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};opacity:${f.live?1:.65};border:1.5px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700">${f.live?arrow:''}</div>`,
+        html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};opacity:.6;border:1.5px solid rgba(255,255,255,.3)"></div>`,
         iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''
       });
       const mk=L.marker([airLat,airLon],{icon:mkIcon}).addTo(S.map);
@@ -480,17 +510,16 @@ function updateMapRoutes(){
   const liveArr=S.arrivals.filter(f=>f.live).length;
   const liveDep=S.departures.filter(f=>f.live).length;
   const landedArr=S.arrivals.filter(f=>f.status_color==='green').length;
-  const inAir=Object.keys(livePos).length;
+  const inAir=planeCount;
   if(S._legendControl){try{S._legendControl.remove()}catch(e){}}
   const legend=L.control({position:'bottomleft'});
   legend.onAdd=()=>{
     const d=document.createElement('div');
     d.style.cssText=`background:${dark?'rgba(14,28,48,.92)':'rgba(255,255,255,.92)'};padding:8px 13px;border-radius:9px;font-size:11px;color:${dark?'#ddeaff':'#18273a'};border:1px solid ${dark?'#1a3050':'#cdd8ea'};line-height:1.9;min-width:190px`;
     d.innerHTML=`<b>${S.arrivals.length} kelish · ${S.departures.length} ketish</b><br>`+
-      `<span style="color:${dark?'#6ea8ff':'#2563eb'}">✈ </span>Havoda (jadval): ${liveArr+liveDep}<br>`+
-      (inAir?`<span style="color:${dark?'#22d3ee':'#0d9488'}">✈ </span>Real pozitsiya: ${inAir}<br>`:'')+
+      (inAir?`<span style="color:${dark?'#6ea8ff':'#2563eb'}">✈ </span>Havodagi samolyotlar: ${inAir}<br>`:'')+
       `<span style="color:${dark?'#22c55e':'#16a34a'}">● </span>Qo'ngan: ${landedArr}<br>`+
-      `<span style="color:${dark?'#94a3b8':'#64748b'}">- - </span>Rejalashtirilgan`;
+      `<span style="color:${dark?'#94a3b8':'#64748b'}">- - </span>Rejalashtirilgan / kutilmoqda`;
     return d;
   };
   legend.addTo(S.map);
