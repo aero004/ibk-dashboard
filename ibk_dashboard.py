@@ -1969,7 +1969,7 @@ function renderKpis(){let k=DATA.kpis||{};
   </div>`;
   let rows=[["Partiya",fmtI(k.partiya),"partiya"],["Vazn (tn)",fmtN(k.vazn),"vazn"],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat"],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov"],["Muddati o'tgan partiya",fmtI(k.expired),"expired"]];
   let aviaHtml=AVIA_DATA&&AVIA_DATA.loaded?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer"><span>✈ AVIA AWB</span><b>${fmtI(AVIA_DATA.unique_awb)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">Muddati o'tgan: <b style="color:#dc2626">${fmtI(AVIA_DATA.overdue_count)}</b></div></div>`:"";
-  let aviaQiymatHtml=AVIA_STATS&&AVIA_STATS.jami_qiymat_k?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ Avia qiymat</span><b style="color:#0ea5e9">${fmtN(AVIA_STATS.jami_qiymat_k)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">ming $ • <b>${fmtI(AVIA_STATS.decl_soni)}</b> dekl.</div></div>`:"";
+  let aviaQiymatHtml=AVIA_STATS&&AVIA_STATS.jami_qiymat_k?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ Avia qiymat</span><b style="color:#0ea5e9">${fmtN(AVIA_STATS.jami_qiymat_k)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">ming $ • <b>${fmtN(AVIA_STATS.jami_vazn_tn)}</b> tn</div></div>`:"";
   return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml+aviaQiymatHtml+aviaHtml;}
 function table(h,rows,cls=""){rows=rows||[];return `<table class="${cls}"><colgroup>${h.map(x=>`<col style="${x.w?'width:'+x.w:''}">`).join("")}</colgroup><thead><tr>${h.map(x=>`<th class="${x.n?'num':'text'}">${x.t}</th>`).join("")}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${r._class||''}" onclick='detail(${JSON.stringify(r.key||{}).replaceAll("'","&#39;")})'>${h.map(x=>{let cls=x.n?'num':'text', raw=r[x.k], val=x.n&&(raw===""||raw===null||raw===undefined)?"":(x.f?x.f(raw):esc(raw)), tip=esc(raw);if(ri===0&&!x.n&&(val==="Jami"||String(val).startsWith("Jami ")))val="IBK bo'yicha Jami";if(x.k==="released_partiya"&&(+raw||0)===0&&((+r.released_qiymat||0)>0.005||(+r.released_vazn||0)>0.005)){cls+=" partial";tip="Qisman yechilgan";val="0"}return `<td class="${cls}" title="${tip}">${val}</td>`}).join("")}</tr>`).join("")}</tbody></table>`}
 function total(rows,map){rows=rows||[];let out={};for(let k in map)out[k]=rows.reduce((a,r)=>a+(+r[map[k]]||0),0);return out} function basicTotal(rows,label="IBK bo'yicha Jami",nameKey="name"){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});let r={key:{},partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov};r[nameKey]=label;return [r].concat(rows||[])} function companyTotal(rows){let k=DATA.kpis||{};return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",partiya:k.partiya||0,vazn:k.vazn||0,qiymat:k.qiymat||0,tolov:k.tolov||0,depozit:k.depozit_matched||0}].concat(rows||[])}function expiredTotal(rows){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",rejim:"",post:"",kun:"",partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov}].concat(rows||[])} function foodRows(){let t=DATA.food_total||{name:"IBK bo'yicha Jami",vazn:0,qiymat:0,over_vazn:0,over_qiymat:0,ulush:100};return [t].concat(DATA.food||[])} function regimeSummaryRows(){let rows=(DATA.summary||basicTotal(DATA.regimes||[])).map(r=>{if(["IM70","IM74","TR80"].includes(r.name||r.rejim))return Object.assign({key:{view:"regime_posts",regime:r.name||r.rejim}},r);return r});return rows}
@@ -2851,19 +2851,17 @@ async function loadAviaAwb(){
 
 function renderAviaStats(st){
   if(!st||!st.jami_qiymat_k)return'';
-  let oyCols=[{k:'oy',t:'Oy'},{k:'decl_soni',t:'Deklaratsiya',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN},{k:'partiya',t:'Partiya',n:1,f:fmtI}];
-  let compCols=[{k:'company',t:'Korxona',w:'40%'},{k:'stir',t:'STIR',w:'10%'},{k:'decl_soni',t:'Dekl.',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN},{k:'partiya',t:'Partiya',n:1,f:fmtI}];
-  let cntCols=[{k:'country',t:'Davlat',w:'26%'},{k:'decl_soni',t:'Dekl.',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN}];
+  let oyCols=[{k:'oy',t:'Oy',w:'18%'},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN}];
+  let compCols=[{k:'company',t:'Korxona',w:'50%'},{k:'stir',t:'STIR',w:'12%'},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN}];
+  let cntCols=[{k:'country',t:'Davlat',w:'30%'},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN}];
   let oyRows=(st.by_month||[]).map(r=>Object.assign({key:{}},r));
   let compRows=(st.by_company||[]).map(r=>Object.assign({key:{}},r));
   let cntRows=(st.by_country||[]).map(r=>Object.assign({key:{}},r));
-  let compTotal={key:{},company:'Jami (TOP 20)',stir:'',decl_soni:compRows.reduce((a,r)=>a+(r.decl_soni||0),0),qiymat_k:compRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:compRows.reduce((a,r)=>a+(r.vazn_tn||0),0),partiya:compRows.reduce((a,r)=>a+(r.partiya||0),0)};
-  let cntTotal={key:{},country:'Jami (TOP 15)',decl_soni:cntRows.reduce((a,r)=>a+(r.decl_soni||0),0),qiymat_k:cntRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:cntRows.reduce((a,r)=>a+(r.vazn_tn||0),0)};
+  let compTotal={key:{},company:'Jami (TOP 20)',stir:'',qiymat_k:compRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:compRows.reduce((a,r)=>a+(r.vazn_tn||0),0)};
+  let cntTotal={key:{},country:'Jami (TOP 15)',qiymat_k:cntRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:cntRows.reduce((a,r)=>a+(r.vazn_tn||0),0)};
   return `<div class="panel" style="border-top:3px solid #0ea5e9"><h2>✈ BNRTE Avia statistika (ming $)</h2>
     <div class="kpis" style="margin-bottom:12px">
       <div class=kpi style="border-top:3px solid #0ea5e9"><span>Jami qiymat</span><b style="color:#0ea5e9">${fmtN(st.jami_qiymat_k)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">ming $</div></div>
-      <div class=kpi><span>Deklaratsiyalar</span><b>${fmtI(st.decl_soni)}</b></div>
-      <div class=kpi><span>Jami partiya</span><b>${fmtI(st.jami_partiya)}</b></div>
       <div class=kpi><span>Jami vazn</span><b>${fmtN(st.jami_vazn_tn)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">tonna</div></div>
     </div>
     <div class=grid2>
