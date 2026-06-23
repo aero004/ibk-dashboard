@@ -68,7 +68,7 @@ STORE: IBKStore | None = None
 
 TAS_ICAO = "UTTT"  # Toshkent (Islom Karimov) xalqaro aeroporti
 FLIGHTS_CACHE: dict = {"ts": 0.0, "data": None}
-FLIGHTS_CACHE_TTL = 300  # 5 daqiqa
+FLIGHTS_CACHE_TTL = 60  # 1 daqiqa (FR24 schedule)
 
 WAREHOUSE_REGISTRY_PATH: Path | None = None
 WAREHOUSE_REGISTRY_CACHE: list[dict] | None = None
@@ -411,37 +411,59 @@ def fetch_cbu_rates() -> dict:
         return {"success": False, "error": str(exc), "rates": {}, "date": ""}
 
 
-def _opensky_fetch(kind: str, begin: int, end: int) -> list[dict]:
-    url = f"https://opensky-network.org/api/flights/{kind}?airport={TAS_ICAO}&begin={begin}&end={end}"
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (IBK-Dashboard)"})
-    with urlopen(req, timeout=10) as resp:
-        raw = json.loads(resp.read().decode("utf-8"))
-    rows = []
-    for f in raw[-15:]:
-        rows.append({
-            "callsign": (f.get("callsign") or "").strip(),
-            "from": f.get("estDepartureAirport") or "",
-            "to": f.get("estArrivalAirport") or "",
-            "first_seen": f.get("firstSeen"),
-            "last_seen": f.get("lastSeen"),
-        })
-    rows.reverse()
-    return rows
+_FR24_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+}
+
+
+def _fr24_parse_flight(f: dict, typ: str) -> dict:
+    fl = f.get("flight", {})
+    ident = fl.get("identification", {})
+    status = fl.get("status", {})
+    generic = status.get("generic", {})
+    airport = fl.get("airport", {})
+    aircraft = fl.get("aircraft", {})
+    src = airport.get("origin" if typ == "arr" else "destination", {}) or {}
+    pos = (src.get("position") or {})
+    info = src.get("info") or {}
+    event_ts = (generic.get("eventTime") or {}).get("utc")
+    return {
+        "callsign": ident.get("callsign", ""),
+        "flight": (ident.get("number") or {}).get("default", ""),
+        "from": (src.get("code") or {}).get("iata", "") if typ == "arr" else "TAS",
+        "to": "TAS" if typ == "arr" else (src.get("code") or {}).get("iata", ""),
+        "airport_name": src.get("name", ""),
+        "city": (pos.get("region") or {}).get("city", ""),
+        "country": (pos.get("country") or {}).get("name", ""),
+        "lat": pos.get("latitude"),
+        "lon": pos.get("longitude"),
+        "first_seen": event_ts if typ == "dep" else None,
+        "last_seen": event_ts if typ == "arr" else None,
+        "status_text": status.get("text", ""),
+        "status_type": (generic.get("status") or {}).get("text", ""),
+        "status_color": (generic.get("status") or {}).get("color", "gray"),
+        "live": bool(status.get("live", False)),
+        "aircraft": (aircraft.get("model") or {}).get("text", ""),
+        "reg": aircraft.get("registration", ""),
+        "terminal": info.get("terminal", ""),
+        "gate": info.get("gate", ""),
+    }
 
 
 def fetch_tas_flights() -> dict:
+    url = "https://api.flightradar24.com/common/v1/airport.json?code=TAS&plugin[]=schedule&limit=50"
     now = int(time.time())
-    begin = now - 12 * 3600
     result = {"updated": now, "arrivals": [], "departures": [], "error": ""}
     try:
-        result["arrivals"] = _opensky_fetch("arrival", begin, now)
+        req = Request(url, headers=_FR24_HEADERS)
+        with urlopen(req, timeout=12) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+        sched = raw["result"]["response"]["airport"]["pluginData"]["schedule"]
+        result["arrivals"] = [_fr24_parse_flight(f, "arr") for f in (sched.get("arrivals") or {}).get("data", [])]
+        result["departures"] = [_fr24_parse_flight(f, "dep") for f in (sched.get("departures") or {}).get("data", [])]
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
-    try:
-        result["departures"] = _opensky_fetch("departure", begin, now)
-    except Exception as exc:
-        if not result["error"]:
-            result["error"] = f"{type(exc).__name__}: {exc}"
     return result
 
 
@@ -1954,7 +1976,7 @@ function clearBusy(){document.querySelectorAll(".is-busy").forEach(b=>setBusy(b,
 async function api(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);if(r.status===401){showLogin();throw Error("login")};return await r.json()} function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("meta").textContent="Kirish kerak"}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();loadAviaStats();DATA=null;TAB="home";GROUP="home";render()} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){DATA=await api("/api/reports/"+ARCHIVE[0].id);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){let j=await api("/api/jobs/"+id);$("status").textContent=j.status;if(j.status==="xatolik"){$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}
 async function prepareArtifacts(){if(!DATA)return;$("status").textContent="Excel/PNG/PDF tayyorlash boshlandi...";let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});pollArtifacts(j.job_id)}
 async function pollArtifacts(id){let j=await api("/api/jobs/"+id);$("status").textContent=j.status;if(j.status==="xatolik"){$("status").textContent="Excel/PNG/PDF tayyorlashda xatolik. Qayta tayyorlashni bosing yoki logni tekshiramiz.";return}if(j.status!=="tayyor"){setTimeout(()=>pollArtifacts(id),2500);return}DATA=j.data;$("status").textContent="Excel/PNG/PDF tayyor";render()}

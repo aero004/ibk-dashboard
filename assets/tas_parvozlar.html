@@ -8,13 +8,13 @@
 html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased}
 :root{
   --bg:#08111e;--panel:#0e1c30;--panel2:#111d33;--bd:#1a3050;--txt:#ddeaff;--sub:#7898bc;
-  --arr:#2fd8c0;--dep:#f6a93b;--live:#6ea8ff;
+  --arr:#2fd8c0;--dep:#f6a93b;--live:#6ea8ff;--sched:#94a3b8;--land:#22c55e;
   --hd:#091828;--alt:rgba(255,255,255,.02);
   --btn:#162540;--bact:#1d4ed8;--btxt:#7898bc;
 }
 .light{
   --bg:#eef3fb;--panel:#fff;--panel2:#f3f7fc;--bd:#cdd8ea;--txt:#18273a;--sub:#5a7090;
-  --arr:#0d9488;--dep:#b45309;--live:#2563eb;
+  --arr:#0d9488;--dep:#b45309;--live:#2563eb;--sched:#64748b;--land:#16a34a;
   --hd:#e4edf8;--alt:rgba(0,0,0,.015);
   --btn:#e4edf8;--bact:#1d4ed8;--btxt:#5a7090;
 }
@@ -50,12 +50,18 @@ tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:var(--alt)}
 .fn{font-family:monospace;font-weight:700;font-size:12.5px;letter-spacing:.03em}
 .tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}
-.t-land{background:rgba(34,197,94,.12);color:#22c55e}
-.t-dep{background:rgba(156,163,175,.12);color:#9ca3af}
-.t-route{background:rgba(59,130,246,.12);color:#60a5fa}
-.t-wait{background:rgba(249,115,22,.12);color:#f97316}
+.s-land{background:rgba(34,197,94,.15);color:#22c55e}
+.s-live{background:rgba(110,168,255,.15);color:#6ea8ff}
+.s-sched{background:rgba(148,163,184,.12);color:#94a3b8}
+.s-dep{background:rgba(246,169,59,.12);color:#f6a93b}
 .empty{text-align:center;padding:18px;color:var(--sub);font-size:12px}
+.ac-txt{font-size:10.5px;color:var(--sub)}
 .lf-dark .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(1.1) saturate(.85)}
+.leaflet-popup-content-wrapper{background:var(--panel)!important;border:1px solid var(--bd)!important;color:var(--txt)!important;border-radius:8px!important;box-shadow:0 4px 16px rgba(0,0,0,.4)!important}
+.leaflet-popup-tip{background:var(--panel)!important}
+.leaflet-popup-content{margin:10px 14px!important;font-size:12px!important;line-height:1.6!important}
+.popup-flight{font-weight:700;font-size:14px;margin-bottom:4px}
+.popup-route{color:var(--sub);font-size:11px}
 </style>
 </head>
 <body>
@@ -64,13 +70,13 @@ tr:nth-child(even) td{background:var(--alt)}
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--arr)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
     <div id="hdr-title">
       <div class="t">Toshkent (TAS) — Jonli parvozlar</div>
-      <div class="s">Islom Karimov xalqaro aeroporti · UTTT · OpenSky Network</div>
+      <div class="s">Islom Karimov xalqaro aeroporti · UTTT · FlightRadar24</div>
     </div>
     <div id="hdr-right">
       <div class="seg" id="vSeg">
-        <button class="sb on" onclick="setView('tablo')">Jadval</button>
+        <button class="sb" onclick="setView('tablo')">Jadval</button>
         <button class="sb" onclick="setView('radar')">Radar</button>
-        <button class="sb" onclick="setView('xarita')">Xarita</button>
+        <button class="sb on" onclick="setView('xarita')">Xarita</button>
       </div>
       <button class="th-btn" id="thBtn" onclick="toggleTheme()">☀ Yorug'</button>
     </div>
@@ -90,33 +96,12 @@ tr:nth-child(even) td{background:var(--alt)}
 <script>
 const TOKEN=new URLSearchParams(location.search).get('token')||'';
 const UTTT={lat:41.2579,lon:69.2819};
-const AP={
-  'UTTT':'Toshkent TAS','UTSS':'Samarqand SKD','UTFN':"Farg'ona FEG",'UTNN':'Namangan NMA',
-  'UTFA':'Buxoro BHK','UTSN':'Navoiy NVI','UTDK':'Urganch UGC','UTKA':'Andijon AZN','UTAT':'Termiz TMJ',
-  'UUEE':'Moskva SVO','UUDD':'Moskva DME','UUWW':'Moskva VKO','UURR':'Moskva SHK',
-  'OMDB':'Dubay DXB','OMDM':'Dubay DWC','OMAA':'Abu Dabi AUH','OMFJ':'Fujayra FJR',
-  'LTFM':'Istanbul IST','LTBS':'Istanbul SAW','LTAI':'Antalya AYT','LTAF':'Adana ADA',
-  'EDDF':'Frankfurt FRA','EDDM':'Myunxen MUC','EDDB':'Berlin BER','EDDH':'Gamburg HAM',
-  'EHAM':'Amsterdam AMS','EGLL':'London LHR','EGKK':'London LGW','EGSS':'London STN',
-  'LEMD':'Madrid MAD','LSGG':'Jeneva GVA','LSZH':'Syurix ZRH','LOWW':'Vena VIE',
-  'EKCH':'Kopengagen CPH','ESSA':'Stokgolm ARN','EFHK':'Xelsinki HEL',
-  'ZBAA':'Pekin PEK','ZBAD':'Pekin PKX','ZGSZ':'Shenjen SZX','VHHH':'Gonkong HKG',
-  'ZPPP':'Kunmin KMG','ZUUU':'Chendu CTU','ZSPD':'Shanxay PVG','ZGGG':'Guangzhou CAN',
-  'VABB':'Mumbay BOM','VIDP':'Yangi Dehli DEL','VECC':'Kalkutta CCU',
-  'UWKD':'Qazan KZN','USSS':'Yekaterinburg SVX','UNNT':'Novosibirsk OVB','URRR':'Rostov ROV',
-  'UAAA':'Almati ALA','UAKD':'Qaraganda KGF','UAKK':'Shymkent CIT',
-  'UTHH':'Ashgabat ASB','OIIE':'Tehron IKA','OIII':'Tehron THR',
-  'OJAM':'Ammon AMM','OLBA':'Bayrut BEY','OERK':'Ar-Riyod RUH',
-  'OKBK':'Quvayt KWI','OBBS':'Bahrayn BAH','OMDB':'Dubay',
-  'WSSS':'Singapur SIN','WMKK':'Kuala Lumpur KUL','RPLL':'Manila MNL','VTBS':'Bangkok BKK',
-};
-function apN(c){return c?(AP[c]||c):'—'}
 
 const S={
-  theme:'dark',view:'tablo',
+  theme:'dark',view:'xarita',
   arrivals:[],departures:[],planes:[],
   updAt:0,loading:false,error:'',
-  map:null,markers:[],tileLayer:null,rafId:null,sweep:0,
+  map:null,layers:[],tileLayer:null,rafId:null,sweep:0,
 };
 
 function toggleTheme(){
@@ -154,46 +139,71 @@ function fmtTs(ts){
   const d=new Date(ts*1000);
   return d.toLocaleTimeString('uz-Latn',{hour:'2-digit',minute:'2-digit'});
 }
-function stag(ts,type){
-  if(!ts)return'<span class="tag t-dep">—</span>';
-  const diff=Date.now()/1000-ts;
-  if(type==='arr'){
-    if(diff>7200)return'<span class="tag t-dep">Qo\'ngan</span>';
-    if(diff>0)return'<span class="tag t-land">Qo\'ndi ✓</span>';
-    return'<span class="tag t-route">Yoʼlda</span>';
-  }else{
-    if(diff>3600)return'<span class="tag t-dep">Uchib ketdi</span>';
-    if(diff>0)return'<span class="tag t-route">Uchdi ↑</span>';
-    return'<span class="tag t-wait">Kutilmoqda</span>';
-  }
+
+function statusTag(f,typ){
+  const sc=f.status_color||'gray', st=f.status_type||'';
+  const txt=f.status_text||'—';
+  if(sc==='green'||st==='landed'||st==='arrived')return`<span class="tag s-land">✓ ${txt}</span>`;
+  if(f.live&&(st==='en-route'||st==='boarding'||sc==='yellow'||sc==='blue'))return`<span class="tag s-live">✈ ${txt}</span>`;
+  if(st==='scheduled'||sc==='gray')return`<span class="tag s-sched">${txt}</span>`;
+  return`<span class="tag s-dep">${txt}</span>`;
+}
+
+function routeLabel(f,typ){
+  const name=f.airport_name||'';
+  const city=f.city||f.country||'';
+  const code=typ==='arr'?f.from:f.to;
+  if(city)return`${city} (${code})`;
+  if(name)return name.replace(' Airport','').replace(' International','');
+  return code||'—';
 }
 
 function renderTablo(){
   const wrap=document.getElementById('tabloEl');if(!wrap)return;
-  function rows(list,type){
-    if(!list.length)return`<tr><td colspan="4" class="empty">Ma'lumot yo'q — OpenSky ma'lumot bazasini tekshiring</td></tr>`;
-    return list.map(f=>{
-      const route=type==='arr'?apN(f.from):apN(f.to);
-      const ts=type==='arr'?f.last_seen:f.first_seen;
-      return`<tr><td><span class="fn">${f.callsign||'—'}</span></td><td>${route}</td><td style="font-size:12px;font-variant-numeric:tabular-nums">${fmtTs(ts)}</td><td>${stag(ts,type)}</td></tr>`;
+  function rows(list,typ){
+    if(!list.length)return`<tr><td colspan="5" class="empty">Ma'lumot yo'q</td></tr>`;
+    const sorted=[...list].sort((a,b)=>{
+      const pa=a.status_color==='green'?0:a.live?1:2;
+      const pb=b.status_color==='green'?0:b.live?1:2;
+      return pa-pb;
+    });
+    return sorted.map(f=>{
+      const ts=typ==='arr'?f.last_seen:f.first_seen;
+      const gt=f.gate?`<span class="ac-txt"> · Eshik ${f.gate}</span>`:'';
+      const ter=f.terminal?`<span class="ac-txt">T${f.terminal}</span> `:'';
+      return`<tr>
+        <td><span class="fn">${f.flight||f.callsign||'—'}</span></td>
+        <td>${routeLabel(f,typ)}</td>
+        <td>${statusTag(f,typ)}</td>
+        <td style="font-variant-numeric:tabular-nums;font-size:12px">${ter}${fmtTs(ts)}${gt}</td>
+        <td class="ac-txt">${f.aircraft||'—'}</td>
+      </tr>`;
     }).join('');
   }
-  const liveN=S.planes.filter(p=>!p.on_ground).length;
+  const liveArr=S.arrivals.filter(f=>f.live).length;
+  const liveDep=S.departures.filter(f=>f.live).length;
   wrap.innerHTML=`
     <div class="bcard">
-      <div class="bhead"><span style="color:var(--arr);font-size:14px">↓</span><span class="lbl" style="color:var(--arr)">Kelib tushish</span><span style="color:var(--sub);font-size:10px;font-weight:400"> · Arrivals · so'nggi 12 soat</span><span class="cnt">${S.arrivals.length} reys</span></div>
-      <table><thead><tr><th>Reys №</th><th>Qaerdan</th><th>Qo'nish vaqti</th><th>Holat</th></tr></thead><tbody>${rows(S.arrivals,'arr')}</tbody></table>
+      <div class="bhead">
+        <span style="color:var(--arr);font-size:14px">↓</span>
+        <span class="lbl" style="color:var(--arr)">Kelib tushish</span>
+        <span style="color:var(--sub);font-size:10px;font-weight:400"> · Arrivals</span>
+        <span class="cnt">${S.arrivals.length} reys${liveArr?` · <span style="color:var(--live)">${liveArr} havoda</span>`:''}
+      </span></div>
+      <table><thead><tr><th>Reys №</th><th>Qaerdan</th><th>Holat</th><th>Vaqt</th><th>Samolyot</th></tr></thead>
+      <tbody>${rows(S.arrivals,'arr')}</tbody></table>
     </div>
     <div class="bcard">
-      <div class="bhead"><span style="color:var(--dep);font-size:14px">↑</span><span class="lbl" style="color:var(--dep)">Uchib ketish</span><span style="color:var(--sub);font-size:10px;font-weight:400"> · Departures · so'nggi 12 soat</span><span class="cnt">${S.departures.length} reys</span></div>
-      <table><thead><tr><th>Reys №</th><th>Qayerga</th><th>Uchish vaqti</th><th>Holat</th></tr></thead><tbody>${rows(S.departures,'dep')}</tbody></table>
+      <div class="bhead">
+        <span style="color:var(--dep);font-size:14px">↑</span>
+        <span class="lbl" style="color:var(--dep)">Uchib ketish</span>
+        <span style="color:var(--sub);font-size:10px;font-weight:400"> · Departures</span>
+        <span class="cnt">${S.departures.length} reys${liveDep?` · <span style="color:var(--live)">${liveDep} havoda</span>`:''}
+      </span></div>
+      <table><thead><tr><th>Reys №</th><th>Qayerga</th><th>Holat</th><th>Vaqt</th><th>Samolyot</th></tr></thead>
+      <tbody>${rows(S.departures,'dep')}</tbody></table>
     </div>
-    ${liveN?`<div class="bcard">
-      <div class="bhead"><span style="color:var(--live);font-size:13px">✦</span><span class="lbl" style="color:var(--live)">Havoda</span><span style="color:var(--sub);font-size:10px;font-weight:400"> · Markaziy Osiyo hududi</span><span class="cnt">${liveN} samolyot</span></div>
-      <table><thead><tr><th>Reys</th><th>Davlat</th><th>Balandlik</th><th>Tezlik (kt)</th></tr></thead>
-      <tbody>${S.planes.filter(p=>!p.on_ground).map(p=>`<tr><td><span class="fn">${p.callsign||p.icao24||'—'}</span></td><td style="font-size:11px;color:var(--sub)">${p.country||'—'}</td><td style="font-variant-numeric:tabular-nums">${p.alt?'FL'+String(Math.round(p.alt/30.48)).padStart(3,'0'):'yerda'}</td><td style="font-variant-numeric:tabular-nums">${p.speed?Math.round(p.speed*1.944):'—'}</td></tr>`).join('')}</tbody></table>
-    </div>`:''}
-    <div style="text-align:center;padding:6px 0;font-size:10px;color:var(--sub)">Manba: OpenSky Network (opensky-network.org) · Har 30 soniyada yangilanadi</div>`;
+    <div style="text-align:center;padding:6px 0;font-size:10px;color:var(--sub)">Manba: FlightRadar24 · Har 60 soniyada yangilanadi</div>`;
 }
 
 // ── Radar ──────────────────────────────────────────────
@@ -236,27 +246,23 @@ function drawRadar(){
   ctx.beginPath();ctx.arc(cx,cy,6,0,7);ctx.fillStyle=dark?'#2fd8c0':'#0d9488';ctx.fill();
   ctx.fillStyle=dark?'rgba(200,225,255,.8)':'rgba(20,50,100,.8)';
   ctx.font='700 10px "Segoe UI",sans-serif';ctx.textAlign='left';ctx.fillText('UTTT',cx+10,cy+4);ctx.textAlign='start';
-  const flying=S.planes.filter(p=>!p.on_ground);
-  flying.forEach(p=>{
+  const allFlights=[...S.arrivals,...S.departures].filter(f=>f.live&&f.lat&&f.lon);
+  allFlights.forEach(p=>{
     const dist=distKm(UTTT.lat,UTTT.lon,p.lat,p.lon);if(dist>MAX_KM)return;
     const brg=brgDeg(UTTT.lat,UTTT.lon,p.lat,p.lon),pr=(dist/MAX_KM)*R;
     const px=cx+Math.sin(toR(brg))*pr,py=cy-Math.cos(toR(brg))*pr;
-    ctx.beginPath();ctx.arc(px,py,6,0,7);
-    ctx.fillStyle=dark?'rgba(47,216,192,.16)':'rgba(13,148,136,.1)';ctx.fill();
-    ctx.beginPath();ctx.arc(px,py,3.5,0,7);ctx.fillStyle=dark?'#2fd8c0':'#0d9488';ctx.fill();
-    if(p.heading){
-      const hx=Math.sin(toR(p.heading))*14,hy=-Math.cos(toR(p.heading))*14;
-      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+hx,py+hy);
-      ctx.strokeStyle=dark?'rgba(47,216,192,.6)':'rgba(13,148,136,.6)';ctx.lineWidth=1.5;ctx.stroke();
-    }
-    const lbl=(p.callsign||p.icao24||'').substring(0,8);
+    const col=p.status_color==='green'?(dark?'#22c55e':'#16a34a'):(dark?'#2fd8c0':'#0d9488');
+    ctx.beginPath();ctx.arc(px,py,6,0,7);ctx.fillStyle=col+'26';ctx.fill();
+    ctx.beginPath();ctx.arc(px,py,3.5,0,7);ctx.fillStyle=col;ctx.fill();
+    const lbl=(p.flight||p.callsign||'').substring(0,8);
     ctx.fillStyle=dark?'rgba(180,215,255,.85)':'rgba(20,50,100,.85)';
     ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText(lbl,px+6,py-4);ctx.textAlign='start';
   });
-  if(!flying.length){
+  const liveN=allFlights.length;
+  if(!liveN){
     ctx.fillStyle=dark?'rgba(80,140,200,.5)':'rgba(50,90,160,.5)';
     ctx.font='11px "Segoe UI",sans-serif';ctx.textAlign='center';
-    ctx.fillText("Hozir parvoz ko'rinmadi",cx,cy+R+24);ctx.textAlign='start';
+    ctx.fillText("Hozir havoda parvoz topilmadi",cx,cy+R+24);ctx.textAlign='start';
   }
   [['N',cx,cy-R-13],['E',cx+R+15,cy],['S',cx,cy+R+19],['W',cx-R-15,cy]].forEach(([l,x,y])=>{
     ctx.fillStyle=dark?'rgba(100,150,200,.55)':'rgba(60,100,160,.55)';
@@ -277,32 +283,125 @@ function _ll(cb){
   const lk=document.createElement('link');lk.rel='stylesheet';lk.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(lk);
   const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.onload=cb;document.head.appendChild(sc);
 }
-function applyMapTheme(){document.getElementById('xaritaEl').classList.toggle('lf-dark',S.theme==='dark')}
+function applyMapTheme(){
+  const el=document.getElementById('xaritaEl');
+  if(el)el.classList.toggle('lf-dark',S.theme==='dark');
+}
+
+function popupHtml(f,typ){
+  const route=typ==='arr'
+    ?`${f.airport_name||f.from} → TAS`
+    :`TAS → ${f.airport_name||f.to}`;
+  const arrow=typ==='arr'?'↓':'↑';
+  const col=typ==='arr'?'var(--arr)':'var(--dep)';
+  const ts=typ==='arr'?f.last_seen:f.first_seen;
+  return `<div class="popup-flight" style="color:${col}">${arrow} ${f.flight||f.callsign||'—'}</div>
+<div class="popup-route">${route}</div>
+${f.aircraft?`<div style="font-size:11px;margin-top:4px;opacity:.7">${f.aircraft}${f.reg?' · '+f.reg:''}</div>`:''}
+<div style="margin-top:6px">${statusTag(f,typ)}</div>
+${ts?`<div style="font-size:11px;margin-top:4px;opacity:.7">Vaqt: ${fmtTs(ts)}</div>`:''}`;
+}
+
+function routeColor(f,typ){
+  const dark=S.theme==='dark';
+  if(f.status_color==='green')return dark?'#22c55e':'#16a34a';
+  if(f.live)return dark?'#6ea8ff':'#2563eb';
+  if(typ==='arr')return dark?'#2fd8c0':'#0d9488';
+  return dark?'#f6a93b':'#b45309';
+}
+
+function routeOpacity(f){
+  if(f.status_color==='green')return 0.55;
+  if(f.live)return 0.9;
+  return 0.35;
+}
+
 function initMap(){
   const el=document.getElementById('xaritaEl');if(!el)return;
   _ll(()=>{
     if(!S.map){
-      const m=L.map(el,{center:[UTTT.lat,UTTT.lon],zoom:5});S.map=m;
+      const m=L.map(el,{center:[UTTT.lat,UTTT.lon],zoom:4,zoomControl:true});
+      S.map=m;
       S.tileLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:18}).addTo(m);
-      const col=S.theme==='dark'?'#2fd8c0':'#0d9488';
-      L.circleMarker([UTTT.lat,UTTT.lon],{radius:8,color:col,fillColor:col,fillOpacity:.9,weight:2}).addTo(m).bindTooltip('UTTT — Toshkent',{direction:'right'});
       applyMapTheme();
     }
-    updateMapPlanes();
+    updateMapRoutes();
   });
 }
-function updateMapPlanes(){
+
+function clearMapLayers(){
+  S.layers.forEach(l=>{try{l.remove()}catch(e){}});
+  S.layers=[];
+}
+
+function updateMapRoutes(){
   if(!S.map||!window.L)return;
-  S.markers.forEach(m=>m.remove());S.markers=[];
-  S.planes.filter(p=>!p.on_ground).forEach(p=>{
-    const col=S.theme==='dark'?'#2fd8c0':'#0d9488';
-    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" style="transform:rotate(${p.heading||0}deg);filter:drop-shadow(0 1px 3px rgba(0,0,0,.5))"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" fill="${col}" stroke="rgba(255,255,255,.5)" stroke-width=".4"/></svg>`;
-    const icon=L.divIcon({html:svg,iconSize:[20,20],iconAnchor:[10,10],className:''});
-    const mk=L.marker([p.lat,p.lon],{icon}).addTo(S.map);
-    const alt=p.alt?'FL'+String(Math.round(p.alt/30.48)).padStart(3,'0'):'yerda';
-    mk.bindTooltip(`<b>${p.callsign||p.icao24||'—'}</b><br>${alt} · ${p.speed?Math.round(p.speed*1.944)+'kt':'—'}<br><span style="font-size:10px;opacity:.7">${p.country||''}</span>`,{direction:'top'});
-    S.markers.push(mk);
+  clearMapLayers();
+  const dark=S.theme==='dark';
+
+  // TAS central marker
+  const tasCol=dark?'#2fd8c0':'#0d9488';
+  const tasIcon=L.divIcon({
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="${tasCol}" fill-opacity=".2" stroke="${tasCol}" stroke-width="2"/>
+      <circle cx="12" cy="12" r="5" fill="${tasCol}"/>
+    </svg>`,
+    iconSize:[24,24],iconAnchor:[12,12],className:''
   });
+  const tasMk=L.marker([UTTT.lat,UTTT.lon],{icon:tasIcon,zIndexOffset:1000}).addTo(S.map);
+  tasMk.bindTooltip('<b>TAS — Toshkent</b><br>Islom Karimov xalqaro aeroporti',{direction:'right',permanent:false});
+  S.layers.push(tasMk);
+
+  // Draw routes
+  const allFlights=[
+    ...S.arrivals.map(f=>({...f,typ:'arr'})),
+    ...S.departures.map(f=>({...f,typ:'dep'}))
+  ];
+
+  allFlights.forEach(f=>{
+    const lat=f.lat, lon=f.lon;
+    if(!lat||!lon)return;
+    const typ=f.typ;
+    const col=routeColor(f,typ);
+    const opac=routeOpacity(f);
+    const wt=f.live?2.5:f.status_color==='green'?1.5:1;
+
+    // Route line: TAS ↔ airport
+    const from=typ==='arr'?[lat,lon]:[UTTT.lat,UTTT.lon];
+    const to=typ==='arr'?[UTTT.lat,UTTT.lon]:[lat,lon];
+    const line=L.polyline([from,to],{color:col,weight:wt,opacity:opac,dashArray:f.live?null:'4 6'}).addTo(S.map);
+    line.bindPopup(popupHtml(f,typ));
+    S.layers.push(line);
+
+    // Airport marker
+    const sz=f.live?14:10;
+    const arrow=typ==='arr'?'↓':'↑';
+    const mkIcon=L.divIcon({
+      html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};opacity:${f.live?1:.7};border:1.5px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700">${f.live?arrow:''}</div>`,
+      iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''
+    });
+    const mk=L.marker([lat,lon],{icon:mkIcon}).addTo(S.map);
+    mk.bindPopup(popupHtml(f,typ));
+    S.layers.push(mk);
+  });
+
+  // Legend
+  const liveArr=S.arrivals.filter(f=>f.live).length;
+  const liveDep=S.departures.filter(f=>f.live).length;
+  const landedArr=S.arrivals.filter(f=>f.status_color==='green').length;
+  if(S._legendControl){try{S._legendControl.remove()}catch(e){}}
+  const legend=L.control({position:'bottomleft'});
+  legend.onAdd=()=>{
+    const d=document.createElement('div');
+    d.style.cssText=`background:${dark?'rgba(14,28,48,.92)':'rgba(255,255,255,.92)'};padding:8px 12px;border-radius:8px;font-size:11px;color:${dark?'#ddeaff':'#18273a'};border:1px solid ${dark?'#1a3050':'#cdd8ea'};line-height:1.8`;
+    d.innerHTML=`<b>${S.arrivals.length} kelish · ${S.departures.length} ketish</b><br>`+
+      `<span style="color:${dark?'#6ea8ff':'#2563eb'}">● </span>Havoda: ${liveArr+liveDep}<br>`+
+      `<span style="color:${dark?'#22c55e':'#16a34a'}">● </span>Qo'ngan: ${landedArr}<br>`+
+      `<span style="color:${dark?'#94a3b8':'#64748b'}">- - </span>Rejalashtirilgan`;
+    return d;
+  };
+  legend.addTo(S.map);
+  S._legendControl=legend;
 }
 
 // ── Data ───────────────────────────────────────────────
@@ -310,28 +409,27 @@ async function fetchData(force){
   if(S.loading&&!force)return;
   S.loading=true;setStatus('ld','Yangilanmoqda...');
   try{
-    const[fl,lv]=await Promise.all([
-      fetch(`/api/flights?token=${TOKEN}`).then(r=>r.json()).catch(()=>({arrivals:[],departures:[],error:'Ulanish xatosi'})),
-      fetch(`/api/flights_live?token=${TOKEN}`).then(r=>r.json()).catch(()=>({planes:[],error:''})),
-    ]);
-    S.arrivals=(fl.arrivals||[]).filter(f=>f.callsign);
-    S.departures=(fl.departures||[]).filter(f=>f.callsign);
-    S.planes=lv.planes||[];
+    const fl=await fetch(`/api/flights?token=${TOKEN}`).then(r=>r.json()).catch(()=>({arrivals:[],departures:[],error:'Ulanish xatosi'}));
+    S.arrivals=fl.arrivals||[];
+    S.departures=fl.departures||[];
+    S.planes=[];
     S.updAt=Math.floor(Date.now()/1000);S.error=fl.error||'';
-    const tot=S.arrivals.length+S.departures.length,live=S.planes.filter(p=>!p.on_ground).length;
-    if(S.error&&!tot)setStatus('err','OpenSky: '+S.error.slice(0,80));
-    else setStatus('ok',`${tot} reys: ${S.arrivals.length}↓ kelish, ${S.departures.length}↑ ketish · Havoda: ${live} samolyot`);
+    const tot=S.arrivals.length+S.departures.length;
+    const live=S.arrivals.filter(f=>f.live).length+S.departures.filter(f=>f.live).length;
+    const landed=S.arrivals.filter(f=>f.status_color==='green').length;
+    if(S.error&&!tot)setStatus('err','FR24: '+S.error.slice(0,80));
+    else setStatus('ok',`${tot} reys: ${S.arrivals.length}↓ kelish, ${S.departures.length}↑ ketish · Havoda: ${live} · Qo'ngan: ${landed}`);
   }catch(e){S.error=String(e);setStatus('err','Xatolik: '+S.error.slice(0,70))}
   S.loading=false;
   if(S.view==='tablo')renderTablo();
   if(S.view==='radar')drawRadar();
-  if(S.view==='xarita')updateMapPlanes();
+  if(S.view==='xarita')updateMapRoutes();
 }
 
 function boot(){
-  setView('tablo');
+  setView('xarita');
   fetchData();
-  setInterval(fetchData,30000);
+  setInterval(fetchData,60000);
 }
 document.addEventListener('DOMContentLoaded',boot);
 </script>
