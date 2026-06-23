@@ -411,6 +411,75 @@ class IBKStore:
             result[str(country)] = {"dominant": dominant, "transports": transports}
         return result
 
+    def avia_db_stats(self) -> dict[str, Any]:
+        """active_items WHERE transport='Avia' dan qiymat statistikasi (ming $)."""
+        with self.connect() as conn:
+            df_sum = pd.read_sql_query(
+                "SELECT COUNT(DISTINCT decl) AS decl_soni, SUM(value) AS jami_qiymat,"
+                " SUM(weight) AS jami_vazn, SUM(partiya) AS jami_partiya"
+                " FROM active_items WHERE transport='Avia'",
+                conn,
+            )
+            df_oy = pd.read_sql_query(
+                "SELECT strftime('%Y-%m', gtd_date) AS oy,"
+                " COUNT(DISTINCT decl) AS decl_soni, SUM(value) AS qiymat,"
+                " SUM(weight) AS vazn, SUM(partiya) AS partiya"
+                " FROM active_items WHERE transport='Avia' AND gtd_date IS NOT NULL"
+                " GROUP BY oy ORDER BY oy DESC LIMIT 24",
+                conn,
+            )
+            df_comp = pd.read_sql_query(
+                "SELECT company, stir, COUNT(DISTINCT decl) AS decl_soni,"
+                " SUM(value) AS qiymat, SUM(weight) AS vazn, SUM(partiya) AS partiya"
+                " FROM active_items WHERE transport='Avia' AND company IS NOT NULL AND company!=''"
+                " GROUP BY stir, company ORDER BY qiymat DESC LIMIT 20",
+                conn,
+            )
+            df_cnt = pd.read_sql_query(
+                "SELECT country, COUNT(DISTINCT decl) AS decl_soni,"
+                " SUM(value) AS qiymat, SUM(weight) AS vazn"
+                " FROM active_items WHERE transport='Avia' AND country IS NOT NULL AND country!=''"
+                " GROUP BY country ORDER BY qiymat DESC LIMIT 15",
+                conn,
+            )
+        s = df_sum.iloc[0]
+        return {
+            "decl_soni": int(s["decl_soni"] or 0),
+            "jami_qiymat_k": round(float(s["jami_qiymat"] or 0) / 1000, 1),
+            "jami_vazn_tn": round(float(s["jami_vazn"] or 0) / 1000, 3),
+            "jami_partiya": int(s["jami_partiya"] or 0),
+            "by_month": [
+                {
+                    "oy": r["oy"],
+                    "decl_soni": int(r["decl_soni"] or 0),
+                    "qiymat_k": round(float(r["qiymat"] or 0) / 1000, 1),
+                    "vazn_tn": round(float(r["vazn"] or 0) / 1000, 3),
+                    "partiya": int(r["partiya"] or 0),
+                }
+                for r in df_oy.to_dict("records")
+            ],
+            "by_company": [
+                {
+                    "company": str(r["company"] or ""),
+                    "stir": str(r["stir"] or ""),
+                    "decl_soni": int(r["decl_soni"] or 0),
+                    "qiymat_k": round(float(r["qiymat"] or 0) / 1000, 1),
+                    "vazn_tn": round(float(r["vazn"] or 0) / 1000, 3),
+                    "partiya": int(r["partiya"] or 0),
+                }
+                for r in df_comp.to_dict("records")
+            ],
+            "by_country": [
+                {
+                    "country": str(r["country"] or ""),
+                    "decl_soni": int(r["decl_soni"] or 0),
+                    "qiymat_k": round(float(r["qiymat"] or 0) / 1000, 1),
+                    "vazn_tn": round(float(r["vazn"] or 0) / 1000, 3),
+                }
+                for r in df_cnt.to_dict("records")
+            ],
+        }
+
     def compute_released(self, base_snapshot_id: int, final_snapshot_id: int) -> dict[str, Any]:
         with self.connect() as conn:
             base = pd.read_sql_query("SELECT * FROM active_items WHERE snapshot_id=?", conn, params=(base_snapshot_id,))

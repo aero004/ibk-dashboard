@@ -1939,7 +1939,7 @@ tr.expired-row td{background:rgba(220,38,38,.04)!important}
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="currencyWidget" class="currency-widget"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
 <script>
-let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null;
+let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null, AVIA_STATS=null;
 const I18N={uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},uzc:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish"},ru:{archive:"Arxiv",upload:"Zagruzka",general:"Obshiy",companies:"Kompanii",expired:"Prosrochennie",released:"Snyatie s kontrolya",goods:"Tovari",food:"Produkti",profile:"Profil",settings:"Nastroyki",admin:"Admin",dark:"Temniy rejim",logout:"Vixod"}};
 function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){}function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
 const fmtN=v=>Math.abs(+v||0)<.005?"0":(+v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/\u00a0/g," "), fmtI=v=>Math.round(+v||0).toLocaleString("ru-RU").replace(/\u00a0/g," "), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -1952,7 +1952,8 @@ function setBusy(btn,on,text){if(!btn)return;if(on){btn.dataset.old=btn.innerHTM
 function clearBusy(){document.querySelectorAll(".is-busy").forEach(b=>setBusy(b,false))}
 async function api(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);if(r.status===401){showLogin();throw Error("login")};return await r.json()} function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("meta").textContent="Kirish kerak"}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();DATA=null;TAB="home";GROUP="home";render()} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();loadAviaStats();DATA=null;TAB="home";GROUP="home";render()} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){let j=await api("/api/jobs/"+id);$("status").textContent=j.status;if(j.status==="xatolik"){$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}
 async function prepareArtifacts(){if(!DATA)return;$("status").textContent="Excel/PNG/PDF tayyorlash boshlandi...";let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});pollArtifacts(j.job_id)}
 async function pollArtifacts(id){let j=await api("/api/jobs/"+id);$("status").textContent=j.status;if(j.status==="xatolik"){$("status").textContent="Excel/PNG/PDF tayyorlashda xatolik. Qayta tayyorlashni bosing yoki logni tekshiramiz.";return}if(j.status!=="tayyor"){setTimeout(()=>pollArtifacts(id),2500);return}DATA=j.data;$("status").textContent="Excel/PNG/PDF tayyor";render()}
@@ -1967,7 +1968,8 @@ function renderKpis(){let k=DATA.kpis||{};
   </div>`;
   let rows=[["Partiya",fmtI(k.partiya),"partiya"],["Vazn (tn)",fmtN(k.vazn),"vazn"],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat"],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov"],["Muddati o'tgan partiya",fmtI(k.expired),"expired"]];
   let aviaHtml=AVIA_DATA&&AVIA_DATA.loaded?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer"><span>✈ AVIA AWB</span><b>${fmtI(AVIA_DATA.unique_awb)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">Muddati o'tgan: <b style="color:#dc2626">${fmtI(AVIA_DATA.overdue_count)}</b></div></div>`:"";
-  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml+aviaHtml;}
+  let aviaQiymatHtml=AVIA_STATS&&AVIA_STATS.jami_qiymat_k?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ Avia qiymat</span><b style="color:#0ea5e9">${fmtN(AVIA_STATS.jami_qiymat_k)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">ming $ • <b>${fmtI(AVIA_STATS.decl_soni)}</b> dekl.</div></div>`:"";
+  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml+aviaQiymatHtml+aviaHtml;}
 function table(h,rows,cls=""){rows=rows||[];return `<table class="${cls}"><colgroup>${h.map(x=>`<col style="${x.w?'width:'+x.w:''}">`).join("")}</colgroup><thead><tr>${h.map(x=>`<th class="${x.n?'num':'text'}">${x.t}</th>`).join("")}</tr></thead><tbody>${rows.map((r,ri)=>`<tr class="${r._class||''}" onclick='detail(${JSON.stringify(r.key||{}).replaceAll("'","&#39;")})'>${h.map(x=>{let cls=x.n?'num':'text', raw=r[x.k], val=x.n&&(raw===""||raw===null||raw===undefined)?"":(x.f?x.f(raw):esc(raw)), tip=esc(raw);if(ri===0&&!x.n&&(val==="Jami"||String(val).startsWith("Jami ")))val="IBK bo'yicha Jami";if(x.k==="released_partiya"&&(+raw||0)===0&&((+r.released_qiymat||0)>0.005||(+r.released_vazn||0)>0.005)){cls+=" partial";tip="Qisman yechilgan";val="0"}return `<td class="${cls}" title="${tip}">${val}</td>`}).join("")}</tr>`).join("")}</tbody></table>`}
 function total(rows,map){rows=rows||[];let out={};for(let k in map)out[k]=rows.reduce((a,r)=>a+(+r[map[k]]||0),0);return out} function basicTotal(rows,label="IBK bo'yicha Jami",nameKey="name"){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});let r={key:{},partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov};r[nameKey]=label;return [r].concat(rows||[])} function companyTotal(rows){let k=DATA.kpis||{};return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",partiya:k.partiya||0,vazn:k.vazn||0,qiymat:k.qiymat||0,tolov:k.tolov||0,depozit:k.depozit_matched||0}].concat(rows||[])}function expiredTotal(rows){let t=total(rows,{partiya:"partiya",vazn:"vazn",qiymat:"qiymat",tolov:"tolov"});return [{key:{},korxona:"IBK bo'yicha Jami",stir:"",rejim:"",post:"",kun:"",partiya:t.partiya,vazn:t.vazn,qiymat:t.qiymat,tolov:t.tolov}].concat(rows||[])} function foodRows(){let t=DATA.food_total||{name:"IBK bo'yicha Jami",vazn:0,qiymat:0,over_vazn:0,over_qiymat:0,ulush:100};return [t].concat(DATA.food||[])} function regimeSummaryRows(){let rows=(DATA.summary||basicTotal(DATA.regimes||[])).map(r=>{if(["IM70","IM74","TR80"].includes(r.name||r.rejim))return Object.assign({key:{view:"regime_posts",regime:r.name||r.rejim}},r);return r});return rows}
 function expiredSummaryRows(){return (DATA.expired_summary||basicTotal(DATA.expired||[])).map((r,i)=>i===0?Object.assign({key:{view:"expired_inline"}},r):r)} function periodRows(r){let rows=(r&&r.rows)||[], t=total(rows,{partiya:"partiya",qiymat:"qiymat",tolov:"tolov"});return [{key:{},company:"IBK bo'yicha Jami",stir:"",decl:"",partiya:t.partiya,qiymat:t.qiymat,tolov:t.tolov}].concat(rows)} function expiredPostRegimeRows(){let rows=DATA.expired_post_regime||[], t=total(rows,{jami_partiya:"jami_partiya",jami_qiymat:"jami_qiymat",expired_partiya:"expired_partiya",expired_qiymat:"expired_qiymat",im70_partiya:"im70_partiya",im74_partiya:"im74_partiya",tr80_partiya:"tr80_partiya"});t.ulush=t.jami_qiymat? t.expired_qiymat/t.jami_qiymat*100:0;t.post="IBK bo'yicha Jami";t.key={};return [t].concat(rows)} function executiveSummary(){if(!DATA)return "";let k=DATA.kpis||{}, top=(DATA.top_value||[])[0]||{}, dep=(DATA.top_deposit||[])[0]||{}, own=(DATA.warehouse||[]).find(r=>(r.name||"")==="O'z ombor")||{}, exp=(DATA.expired_post_regime||[])[0]||{};let items=[['Umumiy nazorat',`${fmtI(k.partiya)} partiya, ${fmtN(k.qiymat)} ming $ qiymat.`],['Muddati o\'tgan',`${fmtI(k.expired)} partiya. Asosiy kesim: ${esc(exp.post||'postlar')}.`],['Eng yirik korxona',`${esc(top.korxona||'-')} - ${fmtN(top.qiymat||0)} ming $.`],['O\'z ombor',`${fmtI(own.partiya||0)} partiya, ${fmtN(own.qiymat||0)} ming $.`],['Depozit yetakchisi',`${esc(dep.korxona||'-')} - ${fmtN(dep.depozit||0)} mln so\'m.`]];return `<div class="panel exec-summary"><h2>Rahbar uchun qisqa xulosa</h2><div class="summary-grid">${items.map(x=>`<div class="summary-item"><b>${x[0]}</b><span>${x[1]}</span></div>`).join("")}</div></div>`}
@@ -2775,24 +2777,50 @@ forceLoginView();
 
 /* ===== AVIA AWB MODULE ===== */
 function aviaPanel(){
-  return `<div class=stack><div class=panel><h2>✈ AVIA AWB — Nazoratdagi havo yuklar</h2><div class=muted>Havo yuki AWB (Air Waybill) ro'yxati. Har bir AWB bir necha reysda bo'linishi mumkin — ular yig'ilib ko'rsatiladi. 15 kun o'tgan AWBlar muddati o'tgan hisoblanadi.</div></div><div id=aviaContainer><div class=muted style="padding:16px">Yuklanmoqda...</div></div></div>`;
+  return `<div class=stack><div class=panel><h2>✈ AVIA AWB — Nazoratdagi havo yuklar</h2><div class=muted>Havo yuki AWB (Air Waybill) ro'yxati. Har bir AWB bir necha reysda bo'linishi mumkin — ular yig'ilib ko'rsatiladi. 15 kun o'tgan AWBlar muddati o'tgan hisoblanadi.</div></div><div id=aviaStatsContainer><div class=muted style="padding:16px">Statistika yuklanmoqda...</div></div><div id=aviaContainer><div class=muted style="padding:16px">AWB ro'yxati yuklanmoqda...</div></div></div>`;
 }
 
 async function loadAviaAwb(){
-  let box=$('aviaContainer');
-  if(!box)return;
+  let box=$('aviaContainer'), sbox=$('aviaStatsContainer');
+  if(!box&&!sbox)return;
   try{
-    let j=await api('/api/avia_awb');
-    AVIA_DATA=j;
+    let [j, st]=await Promise.all([api('/api/avia_awb'), api('/api/avia_stats').catch(()=>null)]);
+    AVIA_DATA=j; if(st)AVIA_STATS=st;
+    if(sbox)sbox.innerHTML=st?renderAviaStats(st):'';
+    if($('kpis'))$('kpis').innerHTML=renderKpis();
     if(!j.loaded){
-      box.innerHTML=`<div class="panel"><div class=muted>${esc(j.error||"Ma'lumot topilmadi")}<br><br><button class=light onclick="GROUP='common';TAB='upload';render()">Boshqaruv → Fayl yuklashga o'tish</button></div></div>`;
+      if(box)box.innerHTML=`<div class="panel"><div class=muted>${esc(j.error||"Ma'lumot topilmadi")}<br><br><button class=light onclick="GROUP='common';TAB='upload';render()">Boshqaruv → Fayl yuklashga o'tish</button></div></div>`;
       return;
     }
-    box.innerHTML=renderAviaContent(j);
-    if($('kpis'))$('kpis').innerHTML=renderKpis();
+    if(box)box.innerHTML=renderAviaContent(j);
   }catch(e){
     if(box)box.innerHTML=`<div class=panel><div class=muted>Xatolik: ${esc(e.message||String(e))}</div></div>`;
   }
+}
+
+function renderAviaStats(st){
+  if(!st||!st.jami_qiymat_k)return'';
+  let oyCols=[{k:'oy',t:'Oy'},{k:'decl_soni',t:'Deklaratsiya',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN},{k:'partiya',t:'Partiya',n:1,f:fmtI}];
+  let compCols=[{k:'company',t:'Korxona',w:'40%'},{k:'stir',t:'STIR',w:'10%'},{k:'decl_soni',t:'Dekl.',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN},{k:'partiya',t:'Partiya',n:1,f:fmtI}];
+  let cntCols=[{k:'country',t:'Davlat',w:'26%'},{k:'decl_soni',t:'Dekl.',n:1,f:fmtI},{k:'qiymat_k',t:'Qiymat (ming $)',n:1,f:fmtN},{k:'vazn_tn',t:'Vazn (tn)',n:1,f:fmtN}];
+  let oyRows=(st.by_month||[]).map(r=>Object.assign({key:{}},r));
+  let compRows=(st.by_company||[]).map(r=>Object.assign({key:{}},r));
+  let cntRows=(st.by_country||[]).map(r=>Object.assign({key:{}},r));
+  let compTotal={key:{},company:'Jami (TOP 20)',stir:'',decl_soni:compRows.reduce((a,r)=>a+(r.decl_soni||0),0),qiymat_k:compRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:compRows.reduce((a,r)=>a+(r.vazn_tn||0),0),partiya:compRows.reduce((a,r)=>a+(r.partiya||0),0)};
+  let cntTotal={key:{},country:'Jami (TOP 15)',decl_soni:cntRows.reduce((a,r)=>a+(r.decl_soni||0),0),qiymat_k:cntRows.reduce((a,r)=>a+(r.qiymat_k||0),0),vazn_tn:cntRows.reduce((a,r)=>a+(r.vazn_tn||0),0)};
+  return `<div class="panel" style="border-top:3px solid #0ea5e9"><h2>✈ BNRTE Avia statistika (ming $)</h2>
+    <div class="kpis" style="margin-bottom:12px">
+      <div class=kpi style="border-top:3px solid #0ea5e9"><span>Jami qiymat</span><b style="color:#0ea5e9">${fmtN(st.jami_qiymat_k)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">ming $</div></div>
+      <div class=kpi><span>Deklaratsiyalar</span><b>${fmtI(st.decl_soni)}</b></div>
+      <div class=kpi><span>Jami partiya</span><b>${fmtI(st.jami_partiya)}</b></div>
+      <div class=kpi><span>Jami vazn</span><b>${fmtN(st.jami_vazn_tn)}</b><div style="font-size:11px;color:var(--muted);margin-top:4px">tonna</div></div>
+    </div>
+    <div class=grid2>
+      <div class=panel><h2>Oylar bo'yicha (ming $)</h2>${table(oyCols,oyRows)}</div>
+      <div class=panel><h2>Davlatlar bo'yicha (ming $) — TOP 15</h2>${table(cntCols,[cntTotal].concat(cntRows))}</div>
+      <div class="panel wide"><h2>Korxonalar bo'yicha (ming $) — TOP 20</h2>${table(compCols,[compTotal].concat(compRows))}</div>
+    </div>
+  </div>`;
 }
 
 async function uploadAviaAwb(file){
@@ -3061,6 +3089,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(AVIA_AWB_CACHE if AVIA_AWB_CACHE is not None else load_avia_awb())
             except Exception as exc:
                 self.json({"error": str(exc), "loaded": False})
+            return
+        if parsed.path == "/api/avia_stats":
+            if not self.require_user():
+                return
+            try:
+                stats = STORE.avia_db_stats()
+                stats["by_country"] = [
+                    dict(r, country=core.to_latin(r["country"])) for r in stats["by_country"]
+                ]
+                self.json(stats)
+            except Exception as exc:
+                self.json({"error": str(exc), "decl_soni": 0, "jami_qiymat_k": 0})
             return
         if parsed.path == "/api/exchange_rates":
             try:
