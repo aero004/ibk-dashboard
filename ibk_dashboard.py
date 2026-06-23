@@ -1934,6 +1934,7 @@ body.logged-in main{
 .dark .currency-widget{background:rgba(10,18,40,.5);border-color:rgba(96,165,250,.12)}
 tr.expired-row td{background:rgba(220,38,38,.04)!important}
 .dark tr.expired-row td{background:rgba(220,38,38,.10)!important}
+.uc-card{border-left:4px solid var(--blue)}.uc-header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px}.uc-header h2{margin:0;flex:1}.uc-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}.uc-badge.ok{background:#dcfce7;color:#15803d}.uc-badge.warn{background:#fef9c3;color:#854d0e}.uc-body{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}.uc-field{display:flex;flex-direction:column;gap:5px;min-width:200px;flex:1}.uc-field label{font-size:12px;font-weight:600;color:var(--muted)}.uc-field input[type=file]{width:100%;font-size:12px;padding:6px;border:1px solid var(--line);border-radius:6px;background:#fff}.uc-btns{display:flex;gap:8px;align-items:flex-end;flex-shrink:0}.uc-note{font-size:12px;margin:8px 0 0;padding:8px 12px;background:#f0f9ff;border-radius:6px;color:#0369a1;border-left:3px solid #0ea5e9}.dark .uc-note{background:rgba(14,165,233,.1);color:#7dd3fc}.dark .uc-field input[type=file]{background:#1a2a3e;color:#deeeff;border-color:#3a587a}
 </style></head><body class="login-screen"><div class="sky-scene" aria-hidden="true"><video id="bgVideo" class="bg-video" autoplay muted playsinline></video><canvas id="bgCanvas" width="1280" height="720"></canvas><div class="cinema-clouds"></div><div class="cinema-runway"></div><div class="cinema-glow"></div><div class="cinema-vignette"></div><div class="sky-layer mountains"></div><div class="sky-layer city"></div><div class="sky-layer city front"></div><div class="runway"></div><div class="tower"></div><div class="sky-layer water"></div><div class="bird b1"></div><div class="bird b2"></div><div class="bird b3"></div><div class="plane-wrap"><svg class="plane-svg" viewBox="0 0 900 360"><defs><linearGradient id="planeSkin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.48" stop-color="#d8e5ec"/><stop offset="1" stop-color="#8ea5b4"/></linearGradient><clipPath id="sealClip"><circle cx="450" cy="132" r="24"/></clipPath></defs><path class="plane-tail" d="M420 93 450 18 480 93 464 112 436 112Z"/><path class="plane-wing" d="M103 168 450 116 797 168 770 204 494 176 465 268 435 268 406 176 130 204Z"/><path class="plane-body" d="M382 105c16-54 120-54 136 0 18 61 9 164-24 211-20 29-68 29-88 0-33-47-42-150-24-211Z"/><path class="plane-body" d="M338 148c47-30 177-30 224 0l-28 35c-38-21-130-21-168 0Z" opacity=".85"/><ellipse class="engine" cx="294" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="294" cy="205" rx="25" ry="20"/><ellipse class="engine" cx="606" cy="203" rx="48" ry="35"/><ellipse class="engine-dark" cx="606" cy="205" rx="25" ry="20"/><circle class="seal-ring" cx="450" cy="132" r="31"/><image href="/assets/gerb-bojxona.jpg" x="426" y="108" width="48" height="48" clip-path="url(#sealClip)"/><text class="plane-text" x="450" y="198" text-anchor="middle">Toshkent-AERO IBK</text><g><rect class="plane-window" x="409" y="91" width="14" height="8" rx="4"/><rect class="plane-window" x="431" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="453" y="86" width="14" height="8" rx="4"/><rect class="plane-window" x="475" y="91" width="14" height="8" rx="4"/></g><path d="M154 175c210-61 382-61 592 0" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="4"/><path d="M410 302c25 19 55 19 80 0" fill="none" stroke="rgba(255,255,255,.38)" stroke-width="5" stroke-linecap="round"/></svg></div></div><header><div><h1>IBK Dashboard</h1><div class="muted" id="meta">Kirish kerak</div><div class="muted"><span id="clock" class="header-clock"></span><span class="designer-line">by @aero004</span></div></div><div id="actions"></div></header><main>
 <section id="login" class="login login-closed"><div class="login-seal-wrap" onclick="activateLogin()"><img class="login-seal" src="/assets/sticker.webp" alt="Bojxona gerbi"></div><div class="login-box"><h2>Kirish</h2><div class="login-form-stack"><div><label>Login</label><input id="user" autocomplete="username" placeholder="Login"></div><div><label>Parol</label><div class="pass-wrap"><input id="pass" type="password" autocomplete="new-password" placeholder="Parol"><button class="eye-btn" type="button" onclick="togglePassword()" title="Ko'rsatish/yashirish">&#128065;</button></div></div><button id="loginBtn" onclick="doLogin()">Kirish</button><div id="loginError" class="login-error"></div><button type="button" class="forgot-link" onclick="forgotPassword()">Parolni unutdingizmi?</button></div><div class="muted">Gerb ustiga bosilganda kirish oynasi ochiladi.</div></div></section>
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="currencyWidget" class="currency-widget"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
@@ -2486,49 +2487,99 @@ async function refreshCurrentReport(btn){
   setBusy(btn,true,"Yangilanmoqda");$("status").textContent="Ma'lumotlar yangilanmoqda...";
   try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
 }
+async function ucUploadBnrte(btn){
+  let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
+  if(!src?.files?.length){if(st)st.textContent='Asos fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('source',src.files[0]);
+  if(dep?.files?.length)fd.append('deposit',dep.files[0]);
+  try{let j=await api('/api/reports',{method:'POST',body:fd});if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
+  catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
+}
+async function ucUploadDepozit(btn){
+  if(!DATA){if($('ucDepozitStatus'))$('ucDepozitStatus').textContent='Avval BNRTE hisobotini yuklang';return}
+  let src=$('ucDepozitFile'),st=$('ucDepozitStatus');
+  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('report_id',DATA.id);fd.append('deposit',src.files[0]);
+  try{let j=await api('/api/deposit',{method:'POST',body:fd});if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
+  catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
+}
+async function ucUploadTolov(btn){
+  let src=$('ucTolovSource'),st=$('ucTolovStatus');
+  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('source',src.files[0]);
+  try{
+    let j=await api('/api/tolov',{method:'POST',body:fd});PAYMENTS=j.payments||[];
+    if(st)st.textContent=`Tayyor: ${PAYMENTS.length} tur, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm`;
+    if($('kpis'))$('kpis').innerHTML=renderKpis();
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
+}
+async function ucRecalcTolov(btn){
+  setBusy(btn,true,'Yuklanmoqda');
+  try{let j=await api('/api/tolov');PAYMENTS=j.payments||[];
+    if($('ucTolovStatus'))$('ucTolovStatus').textContent=`Yangilandi: ${PAYMENTS.length} tur`;render();}
+  catch(e){}finally{setBusy(btn,false)}
+}
+async function ucUploadWarehouse(btn){
+  let src=$('ucWrFile'),st=$('ucWrStatus');
+  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('file',src.files[0]);
+  try{
+    let j=await api('/api/upload_wr_registry',{method:'POST',body:fd});
+    if(j.warehouses)WR_DATA=j.warehouses;
+    if(st)st.textContent=j.success?`Tayyor: ${(j.warehouses||[]).length} ombor`:'Xatolik';
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
+}
+async function ucRecalcWarehouse(btn){
+  setBusy(btn,true,'Yuklanmoqda');
+  try{let j=await api('/api/warehouses');WR_DATA=j.warehouses||[];
+    if($('ucWrStatus'))$('ucWrStatus').textContent=`Yangilandi: ${WR_DATA.length} ombor`;}
+  catch(e){}finally{setBusy(btn,false)}
+}
+async function ucUploadAvia(btn){
+  let src=$('ucAviaFile'),st=$('ucAviaStatus');
+  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('file',src.files[0]);
+  try{
+    let j=await api('/api/upload_avia_awb',{method:'POST',body:fd});AVIA_DATA=j;
+    if(st)st.textContent=j.loaded?`Tayyor: ${fmtI(j.unique_awb)} AWB yuklandi`:`Xatolik: ${esc(j.error||'')}`;
+    if($('kpis'))$('kpis').innerHTML=renderKpis();
+    if(TAB==='avia')loadAviaAwb();
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
+}
+async function ucRecalcAvia(btn){
+  let st=$('ucAviaStatus');
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Qayta yuklanmoqda...';
+  try{
+    let [j,stats]=await Promise.all([api('/api/avia_awb?force=1'),api('/api/avia_stats')]);
+    AVIA_DATA=j;AVIA_STATS=stats;
+    if(st)st.textContent=j.loaded?`Yangilandi: ${fmtI(j.unique_awb)} AWB, ${fmtN(stats?.jami_qiymat_k||0)} ming $`:`Xatolik: ${esc(j.error||'')}`;
+    if($('kpis'))$('kpis').innerHTML=renderKpis();
+    if(TAB==='avia')loadAviaAwb();
+  }catch(e){if(st)st.textContent='Xatolik: '+String(e)}finally{setBusy(btn,false)}
+}
 uploadPanel=function(){
-  let arcOpts=(ARCHIVE||[]).slice().reverse().slice(0,40).map(r=>`<option value="${r.id}">${r.date} — ${esc((r.source||"").split(/[\\/]/).pop())}</option>`).join("");
-  let refreshHtml=DATA?`<div class=panel style="border-left:4px solid #1d72b8"><h2>&#8635; Joriy ma\'lumotlarni yangilash</h2><p class=muted>Ko\'rinishda: <b>${DATA.meta&&DATA.meta.date||"?"}</b> holatiga hisobot yukli.</p><button onclick="refreshCurrentReport(this)">Ma\'lumotlarni qayta yuklash</button></div>`:"";
+  let repDate=DATA?DATA.meta&&DATA.meta.date||DATA.date||'?':null;
+  let bnrteSt=repDate?`<span class="uc-badge ok">📅 ${repDate} holatiga — ${fmtI(DATA.kpis?.partiya||0)} partiya</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let depSt=repDate?`<span class="uc-badge ok">Joriy: ${repDate}</span>`:`<span class="uc-badge warn">BNRTE yuklanmagan</span>`;
+  let tolovSt=PAYMENTS&&PAYMENTS.length?`<span class="uc-badge ok">💳 ${PAYMENTS.length} tur</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let wrSt=WR_DATA&&WR_DATA.length?`<span class="uc-badge ok">🏢 ${WR_DATA.length} ombor</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let aviaSt=AVIA_DATA&&AVIA_DATA.loaded?`<span class="uc-badge ok">📦 ${fmtI(AVIA_DATA.unique_awb)} AWB</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let aviaDbSt=AVIA_STATS?`<span class="uc-badge ok">💲 ${fmtN(AVIA_STATS.jami_qiymat_k)} ming $</span>`:'';
   return `<div class=stack>
-<div class=panel><h2>Fayl yuklash markazi</h2><div class=muted>BNRTE, Depozit va To\'lovlar uchun fayllar alohida yuklanadi. Jarayon holati real vaqtda ko\'rinadi.</div></div>
-<div id=uploadStatus></div>
-${refreshHtml}
-<div class=panel><h2>BNRTE jamlanma — yangi hisobot yuklash</h2>
-<form class="upload" id="upload">
-<div><label>Asos fayl (xls/xlsx)</label><input name="source" type="file" accept=".xls,.xlsx,.html,.htm" required></div>
-<div><label>Depozit fayl (ixtiyoriy)</label><input name="deposit" type="file" accept=".xlsx"></div>
-<div></div><button>Yuklash va hisoblash</button>
-</form>
-<div class=muted style="margin-top:6px">Hisobot sanasi asos fayl nomidan avtomatik aniqlanadi.</div>
-</div>
-<div class=panel><h2>Depozit faylni alohida yangilash</h2>
-<form class="upload" id="depositOnlyForm">
-<div><label>Hisobot tanlang</label><select name="report_id" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px">${arcOpts||"<option>Arxiv bo\'sh</option>"}</select></div>
-<div><label>Depozit fayl (xlsx)</label><input name="deposit" type="file" accept=".xlsx" required></div>
-<div></div><button type="button" onclick="uploadDepositOnly(this)">Depozit yuklash</button>
-</form>
-<div id="depositResult" class=muted></div>
-</div>
-<div class=panel><h2>Yillik arxivni birdan yuklash</h2>
-<form class="upload" id="bulkUpload">
-<div><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div>
-<div><label>Depozit fayl (ixtiyoriy)</label><input name="deposit" type="file" accept=".xlsx"></div>
-<div></div><button>Hammasini yuklash</button>
-</form>
-<div id=bulkResult class=muted>Fayllar sanasi nomidan olinadi va arxivga qo\'shiladi.</div>
-</div>
-<div class=panel><h2>To\'lovlar jadvallari</h2>
-<form class="upload" id="tolovUpload">
-<div><label>To\'lov baza fayli</label><input name="source" type="file" accept=".xlsx,.xls" required></div>
-<div class=muted>04.06+07.06.2026 kabi asos fayl yuklanadi.</div>
-<div></div><button>To\'lov jadvallarini shakllantirish</button>
-</form>
-<div id="tolovUploadResult" class=muted></div>
-</div>
-<div class=panel><h2>Omborlar reestri</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">Yangi reestri faylini yuklash:</label><input type="file" id="wrFile" accept=".xlsx,.xls" style="font-size:12px"><button onclick="uploadWrRegistry()">Yuklash</button><span class="muted" id="wrUploadStatus"></span></div><div class=muted style="font-size:12px">omborlarReestri*.xlsx formatidagi fayl yuklanadi. Yuklangandan so\x27ng Omborlar bo\x27limida aks etadi.</div></div>
-<div class=panel><h2>✈ AVIA AWB</h2><div class="wr-upload-form"><label style="font-size:13px;font-weight:600">AWB Excel yuklash:</label><input type="file" id="aviaFile" accept=".xlsx,.xls" style="font-size:12px" onchange="uploadAviaAwbDirect(this.files[0])"><span class="muted" id="aviaUploadStatus"></span></div><div class=muted style="font-size:12px">"Yuklarni qabul qilish*.xlsx" formatidagi fayl yuklanadi. BNRTE → AVIA AWB bo\x27limida aks etadi.</div></div>
-</div></div>`;
-};
+<div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Har bir modul uchun alohida yuklash va qayta hisoblash. <b>Qayta hisoblash</b> — yangi fayl yuklamasdan serverdan qayta oladi.</p><div id=uploadStatus></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>📋 BNRTE — Nazoratdagi tovarlar</h2>${bnrteSt}</div><div class=uc-body><div class=uc-field><label>Asos fayl (xls/xlsx)</label><input type=file id="ucBnrteSource" accept=".xls,.xlsx,.html,.htm"></div><div class=uc-field><label>Depozit fayl (ixtiyoriy)</label><input type=file id="ucBnrteDeposit" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadBnrte(this)">Yuklash</button><button class="btn light" onclick="refreshCurrentReport(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucBnrteStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>💾 Depozit fayl — alohida yuklash</h2>${depSt}</div><div class=uc-body><div class=uc-field><label>Depozit fayl (xlsx)</label><input type=file id="ucDepozitFile" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadDepozit(this)"${DATA?'':' disabled title="Avval BNRTE yuklang"'}>Yuklash</button></div></div><div class=muted style="margin-top:6px;font-size:12px">Joriy hisobotga (${repDate||'—'}) depozit ma'lumotlarini biriktiradi va qayta hisoblab chiqadi.</div><div class=muted id="ucDepozitStatus" style="margin-top:4px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>💰 To'lovlar jadvallari</h2>${tolovSt}</div><div class=uc-body><div class=uc-field><label>To'lov baza fayli (xlsx)</label><input type=file id="ucTolovSource" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadTolov(this)">Yuklash</button><button class="btn light" onclick="ucRecalcTolov(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucTolovStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>🏢 Omborlar reestri</h2>${wrSt}</div><div class=uc-body><div class=uc-field><label>Reestri fayli (omborlarReestri*.xlsx)</label><input type=file id="ucWrFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadWarehouse(this)">Yuklash</button><button class="btn light" onclick="ucRecalcWarehouse(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucWrStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card" style="border-left-color:#0ea5e9"><div class=uc-header><h2>✈ AVIA AWB</h2><div style="display:flex;gap:6px;flex-wrap:wrap">${aviaSt} ${aviaDbSt}</div></div><div class=uc-note>AWB Excel (Yuklarni qabul qilish.xlsx) → AWB ro'yxati, joylar, vazn. Qiymat (ming $) BNRTE asos faylidan olinadi — yangilash uchun BNRTE → Qayta hisoblash.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>AWB Excel (Yuklarni qabul qilish*.xlsx)</label><input type=file id="ucAviaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadAvia(this)">Yuklash</button><button class="btn light" onclick="ucRecalcAvia(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucAviaStatus" style="margin-top:8px"></div></div>
+<details class=panel><summary style="cursor:pointer;font-weight:700;padding:4px 0">📚 Yillik arxivni birdan yuklash</summary><form class="upload" id="bulkUpload" style="margin-top:12px"><div><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div><div><label>Depozit fayl (ixtiyoriy)</label><input name="deposit" type="file" accept=".xlsx"></div><div></div><button>Hammasini yuklash</button></form><div id=bulkResult class=muted>Fayllar sanasi nomidan olinadi va arxivga qo\x27shiladi.</div></details>
+</div>`;
+}
 const bindUploadFull=bindUpload;bindUpload=function(){
   let f=$("upload");
   if(f)f.onsubmit=async e=>{
@@ -3086,6 +3137,9 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_user():
                 return
             try:
+                global AVIA_AWB_CACHE
+                if "force=1" in (parsed.query or ""):
+                    AVIA_AWB_CACHE = None
                 self.json(AVIA_AWB_CACHE if AVIA_AWB_CACHE is not None else load_avia_awb())
             except Exception as exc:
                 self.json({"error": str(exc), "loaded": False})
