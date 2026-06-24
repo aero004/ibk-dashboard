@@ -78,7 +78,7 @@ tr:nth-child(even) td{background:var(--alt)}
         <button class="sb" onclick="setView('radar')">Radar</button>
         <button class="sb on" onclick="setView('xarita')">Xarita</button>
       </div>
-      <button class="th-btn" id="thBtn" onclick="toggleTheme()">☀ Yorug'</button>
+      <button class="th-btn" id="thBtn" onclick="toggleTheme()" style="font-size:16px;padding:4px 9px">☀</button>
     </div>
   </div>
   <div id="sbar">
@@ -136,7 +136,7 @@ const S={
 function toggleTheme(){
   S.theme=S.theme==='dark'?'light':'dark';
   document.getElementById('wrap').classList.toggle('light',S.theme==='light');
-  document.getElementById('thBtn').textContent=S.theme==='dark'?"☀ Yorug'":'🌙 Qorongʼi';
+  document.getElementById('thBtn').textContent=S.theme==='dark'?'☀':'🌙';
   applyMapTheme();
   if(S.view==='radar')drawRadar();
 }
@@ -275,19 +275,30 @@ function drawRadar(){
   ctx.beginPath();ctx.arc(cx,cy,6,0,7);ctx.fillStyle=dark?'#2fd8c0':'#0d9488';ctx.fill();
   ctx.fillStyle=dark?'rgba(200,225,255,.8)':'rgba(20,50,100,.8)';
   ctx.font='700 10px "Segoe UI",sans-serif';ctx.textAlign='left';ctx.fillText('UTTT',cx+10,cy+4);ctx.textAlign='start';
-  const allFlights=[...S.arrivals,...S.departures].filter(f=>f.live&&f.lat&&f.lon);
-  allFlights.forEach(p=>{
-    const dist=distKm(UTTT.lat,UTTT.lon,p.lat,p.lon);if(dist>MAX_KM)return;
-    const brg=brgDeg(UTTT.lat,UTTT.lon,p.lat,p.lon),pr=(dist/MAX_KM)*R;
+  // Build radar targets using GPS (OpenSky) or time-interpolated positions
+  const livePos={};
+  (S.planes||[]).forEach(p=>{if(p.callsign&&p.lat&&p.lon&&!p.on_ground)livePos[p.callsign.trim().toUpperCase()]=p});
+  const radarTargets=[];
+  [...S.arrivals.map(f=>({f,typ:'arr'})),...S.departures.map(f=>({f,typ:'dep'}))].forEach(({f,typ})=>{
+    const cs=((f.flight||f.callsign||'').trim().toUpperCase()).replace(/\s+/g,'');
+    const gps=livePos[cs]||livePos[cs.replace(/^0+/,'')];
+    if(gps){radarTargets.push({f,lat:gps.lat,lon:gps.lon,typ,src:'gps'});return}
+    const ip=calcLivePos(f,typ);
+    if(ip)radarTargets.push({f,lat:ip.lat,lon:ip.lon,typ,src:'interp'});
+  });
+  radarTargets.forEach(({f,lat,lon,typ,src})=>{
+    const dist=distKm(UTTT.lat,UTTT.lon,lat,lon);if(dist>MAX_KM)return;
+    const brg=brgDeg(UTTT.lat,UTTT.lon,lat,lon),pr=(dist/MAX_KM)*R;
     const px=cx+Math.sin(toR(brg))*pr,py=cy-Math.cos(toR(brg))*pr;
-    const col=p.status_color==='green'?(dark?'#22c55e':'#16a34a'):(dark?'#2fd8c0':'#0d9488');
-    ctx.beginPath();ctx.arc(px,py,6,0,7);ctx.fillStyle=col+'26';ctx.fill();
+    const col=typ==='arr'?(dark?'#2fd8c0':'#0d9488'):(dark?'#f6a93b':'#b45309');
+    ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fillStyle=col+'22';ctx.fill();
     ctx.beginPath();ctx.arc(px,py,3.5,0,7);ctx.fillStyle=col;ctx.fill();
-    const lbl=(p.flight||p.callsign||'').substring(0,8);
+    if(src==='gps'){ctx.beginPath();ctx.arc(px,py,5.5,0,7);ctx.strokeStyle=col;ctx.lineWidth=1;ctx.stroke()}
+    const lbl=(f.flight||f.callsign||'').substring(0,8);
     ctx.fillStyle=dark?'rgba(180,215,255,.85)':'rgba(20,50,100,.85)';
     ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText(lbl,px+6,py-4);ctx.textAlign='start';
   });
-  const liveN=allFlights.length;
+  const liveN=radarTargets.length;
   if(!liveN){
     ctx.fillStyle=dark?'rgba(80,140,200,.5)':'rgba(50,90,160,.5)';
     ctx.font='11px "Segoe UI",sans-serif';ctx.textAlign='center';
@@ -313,8 +324,12 @@ function _ll(cb){
   const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.onload=cb;document.head.appendChild(sc);
 }
 function applyMapTheme(){
-  const el=document.getElementById('xaritaEl');
-  if(el)el.classList.toggle('lf-dark',S.theme==='dark');
+  if(!S.tileLayer)return;
+  const dark=S.theme==='dark';
+  const url=dark
+    ?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    :'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  S.tileLayer.setUrl(url);
 }
 
 function popupHtml(f,typ){
@@ -363,8 +378,11 @@ function initMap(){
     if(!S.map){
       const m=L.map(el,{center:[UTTT.lat,UTTT.lon],zoom:4,zoomControl:true});
       S.map=m;
-      S.tileLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:18}).addTo(m);
-      applyMapTheme();
+      const dark=S.theme==='dark';
+      const tUrl=dark
+        ?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        :'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      S.tileLayer=L.tileLayer(tUrl,{attribution:'© OpenStreetMap · © CARTO',maxZoom:19,subdomains:'abcd'}).addTo(m);
     }
     updateMapRoutes();
   });
@@ -545,12 +563,13 @@ async function fetchData(force){
     S.arrivals=fl.arrivals||[];
     S.departures=fl.departures||[];
     S.updAt=Math.floor(Date.now()/1000);S.error=fl.error||'';
-    const tot=S.arrivals.length+S.departures.length;
-    const live=S.arrivals.filter(f=>f.live).length+S.departures.filter(f=>f.live).length;
+    const arrN=S.arrivals.length, depN=S.departures.length, tot=arrN+depN;
+    const liveArr=S.arrivals.filter(f=>f.live).length, liveDep=S.departures.filter(f=>f.live).length;
     const landed=S.arrivals.filter(f=>f.status_color==='green').length;
     const inAir=(S.planes||[]).filter(p=>!p.on_ground).length;
+    const today=new Date().toLocaleDateString('uz-Latn',{day:'2-digit',month:'2-digit',year:'numeric'});
     if(S.error&&!tot)setStatus('err','FR24: '+S.error.slice(0,80));
-    else setStatus('ok',`${tot} reys · Havoda: ${live} · Qo'ngan: ${landed}${inAir?' · Real pozitsiya: '+inAir:''}`);
+    else setStatus('ok',`Bugun (${today}): ↓ ${arrN} kelish · ↑ ${depN} ketish · Havodagi: ${liveArr+liveDep}${inAir?' · GPS: '+inAir:''}`);
   }catch(e){S.error=String(e);setStatus('err','Xatolik: '+S.error.slice(0,70))}
   S.loading=false;
   if(S.view==='tablo')renderTablo();
@@ -561,7 +580,7 @@ async function fetchData(force){
 function boot(){
   // Apply light theme on start
   document.getElementById('wrap').classList.add('light');
-  document.getElementById('thBtn').textContent="🌙 Qorongʼi";
+  document.getElementById('thBtn').textContent='🌙';
   setView('xarita');
   fetchData();
   setInterval(fetchData,60000);

@@ -207,7 +207,9 @@ function draw() {
   const C = dark
     ? { bg0:'#04060e',bg1:'#080d1a',ocean:'#0d2042',oceanHi:'#1b3c68',land:'#2c4e82',border:'rgba(150,185,240,0.32)',grat:'rgba(140,170,225,0.10)',sph:'rgba(90,155,240,0.55)' }
     : { bg0:'#eef2f8',bg1:'#dce5f1',ocean:'#bcccE2',oceanHi:'#d6e2f1',land:'#9fb4d2',border:'rgba(255,255,255,0.8)',grat:'rgba(80,110,155,0.16)',sph:'rgba(110,145,190,0.6)' };
-  const carto = { water:'#bcd6dd',land:'#e8e1d0',border:'rgba(120,110,80,0.35)',coast:'rgba(120,130,100,0.5)',label:'#5a5234',halo:'rgba(255,255,255,0.9)' };
+  const carto = dark
+    ? { water:'#0e1726',land:'#222c3a',border:'rgba(150,168,196,0.22)',coast:'rgba(120,150,190,0.32)',label:'#aeb9c9',halo:'rgba(8,14,24,0.85)' }
+    : { water:'#bcd6dd',land:'#e8e1d0',border:'rgba(120,110,80,0.35)',coast:'rgba(120,130,100,0.5)',label:'#5a5234',halo:'rgba(255,255,255,0.9)' };
 
   ctx.save();
   ctx.scale(dpr, dpr);
@@ -455,9 +457,9 @@ function renderPanels() {
   // Title panel
   const dateStr = S.dateLabel || '—';
   document.getElementById('titlePanel').innerHTML = `
-    <div style="font-size:10.5px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:7px">IBK dashboard</div>
-    <div style="font-size:21px;font-weight:750;letter-spacing:-.01em;line-height:1.12;color:${txt}">"Toshkent-Aero" IBKga tovarlar oqimi</div>
-    <div style="font-size:12px;color:${sub};margin-top:6px;line-height:1.4">Davlatlar kesimida · yil boshidan ${dateStr} holatiga</div>`;
+    <div style="font-size:10px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:5px">IBK · Toshkent-Aero</div>
+    <div style="font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;color:${txt};white-space:nowrap">Tovarlar oqimi · Davlatlar kesimida</div>
+    <div style="font-size:11px;color:${sub};margin-top:5px;line-height:1.4">Yil boshidan ${dateStr} holatiga · ming $</div>`;
 
   // Seg buttons helper
   const segBase = `appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap`;
@@ -467,8 +469,8 @@ function renderPanels() {
     <button style="${seg(S.view==='globe')}" onclick="setView('globe')">Globus</button>
     <button style="${seg(S.view==='map')}" onclick="setView('map')">Xarita</button>`;
   document.getElementById('themeSeg').innerHTML = `
-    <button style="${seg(S.theme==='dark')}" onclick="setTheme('dark')">Qorongʻiqi</button>
-    <button style="${seg(S.theme==='light')}" onclick="setTheme('light')">Yorugʻ</button>`;
+    <button style="${seg(S.theme==='dark')};font-size:15px;padding:6px 13px" onclick="setTheme('dark')">🌙</button>
+    <button style="${seg(S.theme==='light')};font-size:15px;padding:6px 13px" onclick="setTheme('light')">☀</button>`;
 
   // Transport legend
   const legBase = `display:flex;align-items:center;gap:10px;width:100%;appearance:none;cursor:pointer;padding:9px 11px;border-radius:11px;font-size:13.5px;font-weight:600;transition:all .15s;text-align:left`;
