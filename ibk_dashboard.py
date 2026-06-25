@@ -292,29 +292,93 @@ def load_avia_awb(path: Path | None = None) -> dict:
                 return {"loaded": False, "error": "AWB Excel fayl topilmadi"}
             target = found[0]
         AVIA_AWB_PATH = target
-        df = pd.read_excel(target, header=1)
+        # Auto-detect header row: try header=0,1,2 and pick the one with AWB column
+        df = None
+        _awb_col = _arr_col = _country_col = _joylar_col = _vazn_col = _company_col = _goods_col = None
+        _AWB_NAMES = ["awb raqami", "awb", "airwaybill", "air waybill", "хавойи юк хати"]
+        _ARR_NAMES = ["kelish sanasi", "kelishi", "prибытие", "arrival", "sana"]
+        _COUNTRY_NAMES = ["davlat", "mamlakat", "country", "страна", "jo'natuvchi davlat"]
+        _JOYLAR_NAMES = ["joylar", "joyl", "places", "место", "qoldiqdagi joylar"]
+        _VAZN_NAMES = ["vazn", "kg", "weight", "brutto", "gross"]
+        _COMPANY_NAMES = ["korxona", "company", "yuklama egasi", "oluvchi", "консигнатор"]
+        _GOODS_NAMES = ["tovar", "goods", "yuk nomi", "товар", "наименование"]
+
+        def _find_col(cols, names):
+            for n in names:
+                for c in cols:
+                    if n in str(c).lower():
+                        return c
+            return None
+
+        for _hdr in [0, 1, 2]:
+            _df = pd.read_excel(target, header=_hdr)
+            _cols = [str(c).lower() for c in _df.columns]
+            _awb_try = _find_col(_df.columns, _AWB_NAMES)
+            if _awb_try is not None:
+                df = _df
+                _awb_col     = _awb_try
+                _arr_col     = _find_col(_df.columns, _ARR_NAMES)
+                _country_col = _find_col(_df.columns, _COUNTRY_NAMES)
+                _joylar_col  = _find_col(_df.columns, _JOYLAR_NAMES)
+                _vazn_col    = _find_col(_df.columns, _VAZN_NAMES)
+                _company_col = _find_col(_df.columns, _COMPANY_NAMES)
+                _goods_col   = _find_col(_df.columns, _GOODS_NAMES)
+                break
+
+        # Fallback: use positional columns (original logic)
+        if df is None:
+            df = pd.read_excel(target, header=1)
+            _awb_col = df.columns[10] if len(df.columns) > 10 else None
+            _arr_col = df.columns[6]  if len(df.columns) > 6  else None
+            _country_col = df.columns[8]  if len(df.columns) > 8  else None
+            _joylar_col  = df.columns[11] if len(df.columns) > 11 else None
+            _vazn_col    = df.columns[12] if len(df.columns) > 12 else None
+            _company_col = df.columns[14] if len(df.columns) > 14 else None
+            _goods_col   = df.columns[18] if len(df.columns) > 18 else None
+
+        def _cell(row, col):
+            if col is None: return None
+            v = row.get(col)
+            return v if pd.notna(v) else None
+
+        def _clean_awb(v):
+            if v is None: return ""
+            s = str(v).strip()
+            # Remove trailing ".0" from numeric AWBs
+            if s.endswith(".0") and s[:-2].isdigit():
+                s = s[:-2]
+            return s
+
         rows_raw = []
+        skipped = 0
         for _, row in df.iterrows():
             try:
-                awb = str(row.iloc[10]).strip()
-                if not awb or awb in ("nan", "None", "AWB raqami"):
+                awb = _clean_awb(_cell(row, _awb_col))
+                if not awb or awb.lower() in ("nan", "none", "awb raqami", "awb", "-", ""):
+                    skipped += 1
                     continue
-                arr_raw = str(row.iloc[6]).strip()
+                arr_raw = str(_cell(row, _arr_col) or "").strip()
                 try:
                     arr_date = datetime.strptime(arr_raw, "%d.%m.%Y").date()
                 except Exception:
                     arr_date = None
-                joylar = int(float(row.iloc[11])) if pd.notna(row.iloc[11]) else 0
-                vazn_kg = float(row.iloc[12]) if pd.notna(row.iloc[12]) else 0.0
-                country_raw = str(row.iloc[8]).strip() if pd.notna(row.iloc[8]) else ""
-                company = _normalize_company(row.iloc[14]) if pd.notna(row.iloc[14]) else ""
-                goods = str(row.iloc[18]).strip() if pd.notna(row.iloc[18]) else ""
-                if goods == "nan":
+                joylar_v = _cell(row, _joylar_col)
+                joylar = int(float(joylar_v)) if joylar_v is not None else 0
+                vazn_v = _cell(row, _vazn_col)
+                vazn_kg = float(vazn_v) if vazn_v is not None else 0.0
+                country_v = _cell(row, _country_col)
+                country_raw = str(country_v).strip() if country_v is not None else ""
+                company_v = _cell(row, _company_col)
+                company = _normalize_company(company_v) if company_v is not None else ""
+                goods_v = _cell(row, _goods_col)
+                goods = str(goods_v).strip() if goods_v is not None else ""
+                if goods in ("nan", "None"):
                     goods = ""
                 rows_raw.append({"awb": awb, "arr_date": arr_date, "joylar": joylar,
                                   "vazn_kg": vazn_kg, "country_raw": country_raw,
                                   "company": company, "goods": goods})
             except Exception:
+                skipped += 1
                 continue
         awb_groups: dict[str, list] = {}
         for r in rows_raw:
@@ -371,7 +435,8 @@ def load_avia_awb(path: Path | None = None) -> dict:
         companies_list = sorted(company_stats.values(), key=lambda x: x["vazn"], reverse=True)
         result = {
             "loaded": True, "file_name": target.name,
-            "total_rows": len(rows_raw), "unique_awb": len(awb_list),
+            "total_rows": len(rows_raw), "skipped_rows": skipped,
+            "unique_awb": len(awb_list),
             "multi_flight_awb": sum(1 for r in awb_list if r["flights"] > 1),
             "total_joylar": total_joylar_all,
             "total_vazn": round(total_vazn, 3),
@@ -379,7 +444,7 @@ def load_avia_awb(path: Path | None = None) -> dict:
             "active_vazn": round(sum(r["vazn"] for r in active), 3),
             "overdue_count": len(overdue),
             "overdue_vazn": round(sum(r["vazn"] for r in overdue), 3),
-            "awb_list": awb_list[:500],
+            "awb_list": awb_list,
             "companies": companies_list[:50],
             "countries": countries_list,
         }
@@ -1609,6 +1674,7 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
         "kpis": {"partiya": int(df["_partiya"].sum()), "vazn": float(df["_weight_tn"].sum()), "qiymat": float(df["_value_usd_k"].sum()), "tolov": float(df["_pay_total_mln"].sum()), "depozit": float(deposit_total), "depozit_matched": float(companies[companies["depozit"].gt(0)]["depozit"].sum()), "expired": int(expired["_partiya"].sum()), "expired_value": float(expired["_value_usd_k"].sum()) if len(expired) else 0.0},
         "top_value": company_records(companies.sort_values("qiymat", ascending=False).head(30)),
         "top_deposit": company_records(companies[companies["depozit"].gt(0)].sort_values("depozit", ascending=False).head(20)),
+        "all_companies": company_records(companies.sort_values("qiymat", ascending=False)),
         "regimes": [{"key": {"regime": r["_regime_code"]}, "rejim": r["_regime_code"], "partiya": int(r.partiya), "vazn": float(r.vazn), "qiymat": float(r.qiymat), "tolov": float(r.tolov)} for _, r in regimes.iterrows()],
         "summary": summary_rows,
         "expired_summary": expired_summary,
@@ -1981,7 +2047,7 @@ dialog{width:min(1760px,98.5vw)!important;max-width:98.5vw!important}dialog .bod
 .trend-legend-row{display:flex;gap:16px;justify-content:center;margin-top:6px;font-size:12px;font-weight:700;color:#557086}
 .trend-legend.c0{color:#1f72b8}.trend-legend.c1{color:#1b9e77}
 .dark .trend-grid{stroke:rgba(180,229,252,.12)}
-.rtab-wrap{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e8edf3}.rtab-head{padding:22px 28px 18px;border-bottom:1px solid #eef1f5;display:flex;flex-wrap:wrap;align-items:center;gap:16px}.rtab-title{display:flex;align-items:center;gap:14px;flex:none}.rtab-accent{width:4px;height:46px;border-radius:3px;background:linear-gradient(180deg,#1f6fb8,#35c1c9);box-shadow:0 2px 9px rgba(53,193,201,.4);flex-shrink:0}.rtab-sup{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#9aa6b8;margin-bottom:4px}.rtab-h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#16243a;line-height:1}.rtab-gradient{background:linear-gradient(135deg,#1f6fb8,#35c1c9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}.rtab-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}.rtab-search{position:relative;display:flex;align-items:center}.rtab-search input{width:240px;padding:10px 36px 10px 38px;border:1px solid #dde5ee;border-radius:12px;font-size:13px;color:#26384f;outline:none;background:#f5f8fc;transition:border-color .18s,box-shadow .18s}.rtab-search input:focus{border-color:#35c1c9;background:#fff;box-shadow:0 0 0 3px rgba(53,193,201,.18)}.rtab-search svg{position:absolute;left:13px;pointer-events:none}.rtab-search .rtab-clear{position:absolute;right:9px;width:20px;height:20px;border:none;border-radius:50%;background:#e6ebf2;color:#7d8aa0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:background .15s}.rtab-search .rtab-clear:hover{background:#d0d9e5}.rtab-sortbtns{display:inline-flex;gap:4px;padding:4px;background:#eaeff5;border:1px solid #e0e7f0;border-radius:14px}.rtab-sortbtns button{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;background:transparent;color:#5b6b82;transition:background .2s,color .15s,box-shadow .2s,transform .15s}.rtab-sortbtns button:hover{background:#fff;color:#1f6fb8;box-shadow:0 2px 7px rgba(31,45,61,.09)}.rtab-sortbtns button.on{background:linear-gradient(135deg,#2477c2,#35c1c9);color:#fff;border-color:rgba(255,255,255,.3);box-shadow:0 5px 14px rgba(31,111,184,.38);transform:translateY(-1px)}.rtab-colhead{display:grid;grid-template-columns:28px 1fr 72px repeat(3,minmax(130px,1.1fr));gap:20px;padding:14px 24px;background:#27374d;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#cdd9e6}.rtab-colhead .on{color:#7ee6ec;background:rgba(95,216,223,.16);border-radius:8px;padding:4px 8px;margin:-4px -8px;box-shadow:inset 0 0 0 1px rgba(126,230,236,.28)}.rtab-colhead .num{text-align:right}.rtab-body{padding:4px 0}@keyframes rtabRowIn{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes rtabBarGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}.rtab-row{display:grid;grid-template-columns:28px 1fr 72px repeat(3,minmax(130px,1.1fr));gap:20px;align-items:center;padding:12px 24px;border-bottom:1px solid #f2f5f8;animation:rtabRowIn .5s cubic-bezier(.22,1,.36,1) both;transition:background .15s;cursor:default}.rtab-row:hover{background:#f7fafd}.rtab-row:last-child{border-bottom:none}.rtab-rank{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 4px;border-radius:7px;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;animation:rtabRowIn .45s cubic-bezier(.22,1,.36,1) both}.rtab-rank.top{background:linear-gradient(135deg,#1f6fb8,#35c1c9);color:#fff;box-shadow:0 3px 9px rgba(31,111,184,.32)}.rtab-rank.reg{background:#eef2f6;color:#8c98ad}.rtab-name{font-size:14px;font-weight:600;color:#26384f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rtab-stir{display:flex;align-items:center;gap:4px;margin-top:2px}.rtab-stir span{font-size:11.5px;color:#9aa6b8;font-variant-numeric:tabular-nums}.rtab-stir button{width:20px;height:20px;border:none;border-radius:5px;background:transparent;color:#9aa6b8;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:background .15s,color .15s}.rtab-stir button:hover{background:#e8f1f8;color:#1f6fb8}.rtab-p{text-align:right;font-size:15px;font-weight:700;color:#3a4a61;font-variant-numeric:tabular-nums}.rtab-p.on{background:#eaf6fb;border-radius:10px;padding:8px 10px;margin:-8px -6px;box-shadow:inset 0 0 0 1px rgba(53,193,201,.18)}.rtab-cell{display:flex;flex-direction:column;gap:6px}.rtab-cell.on{background:#eaf6fb;border-radius:10px;padding:8px 10px;margin:-8px -6px;box-shadow:inset 0 0 0 1px rgba(53,193,201,.18)}.rtab-nums{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.rtab-pct{font-size:12.5px;font-weight:700;color:#1f8fbf;font-variant-numeric:tabular-nums}.rtab-val{font-size:14px;font-weight:600;color:#3a4a61;font-variant-numeric:tabular-nums}.rtab-bar-bg{height:9px;border-radius:5px;background:#eef2f6;overflow:hidden}.rtab-bar-fg{height:100%;border-radius:5px;transform-origin:left center;animation:rtabBarGrow .65s cubic-bezier(.22,1,.36,1) both;transition:width .55s cubic-bezier(.4,0,.2,1)}.rtab-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 24px;text-align:center;color:#9aa6b8}.dark .rtab-wrap{background:#0f1d2e;border-color:#2c4560}.dark .rtab-colhead{background:#152130}.dark .rtab-row{border-color:#1e3249}.dark .rtab-row:hover{background:#172840}.dark .rtab-name{color:#deeeff}.dark .rtab-val{color:#b8d4ee}.dark .rtab-pct{color:#4ecdc4}.dark .rtab-p{color:#deeeff}.dark .rtab-bar-bg{background:#1e3249}.dark .rtab-search input{background:#0f1d2e;border-color:#2c4560;color:#deeeff}.dark .rtab-sortbtns{background:#152130;border-color:#2c4560}.dark .rtab-sortbtns button{color:#9ab8d4}.dark .rtab-rank.reg{background:#1e3249;color:#7a9abc}
+.rtab-wrap{background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e8edf3}.rtab-head{padding:22px 28px 18px;border-bottom:1px solid #eef1f5;display:flex;flex-wrap:wrap;align-items:center;gap:16px}.rtab-title{display:flex;align-items:center;gap:14px;flex:none}.rtab-accent{width:4px;height:46px;border-radius:3px;background:linear-gradient(180deg,#1f6fb8,#35c1c9);box-shadow:0 2px 9px rgba(53,193,201,.4);flex-shrink:0}.rtab-sup{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#9aa6b8;margin-bottom:4px}.rtab-h1{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#16243a;line-height:1}.rtab-gradient{background:linear-gradient(135deg,#1f6fb8,#35c1c9);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}.rtab-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}.rtab-search{position:relative;display:flex;align-items:center}.rtab-search input{width:240px;padding:10px 36px 10px 38px;border:1px solid #dde5ee;border-radius:12px;font-size:13px;color:#26384f;outline:none;background:#f5f8fc;transition:border-color .18s,box-shadow .18s}.rtab-search input:focus{border-color:#35c1c9;background:#fff;box-shadow:0 0 0 3px rgba(53,193,201,.18)}.rtab-search svg{position:absolute;left:13px;pointer-events:none}.rtab-search .rtab-clear{position:absolute;right:9px;width:20px;height:20px;border:none;border-radius:50%;background:#e6ebf2;color:#7d8aa0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:background .15s}.rtab-search .rtab-clear:hover{background:#d0d9e5}.rtab-sortbtns{display:inline-flex;gap:4px;padding:4px;background:#eaeff5;border:1px solid #e0e7f0;border-radius:14px}.rtab-sortbtns button{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;background:transparent;color:#5b6b82;transition:background .2s,color .15s,box-shadow .2s,transform .15s}.rtab-sortbtns button:hover{background:#fff;color:#1f6fb8;box-shadow:0 2px 7px rgba(31,45,61,.09)}.rtab-sortbtns button.on{background:linear-gradient(135deg,#2477c2,#35c1c9);color:#fff;border-color:rgba(255,255,255,.3);box-shadow:0 5px 14px rgba(31,111,184,.38);transform:translateY(-1px)}.rtab-wrap{--rtab-grid:28px 1fr 72px repeat(3,minmax(130px,1.1fr))}.rtab-colhead{display:grid;grid-template-columns:var(--rtab-grid);gap:20px;padding:14px 24px;background:#27374d;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#cdd9e6}.rtab-colhead .on{color:#7ee6ec;background:rgba(95,216,223,.16);border-radius:8px;padding:4px 8px;margin:-4px -8px;box-shadow:inset 0 0 0 1px rgba(126,230,236,.28)}.rtab-colhead .num{text-align:right}.rtab-body{padding:4px 0}@keyframes rtabRowIn{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes rtabBarGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}.rtab-row{display:grid;grid-template-columns:var(--rtab-grid);gap:20px;align-items:center;padding:12px 24px;border-bottom:1px solid #f2f5f8;animation:rtabRowIn .5s cubic-bezier(.22,1,.36,1) both;transition:background .15s;cursor:default}.rtab-row:hover{background:#f7fafd}.rtab-row:last-child{border-bottom:none}.rtab-rank{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;padding:0 4px;border-radius:7px;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;animation:rtabRowIn .45s cubic-bezier(.22,1,.36,1) both}.rtab-rank.top{background:linear-gradient(135deg,#1f6fb8,#35c1c9);color:#fff;box-shadow:0 3px 9px rgba(31,111,184,.32)}.rtab-rank.reg{background:#eef2f6;color:#8c98ad}.rtab-name{font-size:14px;font-weight:600;color:#26384f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rtab-stir{display:flex;align-items:center;gap:4px;margin-top:2px}.rtab-stir span{font-size:11.5px;color:#9aa6b8;font-variant-numeric:tabular-nums}.rtab-stir button,.rtab-stir-copy{width:20px;height:20px;border:none;border-radius:5px;background:transparent;color:#9aa6b8;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:background .15s,color .15s}.rtab-stir button:hover,.rtab-stir-copy:hover{background:#e8f1f8;color:#1f6fb8}.rtab-p{text-align:right;font-size:15px;font-weight:700;color:#3a4a61;font-variant-numeric:tabular-nums}.rtab-p.on{background:#eaf6fb;border-radius:10px;padding:8px 10px;margin:-8px -6px;box-shadow:inset 0 0 0 1px rgba(53,193,201,.18)}.rtab-cell{display:flex;flex-direction:column;gap:6px}.rtab-cell.on{background:#eaf6fb;border-radius:10px;padding:8px 10px;margin:-8px -6px;box-shadow:inset 0 0 0 1px rgba(53,193,201,.18)}.rtab-nums{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.rtab-pct{font-size:12.5px;font-weight:700;color:#1f8fbf;font-variant-numeric:tabular-nums}.rtab-val{font-size:14px;font-weight:600;color:#3a4a61;font-variant-numeric:tabular-nums}.rtab-bar-bg{height:9px;border-radius:5px;background:#eef2f6;overflow:hidden}.rtab-bar-fg{height:100%;border-radius:5px;transform-origin:left center;animation:rtabBarGrow .65s cubic-bezier(.22,1,.36,1) both;transition:width .55s cubic-bezier(.4,0,.2,1)}.rtab-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 24px;text-align:center;color:#9aa6b8}.dark .rtab-wrap{background:#0f1d2e;border-color:#2c4560}.dark .rtab-colhead{background:#152130}.dark .rtab-row{border-color:#1e3249}.dark .rtab-row:hover{background:#172840}.dark .rtab-name{color:#deeeff}.dark .rtab-val{color:#b8d4ee}.dark .rtab-pct{color:#4ecdc4}.dark .rtab-p{color:#deeeff}.dark .rtab-bar-bg{background:#1e3249}.dark .rtab-search input{background:#0f1d2e;border-color:#2c4560;color:#deeeff}.dark .rtab-sortbtns{background:#152130;border-color:#2c4560}.dark .rtab-sortbtns button{color:#9ab8d4}.dark .rtab-rank.reg{background:#1e3249;color:#7a9abc}
 .dark .trend-axis{fill:#9fc3df}
 .dark .trend-legend-row{color:#b9d4ea}
 @keyframes sealFloatCalm{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-14px) scale(1.015)}}@keyframes spinBusy{to{transform:rotate(360deg)}}
@@ -2159,23 +2225,35 @@ function companyCols(){let k=DATA&&DATA.kpis||{};let dh=k.depozit?`Depozit ${fmt
 function _rtFmt(n){return(+n||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function _rtPct(v,t){return t>0?((v/t)*100).toFixed(1).replace('.',',')+' %':'0 %'}
 function _rtBar(v,mx,on){let w=mx>0?(v/mx*100).toFixed(1):0;return `height:100%;border-radius:5px;width:${w}%;background:${on?'linear-gradient(90deg,#1f6fb8,#35c1c9)':'#ccd6e0'};transform-origin:left center;animation:rtabBarGrow .65s cubic-bezier(.22,1,.36,1) both;`}
-function _rtMerge(tv,td){let m={};(tv||[]).forEach(r=>{let k=r.stir||r.korxona;if(!m[k])m[k]=Object.assign({},r);else Object.assign(m[k],r)});(td||[]).forEach(r=>{let k=r.stir||r.korxona;if(!m[k])m[k]=Object.assign({},r);else{m[k].depozit=m[k].depozit||r.depozit;m[k].vazn=m[k].vazn||r.vazn;m[k].partiya=m[k].partiya||r.partiya;m[k].qiymat=m[k].qiymat||r.qiymat}});return Object.values(m)}
-window._RT={metric:'q',query:'',data:[]};
+function copyText(text,btn){navigator.clipboard.writeText(String(text||'')).catch(()=>{let t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t)});if(btn){const s=btn.innerHTML;btn.innerHTML='✓';btn.style.color='#16a34a';setTimeout(()=>{btn.innerHTML=s;btn.style.color=''},900)}}
+function animatePlaceholder(id,phrases,ms){ms=ms||2800;const el=document.getElementById(id);if(!el)return;clearInterval(el._ph);let i=0;el._ph=setInterval(()=>{if(document.activeElement===el||el.value)return;el.setAttribute('placeholder',phrases[i++%phrases.length])},ms)}
+const _COPY_SVG=`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const _SEARCH_SVG=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa6b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+function _cpBtn(text){return `<button class="rtab-stir-copy" onclick="event.stopPropagation();copyText(${JSON.stringify(String(text||''))},this)" title="Nusxalash">${_COPY_SVG}</button>`}
+function _rtMerge(tv,td,all){
+  const depByStir={};(td||[]).forEach(r=>{if(r.stir)depByStir[r.stir]=r.depozit||0});
+  const allArr=(all||[]).map(r=>Object.assign({},r,{depozit:depByStir[r.stir]||r.depozit||0}));
+  let m={};(tv||[]).forEach(r=>{let k=r.stir||r.korxona;if(!m[k])m[k]=Object.assign({},r);else Object.assign(m[k],r)});
+  (td||[]).forEach(r=>{let k=r.stir||r.korxona;if(!m[k])m[k]=Object.assign({},r);else{m[k].depozit=m[k].depozit||r.depozit;m[k].vazn=m[k].vazn||r.vazn;m[k].partiya=m[k].partiya||r.partiya;m[k].qiymat=m[k].qiymat||r.qiymat}});
+  return {top30:Object.values(m),allData:allArr.length?allArr:Object.values(m)};
+}
+window._RT={metric:'q',query:'',data:[],allData:[]};
 function _rtRows(){
-  const{metric:m,query:q,data:all}=window._RT;
+  const{metric:m,query:q,data:top30,allData}=window._RT;
   const fld={p:'partiya',q:'qiymat',d:'depozit',v:'vazn'}[m];
-  const sorted=[...all].sort((a,b)=>(+b[fld]||0)-(+a[fld]||0));
+  const pool=allData.length?allData:top30;
+  const sorted=[...pool].sort((a,b)=>(+b[fld]||0)-(+a[fld]||0));
   sorted.forEach((r,i)=>{r._rank=i+1});
   const qL=(q||'').trim().toLowerCase();
   const vis=qL?sorted.filter(r=>(r.korxona||'').toLowerCase().includes(qL)||(r.stir||'').includes(qL)):sorted.slice(0,30);
-  const tot={q:all.reduce((s,r)=>s+(+r.qiymat||0),0),d:all.reduce((s,r)=>s+(+r.depozit||0),0),v:all.reduce((s,r)=>s+(+r.vazn||0),0)};
-  const mx={q:sorted[0]?+sorted[0].qiymat||1:1,d:[...all].sort((a,b)=>b.depozit-a.depozit)[0]?.depozit||1,v:[...all].sort((a,b)=>b.vazn-a.vazn)[0]?.vazn||1};
+  const tot={q:pool.reduce((s,r)=>s+(+r.qiymat||0),0),d:pool.reduce((s,r)=>s+(+r.depozit||0),0),v:pool.reduce((s,r)=>s+(+r.vazn||0),0)};
+  const mx={q:sorted[0]?+sorted[0].qiymat||1:1,d:[...pool].sort((a,b)=>b.depozit-a.depozit)[0]?.depozit||1,v:[...pool].sort((a,b)=>b.vazn-a.vazn)[0]?.vazn||1};
   if(!vis.length)return `<div class="rtab-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#c2ccd9" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div style="font-size:14px;font-weight:600;color:#5b6b82;">Hech narsa topilmadi</div></div>`;
   return vis.map((r,idx)=>{
     const isTop=r._rank<=3,pOn=m==='p',qOn=m==='q',dOn=m==='d',vOn=m==='v';
     return `<div class="rtab-row" style="animation-delay:${(idx*0.028).toFixed(3)}s" onclick='detail(${JSON.stringify({stir:r.stir}).replaceAll("'","&#39;")})'>
       <div><span class="rtab-rank ${isTop?'top':'reg'}" style="animation-delay:${(idx*0.028+0.08).toFixed(3)}s">${r._rank}</span></div>
-      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.korxona||'')}">${esc(r.korxona||'')}</div><div class="rtab-stir"><span>STIR: ${esc(r.stir||'')}</span></div></div>
+      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.korxona||'')}">${esc(r.korxona||'')}</div><div class="rtab-stir"><span>STIR: ${esc(r.stir||'')}</span>${r.stir?_cpBtn(r.stir):''}</div></div>
       <div class="rtab-p${pOn?' on':''}">${(+r.partiya||0).toLocaleString('ru-RU')}</div>
       <div class="rtab-cell${qOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.qiymat||0,tot.q)}</span><span class="rtab-val">${_rtFmt(r.qiymat)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.qiymat||0,mx.q,qOn)}"></div></div></div>
       <div class="rtab-cell${dOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.depozit||0,tot.d)}</span><span class="rtab-val">${_rtFmt(r.depozit)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.depozit||0,mx.d,dOn)}"></div></div></div>
@@ -2189,37 +2267,272 @@ function _rtColHead(){
   return `<div></div><div>Korxona / STIR</div>${h('p','Partiya','')}`+
     h('q','Qiymat','(ming $)')+h('d','Depozit','(mln. so\'m)')+h('v','Vazn','(tn.)');
 }
-function _rtBtn(k,icon,lbl){const on=window._RT.metric===k;return `<button class="${on?'on':''}" onclick="rtSort('${k}')">${icon}<span>${lbl}</span>${on?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`:''}</button>`}
+function _rtBtn(k,lbl){
+  const on=window._RT.metric===k;
+  const icon=window._RT.icons[k]||'';
+  const arrow=on?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`:'';
+  return `<button class="${on?'on':''}" onclick="rtSort('${k}')">${icon}<span>${lbl}</span>${arrow}</button>`;
+}
 function _rtRender(){
   const el=document.getElementById('rtabRows');if(el)el.innerHTML=_rtRows();
   const ch=document.getElementById('rtabCol');if(ch)ch.innerHTML=_rtColHead();
-  ['p','q','d','v'].forEach(k=>{const b=document.getElementById('rtBtn'+k);if(b){b.className=window._RT.metric===k?'on':'';b.innerHTML=document.getElementById('rtBtn'+k).getAttribute('data-html')||b.innerHTML}});
+  const sb=document.getElementById('rtabSortBtns');
+  if(sb)sb.innerHTML=_rtBtn('p','Partiya')+_rtBtn('q','Qiymat')+_rtBtn('d','Depozit')+_rtBtn('v','Vazn');
 }
 function rtSort(k){window._RT.metric=k;_rtRender()}
 function rtSearch(v){window._RT.query=v;_rtRender()}
-function korxonaRatingPanel(tv,td){
-  window._RT.data=_rtMerge(tv,td);window._RT.metric='q';window._RT.query='';
-  const iconP=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`;
-  const iconQ=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
-  const iconD=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`;
-  const iconV=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2"/><path d="M6.5 7h11l2.4 12.2a1 1 0 0 1-1 1.2H5.1a1 1 0 0 1-1-1.2L6.5 7Z"/></svg>`;
-  const searchIcon=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa6b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+function korxonaRatingPanel(tv,td,allC){
+  const merged=_rtMerge(tv,td,allC);
+  window._RT.data=merged.top30;window._RT.allData=merged.allData;
+  window._RT.metric='q';window._RT.query='';
+  window._RT.icons={
+    p:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`,
+    q:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    d:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`,
+    v:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2"/><path d="M6.5 7h11l2.4 12.2a1 1 0 0 1-1 1.2H5.1a1 1 0 0 1-1-1.2L6.5 7Z"/></svg>`
+  };
+  setTimeout(()=>animatePlaceholder('rtSearchInput',['Korxona nomi yozing…','STIR raqam kiriting…','Masalan: Tashkent Cargo…','Qidirish uchun yozing…']),50);
   return `<div class="rtab-wrap panel" style="padding:0;overflow:hidden;">
     <div class="rtab-head">
       <div class="rtab-title"><div class="rtab-accent"></div><div><div class="rtab-sup">Interaktiv hisobot</div><div class="rtab-h1"><span class="rtab-gradient">TOP 30</span> korxona reytingi</div></div></div>
       <div class="rtab-controls">
-        <div class="rtab-search">${searchIcon}<input oninput="rtSearch(this.value)" placeholder="Korxona nomi / STIR…"></div>
-        <div class="rtab-sortbtns">
-          <button onclick="rtSort('p')">${iconP}<span>Partiya</span></button>
-          <button onclick="rtSort('q')" class="on">${iconQ}<span>Qiymat</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></button>
-          <button onclick="rtSort('d')">${iconD}<span>Depozit</span></button>
-          <button onclick="rtSort('v')">${iconV}<span>Vazn</span></button>
+        <div class="rtab-search">${_SEARCH_SVG}<input oninput="rtSearch(this.value)" placeholder="Korxona nomi yozing…" id="rtSearchInput" autocomplete="off"></div>
+        <div class="rtab-sortbtns" id="rtabSortBtns">
+          ${_rtBtn('p','Partiya')}${_rtBtn('q','Qiymat')}${_rtBtn('d','Depozit')}${_rtBtn('v','Vazn')}
         </div>
       </div>
     </div>
     <div class="rtab-colhead" id="rtabCol">${_rtColHead()}</div>
     <div class="rtab-body" id="rtabRows">${_rtRows()}</div>
   </div>`
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AWB RATING PANEL
+// ═══════════════════════════════════════════════════════════════
+const _AW_ICONS={
+  j:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
+  v:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2"/><path d="M6.5 7h11l2.4 12.2a1 1 0 0 1-1 1.2H5.1a1 1 0 0 1-1-1.2L6.5 7Z"/></svg>`,
+  r:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5S18 2 16.5 3.5L13 7 4.8 5.2"/><path d="m2 2 20 20"/></svg>`
+};
+window._AW={metric:'j',query:'',data:[]};
+function _awBtn(k,lbl){
+  const on=window._AW.metric===k;
+  const arrow=on?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`:'';
+  return `<button class="${on?'on':''}" onclick="awSort('${k}')">${_AW_ICONS[k]||''}<span>${lbl}</span>${arrow}</button>`;
+}
+function _awColHead(){
+  const m=window._AW.metric;
+  const h=(k,l,u)=>`<div class="num${m===k?' on':''}">${l}${u?` <span style="font-size:10px;opacity:.72">${u}</span>`:''}</div>`;
+  return `<div></div><div>AWB / Qabul qiluvchi</div><div class="num">Reys</div>${h('j','Joylar','')}${h('v','Vazn','(tn.)')}${h('r','','Holat')}`;
+}
+function _awRows(){
+  const{metric:m,query:q,data}=window._AW;
+  const fld={j:'joylar',v:'vazn',r:'flights'}[m]||'joylar';
+  const sorted=[...data].sort((a,b)=>(+b[fld]||0)-(+a[fld]||0));
+  sorted.forEach((r,i)=>{r._rank=i+1});
+  const qL=(q||'').trim().toLowerCase();
+  const vis=qL?sorted.filter(r=>(r.awb||'').toLowerCase().includes(qL)||(r.company||'').toLowerCase().includes(qL)):sorted.slice(0,30);
+  const totJ=data.reduce((s,r)=>s+(+r.joylar||0),0);
+  const totV=data.reduce((s,r)=>s+(+r.vazn||0),0);
+  const mxJ=sorted[0]?+sorted[0].joylar||1:1;
+  const mxV=[...data].sort((a,b)=>b.vazn-a.vazn)[0]?.vazn||1;
+  const emptyIcon=`<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#c2ccd9" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  if(!vis.length)return `<div class="rtab-empty">${emptyIcon}<div style="font-size:14px;font-weight:600;color:#5b6b82">Hech narsa topilmadi</div></div>`;
+  return vis.map((r,idx)=>{
+    const isTop=r._rank<=3,jOn=m==='j',vOn=m==='v',rOn=m==='r';
+    const od=r.is_overdue;
+    const holatHtml=`<div style="font-size:11.5px;font-weight:700;color:${od?'#dc2626':'#16a34a'}">${od?'Muddati o\'tgan':'Kuzatuvda'}</div>${r.days_ago!=null?`<div style="font-size:11px;color:#9aa6b8;margin-top:1px">${r.days_ago} kun</div>`:''}`;
+    return `<div class="rtab-row" style="animation-delay:${(idx*0.028).toFixed(3)}s">
+      <div><span class="rtab-rank ${isTop?'top':'reg'}" style="animation-delay:${(idx*0.028+0.08).toFixed(3)}s">${r._rank}</span></div>
+      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.awb||'')}">${esc(r.awb||'')} ${_cpBtn(r.awb||'')}${r.arrival_date?`<span style="font-size:10.5px;color:#9aa6b8;margin-left:4px">${esc(r.arrival_date)}</span>`:''}</div><div class="rtab-stir"><span>${esc(r.company||'—')}</span>${r.country_latin?`<span style="margin-left:5px;padding:1px 5px;background:#eef2f6;border-radius:4px;font-size:10px">${esc(r.country_latin)}</span>`:''}</div></div>
+      <div class="rtab-p${rOn?' on':''}">${r.flights||1}</div>
+      <div class="rtab-cell${jOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.joylar||0,totJ)}</span><span class="rtab-val">${(+r.joylar||0).toLocaleString('ru-RU')}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.joylar||0,mxJ,jOn)}"></div></div></div>
+      <div class="rtab-cell${vOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.vazn||0,totV)}</span><span class="rtab-val">${_rtFmt(r.vazn)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.vazn||0,mxV,vOn)}"></div></div></div>
+      <div>${holatHtml}</div>
+    </div>`;
+  }).join('');
+}
+function _awRender(){
+  const el=document.getElementById('awRows');if(el)el.innerHTML=_awRows();
+  const ch=document.getElementById('awCol');if(ch)ch.innerHTML=_awColHead();
+  const sb=document.getElementById('awSortBtns');
+  if(sb)sb.innerHTML=_awBtn('j','Joylar')+_awBtn('v','Vazn')+_awBtn('r','Reys');
+}
+function awSort(k){window._AW.metric=k;_awRender()}
+function awSearch(v){window._AW.query=v;_awRender()}
+function awbRatingPanel(awbData){
+  if(!awbData||!awbData.loaded)return'';
+  const list=awbData.awb_list||[];
+  window._AW.data=list;window._AW.metric='j';window._AW.query='';
+  setTimeout(()=>animatePlaceholder('awSearchInput',['AWB raqami yozing…','Korxona nomi kiriting…','Masalan: 555-12345678…','Qidirish uchun yozing…']),50);
+  const totJ=list.reduce((s,r)=>s+(+r.joylar||0),0);
+  const totV=list.reduce((s,r)=>s+(+r.vazn||0),0);
+  const act=list.filter(r=>!r.is_overdue).length, od=list.filter(r=>r.is_overdue).length;
+  return `<div class="rtab-wrap panel" style="padding:0;overflow:hidden;--rtab-grid:28px 1fr 54px minmax(100px,1fr) minmax(110px,1fr) 86px">
+    <div class="rtab-head">
+      <div class="rtab-title"><div class="rtab-accent" style="background:linear-gradient(180deg,#0ea5e9,#06b6d4)"></div><div><div class="rtab-sup">Interaktiv hisobot</div><div class="rtab-h1" style="font-size:19px"><span class="rtab-gradient" style="background:linear-gradient(135deg,#0ea5e9,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">✈ ${list.length}</span> ta AWB reytingi</div></div></div>
+      <div class="rtab-controls">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12px;padding:3px 8px;background:#dcfce7;color:#16a34a;border-radius:8px;font-weight:600">Kuzatuvda: ${act}</span>
+          <span style="font-size:12px;padding:3px 8px;background:#fee2e2;color:#dc2626;border-radius:8px;font-weight:600">O'tgan: ${od}</span>
+          <span style="font-size:12px;color:#9aa6b8">${totJ.toLocaleString('ru-RU')} joy · ${_rtFmt(totV)} tn</span>
+        </div>
+        <div class="rtab-search">${_SEARCH_SVG}<input oninput="awSearch(this.value)" placeholder="AWB raqami yozing…" id="awSearchInput" autocomplete="off"></div>
+        <div class="rtab-sortbtns" id="awSortBtns">${_awBtn('j','Joylar')}${_awBtn('v','Vazn')}${_awBtn('r','Reys')}</div>
+      </div>
+    </div>
+    <div class="rtab-colhead" id="awCol">${_awColHead()}</div>
+    <div class="rtab-body" id="awRows">${_awRows()}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OMBOR RATING PANEL
+// ═══════════════════════════════════════════════════════════════
+window._WH={metric:'q',query:'',data:[],wrMap:{}};
+function _whBtn(k,lbl){
+  const on=window._WH.metric===k;
+  const ICONS={p:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`,q:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,v:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2"/><path d="M6.5 7h11l2.4 12.2a1 1 0 0 1-1 1.2H5.1a1 1 0 0 1-1-1.2L6.5 7Z"/></svg>`,t:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`};
+  const arrow=on?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`:'';
+  return `<button class="${on?'on':''}" onclick="whSort('${k}')">${ICONS[k]||''}<span>${lbl}</span>${arrow}</button>`;
+}
+function _whColHead(){
+  const m=window._WH.metric;
+  const h=(k,l,u)=>`<div class="num${m===k?' on':''}">${l}${u?` <span style="font-size:10px;opacity:.72">${u}</span>`:''}</div>`;
+  return `<div></div><div>Ombor / Litsenziya</div>${h('p','Partiya','')}${h('q','Qiymat','(ming $)')}${h('v','Vazn','(tn.)')}${h('t','To\'lov','(mln so\'m)')}`;
+}
+function _whRows(){
+  const{metric:m,query:q,data,wrMap}=window._WH;
+  const fld={p:'partiya',q:'qiymat',v:'vazn',t:'tolov'}[m]||'qiymat';
+  const sorted=[...data].sort((a,b)=>(+b[fld]||0)-(+a[fld]||0));
+  sorted.forEach((r,i)=>{r._rank=i+1});
+  const qL=(q||'').trim().toLowerCase();
+  const vis=qL?sorted.filter(r=>{
+    const lic=(wrMap[(r.name||'').toLowerCase()]||{}).lic_num||'';
+    return (r.name||'').toLowerCase().includes(qL)||lic.toLowerCase().includes(qL);
+  }):sorted.slice(0,30);
+  const tot={p:data.reduce((s,r)=>s+(+r.partiya||0),0),q:data.reduce((s,r)=>s+(+r.qiymat||0),0),v:data.reduce((s,r)=>s+(+r.vazn||0),0),t:data.reduce((s,r)=>s+(+r.tolov||0),0)};
+  const mx={p:sorted[0]?+sorted[0].partiya||1:1,q:[...data].sort((a,b)=>b.qiymat-a.qiymat)[0]?.qiymat||1,v:[...data].sort((a,b)=>b.vazn-a.vazn)[0]?.vazn||1,t:[...data].sort((a,b)=>b.tolov-a.tolov)[0]?.tolov||1};
+  const emptyIcon=`<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#c2ccd9" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  if(!vis.length)return `<div class="rtab-empty">${emptyIcon}<div style="font-size:14px;font-weight:600;color:#5b6b82">Hech narsa topilmadi</div></div>`;
+  const pOn=m==='p',qOn=m==='q',vOn=m==='v',tOn=m==='t';
+  return vis.map((r,idx)=>{
+    const isTop=r._rank<=3;
+    const lic=(wrMap[(r.name||'').toLowerCase()]||{}).lic_num||'';
+    return `<div class="rtab-row" style="animation-delay:${(idx*0.028).toFixed(3)}s">
+      <div><span class="rtab-rank ${isTop?'top':'reg'}" style="animation-delay:${(idx*0.028+0.08).toFixed(3)}s">${r._rank}</span></div>
+      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.name||'')}">${esc(r.name||'')}</div><div class="rtab-stir">${lic?`<span>${esc(lic)}</span>${_cpBtn(lic)}`:`<span style="color:#c2ccd9">Litsenziya yo'q</span>`}</div></div>
+      <div class="rtab-p${pOn?' on':''}">${(+r.partiya||0).toLocaleString('ru-RU')}</div>
+      <div class="rtab-cell${qOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.qiymat||0,tot.q)}</span><span class="rtab-val">${_rtFmt(r.qiymat)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.qiymat||0,mx.q,qOn)}"></div></div></div>
+      <div class="rtab-cell${vOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.vazn||0,tot.v)}</span><span class="rtab-val">${_rtFmt(r.vazn)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.vazn||0,mx.v,vOn)}"></div></div></div>
+      <div class="rtab-cell${tOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.tolov||0,tot.t)}</span><span class="rtab-val">${_rtFmt(r.tolov)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.tolov||0,mx.t,tOn)}"></div></div></div>
+    </div>`;
+  }).join('');
+}
+function _whRender(){
+  const el=document.getElementById('whRows');if(el)el.innerHTML=_whRows();
+  const ch=document.getElementById('whCol');if(ch)ch.innerHTML=_whColHead();
+  const sb=document.getElementById('whSortBtns');
+  if(sb)sb.innerHTML=_whBtn('p','Partiya')+_whBtn('q','Qiymat')+_whBtn('v','Vazn')+_whBtn('t','To\'lov');
+}
+function whSort(k){window._WH.metric=k;_whRender()}
+function whSearch(v){window._WH.query=v;_whRender()}
+function omborRatingPanel(rows,wrArg){
+  rows=(rows||[]).filter(r=>r.name&&r.name!=="IBK bo'yicha Jami");
+  const wrRows=Array.isArray(wrArg)?wrArg:(wrArg&&wrArg.warehouses)||[];
+  const wrMap={};(wrRows||[]).forEach(w=>{if(w.name)wrMap[w.name.toLowerCase()]={lic_num:w.lic_num||'',lic_exp:w.lic_exp||''}});
+  window._WH.data=rows;window._WH.metric='q';window._WH.query='';window._WH.wrMap=wrMap;
+  setTimeout(()=>animatePlaceholder('whSearchInput',['Ombor nomi yozing…','Litsenziya raqami kiriting…','Qidirish uchun yozing…']),50);
+  return `<div class="rtab-wrap panel" style="padding:0;overflow:hidden;--rtab-grid:28px 1fr minmax(80px,0.7fr) minmax(120px,1fr) minmax(120px,1fr) minmax(120px,1fr)">
+    <div class="rtab-head">
+      <div class="rtab-title"><div class="rtab-accent" style="background:linear-gradient(180deg,#7c3aed,#a78bfa)"></div><div><div class="rtab-sup">Interaktiv hisobot</div><div class="rtab-h1"><span class="rtab-gradient" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${rows.length}</span> ta ombor reytingi</div></div></div>
+      <div class="rtab-controls">
+        <div class="rtab-search">${_SEARCH_SVG}<input oninput="whSearch(this.value)" placeholder="Ombor nomi yozing…" id="whSearchInput" autocomplete="off"></div>
+        <div class="rtab-sortbtns" id="whSortBtns">${_whBtn('p','Partiya')}${_whBtn('q','Qiymat')}${_whBtn('v','Vazn')}${_whBtn('t','To\'lov')}</div>
+      </div>
+    </div>
+    <div class="rtab-colhead" id="whCol">${_whColHead()}</div>
+    <div class="rtab-body" id="whRows">${_whRows()}</div>
+  </div>`;
+}
+function omborRatingUpdateWR(wrArg){
+  if(!wrArg)return;
+  const wrRows=Array.isArray(wrArg)?wrArg:(wrArg.warehouses)||[];
+  if(!wrRows.length)return;
+  const wrMap={};wrRows.forEach(w=>{if(w.name)wrMap[w.name.toLowerCase()]={lic_num:w.lic_num||'',lic_exp:w.lic_exp||''}});
+  window._WH.wrMap=wrMap;_whRender();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOVAR RATING PANEL
+// ═══════════════════════════════════════════════════════════════
+window._GD={metric:'q',query:'',data:[]};
+function _gdBtn(k,lbl){
+  const on=window._GD.metric===k;
+  const ICONS={p:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`,q:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,v:`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2"/><path d="M6.5 7h11l2.4 12.2a1 1 0 0 1-1 1.2H5.1a1 1 0 0 1-1-1.2L6.5 7Z"/></svg>`};
+  const arrow=on?`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`:'';
+  return `<button class="${on?'on':''}" onclick="gdSort('${k}')">${ICONS[k]||''}<span>${lbl}</span>${arrow}</button>`;
+}
+function _gdColHead(){
+  const m=window._GD.metric;
+  const h=(k,l,u)=>`<div class="num${m===k?' on':''}">${l}${u?` <span style="font-size:10px;opacity:.72">${u}</span>`:''}</div>`;
+  return `<div></div><div>Tovar / TIF TN</div><div class="num">Korxona</div>${h('p','Partiya','')}${h('q','Qiymat','(ming $)')}${h('v','Vazn','(tn.)')}`;
+}
+function _gdRows(){
+  const{metric:m,query:q,data}=window._GD;
+  const fld={p:'partiya',q:'qiymat',v:'vazn'}[m]||'qiymat';
+  const sorted=[...data].sort((a,b)=>(+b[fld]||0)-(+a[fld]||0));
+  sorted.forEach((r,i)=>{r._rank=i+1});
+  const qL=(q||'').trim().toLowerCase();
+  const tnShort=(tn)=>{if(!tn)return'';let s=String(tn).replace(/\D/g,'');return s.slice(0,6)||s};
+  const vis=qL?sorted.filter(r=>{
+    const tn=String((r.key&&r.key.tnved)||r.tnved||'');
+    return (r.name||'').toLowerCase().includes(qL)||tn.startsWith(qL)||tn.includes(qL);
+  }):sorted.slice(0,30);
+  const tot={p:data.reduce((s,r)=>s+(+r.partiya||0),0),q:data.reduce((s,r)=>s+(+r.qiymat||0),0),v:data.reduce((s,r)=>s+(+r.vazn||0),0)};
+  const mx={p:sorted[0]?+sorted[0].partiya||1:1,q:[...data].sort((a,b)=>b.qiymat-a.qiymat)[0]?.qiymat||1,v:[...data].sort((a,b)=>b.vazn-a.vazn)[0]?.vazn||1};
+  const emptyIcon=`<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#c2ccd9" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+  if(!vis.length)return `<div class="rtab-empty">${emptyIcon}<div style="font-size:14px;font-weight:600;color:#5b6b82">Hech narsa topilmadi</div></div>`;
+  const pOn=m==='p',qOn=m==='q',vOn=m==='v';
+  return vis.map((r,idx)=>{
+    const isTop=r._rank<=3;
+    const tn=String((r.key&&r.key.tnved)||r.tnved||'').replace(/\D/g,'').slice(0,6);
+    return `<div class="rtab-row" style="animation-delay:${(idx*0.028).toFixed(3)}s">
+      <div><span class="rtab-rank ${isTop?'top':'reg'}" style="animation-delay:${(idx*0.028+0.08).toFixed(3)}s">${r._rank}</span></div>
+      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.name||'')}">${esc(r.name||'')}</div><div class="rtab-stir">${tn?`<span>TIF TN: ${tn}</span>`:''}</div></div>
+      <div class="rtab-p">${(+r.korxona||0).toLocaleString('ru-RU')}</div>
+      <div class="rtab-cell${pOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.partiya||0,tot.p)}</span><span class="rtab-val">${(+r.partiya||0).toLocaleString('ru-RU')}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.partiya||0,mx.p,pOn)}"></div></div></div>
+      <div class="rtab-cell${qOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.qiymat||0,tot.q)}</span><span class="rtab-val">${_rtFmt(r.qiymat)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.qiymat||0,mx.q,qOn)}"></div></div></div>
+      <div class="rtab-cell${vOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.vazn||0,tot.v)}</span><span class="rtab-val">${_rtFmt(r.vazn)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.vazn||0,mx.v,vOn)}"></div></div></div>
+    </div>`;
+  }).join('');
+}
+function _gdRender(){
+  const el=document.getElementById('gdRows');if(el)el.innerHTML=_gdRows();
+  const ch=document.getElementById('gdCol');if(ch)ch.innerHTML=_gdColHead();
+  const sb=document.getElementById('gdSortBtns');
+  if(sb)sb.innerHTML=_gdBtn('p','Partiya')+_gdBtn('q','Qiymat')+_gdBtn('v','Vazn');
+}
+function gdSort(k){window._GD.metric=k;_gdRender()}
+function gdSearch(v){window._GD.query=v;_gdRender()}
+function tovarRatingPanel(goodsRows){
+  const rows=(goodsRows||[]).filter(r=>r.name&&r.name!=="IBK bo'yicha Jami"&&r.name!=="Boshqa");
+  window._GD.data=rows;window._GD.metric='q';window._GD.query='';
+  setTimeout(()=>animatePlaceholder('gdSearchInput',['Tovar nomini yozing…','TIF TN kodi kiriting…','Masalan: 8471…','Qidirish uchun yozing…']),50);
+  const tot={p:rows.reduce((s,r)=>s+(+r.partiya||0),0),q:rows.reduce((s,r)=>s+(+r.qiymat||0),0),v:rows.reduce((s,r)=>s+(+r.vazn||0),0)};
+  return `<div class="rtab-wrap panel" style="padding:0;overflow:hidden;--rtab-grid:28px 1fr 64px minmax(90px,0.8fr) minmax(120px,1fr) minmax(110px,1fr)">
+    <div class="rtab-head">
+      <div class="rtab-title"><div class="rtab-accent" style="background:linear-gradient(180deg,#f59e0b,#fb923c)"></div><div><div class="rtab-sup">Interaktiv hisobot</div><div class="rtab-h1"><span class="rtab-gradient" style="background:linear-gradient(135deg,#f59e0b,#fb923c);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${rows.length}</span> ta tovar guruhi</div></div></div>
+      <div class="rtab-controls">
+        <div style="font-size:12px;color:#9aa6b8">${tot.p.toLocaleString('ru-RU')} partiya · ${_rtFmt(tot.q)} ming $</div>
+        <div class="rtab-search">${_SEARCH_SVG}<input oninput="gdSearch(this.value)" placeholder="Tovar nomini yozing…" id="gdSearchInput" autocomplete="off"></div>
+        <div class="rtab-sortbtns" id="gdSortBtns">${_gdBtn('p','Partiya')}${_gdBtn('q','Qiymat')}${_gdBtn('v','Vazn')}</div>
+      </div>
+    </div>
+    <div class="rtab-colhead" id="gdCol">${_gdColHead()}</div>
+    <div class="rtab-body" id="gdRows">${_gdRows()}</div>
+  </div>`;
 }
 const sumCols=[{k:"name",t:"Ko'rsatkich",w:"38%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}];
 const regimeCols=[{k:"rejim",t:"Rejim",w:"24%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}];
@@ -2364,6 +2677,7 @@ async function loadWarehouseRegistry(){
     let j=await api('/api/warehouses');
     WR_DATA=j;
     let wrs=j.warehouses||[];
+    omborRatingUpdateWR(wrs);
     let fd=j.file_date||'';
     let dateLabel=fd?` (${fd} holatiga)`:'';
     let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length};
@@ -2404,12 +2718,12 @@ if(TAB==="umumiy"){v.innerHTML=overviewPanels();return}
 if(TAB==="avia"){v.innerHTML=aviaPanel();loadAviaAwb();return}
 if(TAB==="payments"){v.innerHTML=paymentModule("overview");return}if(TAB==="pay_lists"){v.innerHTML=paymentModule("lists");return}if(TAB==="pay_analysis"){v.innerHTML=paymentModule("analysis");return}
 if(TAB==="rejim"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami va 70-74-80</h2>${table(sumCols,regimeSummaryRows())}</div><div class=panel><h2>70-74-80 rejimlar kesimida</h2>${table(regimeCols,basicTotal(DATA.regimes||[],"IBK bo'yicha Jami","rejim"))}</div><div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div><div class=panel><h2>Rejimlar to'lov ulushi</h2>${bars(DATA.regimes||[],"rejim","tolov",fmtN)}</div></div>`;return}
-if(TAB==="ombor"){v.innerHTML=`<div class="panel wide" id="wrRegistryPanel"><h2>Omborlar reestri</h2><div class="muted">Yuklanmoqda...</div></div><div class="panel wide"><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=stack><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();loadWarehouseRegistry();return}
+if(TAB==="ombor"){v.innerHTML=`${omborRatingPanel(DATA.warehouse||[],WR_DATA)}<div class="panel wide" id="wrRegistryPanel"><h2>Omborlar reestri</h2><div class="muted">Yuklanmoqda...</div></div><div class="panel wide"><h2>Omborlar kesimida</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div><div class=stack><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div><div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div><div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`;let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();loadWarehouseRegistry();return}
 if(TAB==="muddat"){v.innerHTML=`<div class=stack><div class=panel><h2>Muddatlar kesimida</h2>${table([{k:"muddat",t:"Muddat",w:"30%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.ages||[],"IBK bo'yicha Jami","muddat"))}</div><div class=panel><h2>Saqlanish sabablari</h2>${table(sumCols,basicTotal(DATA.reason||[]))}</div><div class=panel><h2>Muddatlar partiya ulushi</h2>${bars(DATA.ages||[],"muddat","partiya",fmtI)}</div><div class=panel><h2>Saqlanish sabablari qiymat ulushi</h2>${bars(DATA.reason||[],"name","qiymat",fmtN)}</div></div>`;return}
-if(TAB==="korxona"){v.innerHTML=`${korxonaRatingPanel(DATA.top_value||[],DATA.top_deposit||[])}<div class=stack style="margin-top:14px"><div class=panel><h2>TOP 20 korxona (qiymat) ${xls("top_value")}</h2>${table(companyCols(),companyTotal(DATA.top_value||[]))}</div><div class=panel><h2>TOP 20 korxona (depozit mablag'lari) ${xls("top_deposit")}</h2>${table(companyCols(),companyTotal(DATA.top_deposit||[]))}</div><div class=panel><h2>Qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN)}</div></div><div class="panel wide" id="trendPanel"><h3>Korxonalar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportCompanyPanel"><h3>Transport kesimida korxonalar — yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportTrendPanel"><h3>Transport turi bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div>`;loadCompanyTrends();loadTransportCompanyTrends();loadTransportTrends();return}
+if(TAB==="korxona"){v.innerHTML=`${korxonaRatingPanel(DATA.top_value||[],DATA.top_deposit||[],DATA.all_companies||[])}<div class=stack style="margin-top:14px"><div class=panel><h2>TOP 20 korxona (qiymat) ${xls("top_value")}</h2>${table(companyCols(),companyTotal(DATA.top_value||[]))}</div><div class=panel><h2>TOP 20 korxona (depozit mablag'lari) ${xls("top_deposit")}</h2>${table(companyCols(),companyTotal(DATA.top_deposit||[]))}</div><div class=panel><h2>Qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN)}</div></div><div class="panel wide" id="trendPanel"><h3>Korxonalar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportCompanyPanel"><h3>Transport kesimida korxonalar — yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div><div class="panel wide" id="transportTrendPanel"><h3>Transport turi bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div>`;loadCompanyTrends();loadTransportCompanyTrends();loadTransportTrends();return}
 if(TAB==="expired"){v.innerHTML=`<div class=stack><div class=panel><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}<div class=overview-note>Jadval ustunlari jamlanma Excel vkladkasidagi ko'rinishga yaqin qat'iy kenglikda berildi.</div></div><div class=panel><h2>Muddati o'tgan postlar kesimida</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"90px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"120px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"130px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"135px"}],basicTotal(DATA.post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}${bars(DATA.post_summary||[],"post","qiymat",fmtN)}${miniChart(DATA.post_summary||[],"qiymat","post")}</div><div class=panel><h2>Muddati o'tgan jamlanma ${xls("expired")}</h2>${expiredBlockTable(DATA.expired_block||[])}</div><div class=panel><h2>Muddati o'tgan korxonalar</h2>${table([{k:"korxona",t:"Korxona nomi",w:"300px"},{k:"stir",t:"STIR",w:"92px"},{k:"rejim",t:"Rejim",w:"70px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"kun",t:"Kun hisobi",n:1,f:fmtI,w:"80px"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"78px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"120px"},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN,w:"125px"}],expiredTotal(DATA.expired||[]),"fixed-table")}</div></div>`;return}
 if(TAB==="released"){let rel=DATA.released||{};v.innerHTML=`<div class=panel><h2>Nazoratdan yechilishi</h2><div class=filters><select id=relBase>${dateOptions()}</select><select id=relFinal>${dateOptions()}</select><button onclick="buildRelease()">Shakllantirish</button></div><div id=releaseResult></div></div><div class=stack>${["1","3","5","10","30"].map(d=>{let r=rel[d]||{rows:[]};let title=d==="30"?"1 oy ichida yechilgan":`${d} kun ichida yechilgan`;let note=r.missing_date?`<div class=muted>${r.missing_date} sanasidagi asos fayl arxivda yo'q.</div>`:`<div class=muted>Asos sana: ${r.base_date||"-"}</div>`;return `<div class=panel><h2>${title}</h2>${note}${table([{k:"company",t:"Korxona nomi",w:"40%"},{k:"stir",t:"STIR",w:"10%"},{k:"decl",t:"Deklaratsiya",w:"16%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}],periodRows(r))}</div>`}).join("")}</div>`;return}
-if(TAB==="goods"){let goodsCols=[{k:"name",t:"Tovar guruhi",w:"36%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"korxona",t:"Korxona",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}], gp=topNWithOther(DATA.goods||[],30,"qiymat","name"), gpart=topNWithOther(DATA.goods||[],30,"partiya","name"), gvazn=topNWithOther(DATA.goods||[],30,"vazn","name");v.innerHTML=`<div class="panel" id="goodsTrendPanel"><h3>Tovarlar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class=grid2><div class="panel wide"><h2>Tovarlar guruhlari ${xls("goods")}</h2>${table(goodsCols,basicTotal(gp))}</div><div class=panel><h2>Partiya bo'yicha ulushi</h2>${bars(gpart,"name","partiya",fmtI)}</div><div class=panel><h2>Qiymat bo'yicha ulushi</h2>${bars(gp,"name","qiymat",fmtN)}</div><div class=panel><h2>Vazn bo'yicha ulushi</h2>${bars(gvazn,"name","vazn",fmtN)}</div></div>`;loadGoodsTrends();return}
+if(TAB==="goods"){let goodsCols=[{k:"name",t:"Tovar guruhi",w:"36%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"korxona",t:"Korxona",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}], gp=topNWithOther(DATA.goods||[],30,"qiymat","name"), gpart=topNWithOther(DATA.goods||[],30,"partiya","name"), gvazn=topNWithOther(DATA.goods||[],30,"vazn","name");v.innerHTML=`${tovarRatingPanel(DATA.goods||[])}<div class="panel" id="goodsTrendPanel"><h3>Tovarlar bo'yicha davriy tendensiya</h3><div class="muted">Yuklanmoqda...</div></div><div class=grid2><div class="panel wide"><h2>Tovarlar guruhlari ${xls("goods")}</h2>${table(goodsCols,basicTotal(gp))}</div><div class=panel><h2>Partiya bo'yicha ulushi</h2>${bars(gpart,"name","partiya",fmtI)}</div><div class=panel><h2>Qiymat bo'yicha ulushi</h2>${bars(gp,"name","qiymat",fmtN)}</div><div class=panel><h2>Vazn bo'yicha ulushi</h2>${bars(gvazn,"name","vazn",fmtN)}</div></div>`;loadGoodsTrends();return}
 if(TAB==="food"){v.innerHTML=`<div class=panel><h2>Oziq-ovqatlar kesimida ${xls("food")}</h2>${table([{k:"name",t:"Oziq-ovqat turi",w:"42%"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"over_vazn",t:"3 oy+ vazn (tn)",n:1,f:fmtN},{k:"over_qiymat",t:"3 oy+ qiymat (ming $)",n:1,f:fmtN},{k:"ulush",t:"Qiymatdagi ulushi (%)",n:1,f:fmtN}],foodRows())}${bars(DATA.food||[],"name","qiymat",fmtN)}</div>`;return}
 if(TAB==="yaroqlilik"){
   loadYaroqlilik();
@@ -3198,7 +3512,7 @@ function renderAviaContent(j){
   let countries15=topNWithOther(j.countries||[],15,'vazn','name');
   let countryHtml=`<div class=panel><h2>Davlatlar bo'yicha (vazn, tn) — TOP 15</h2>${bars(countries15,'name','vazn',fmtN)}</div>`;
   let overdueTableHtml=overdueAwbRows.length?table(awbCols,overdueAwbRows,'fixed-table'):'<div class=muted style="padding:12px">Muddati o\'tgan AWB yo\'q.</div>';
-  return `<div class=grid2>
+  return `${awbRatingPanel(j)}<div class=grid2>
     ${kpiHtml}
     ${countryHtml}
     <div class="panel wide"><h2>Korxonalar bo'yicha (TOP 30)</h2>${table(compCols,[compTotal].concat(compRows),'fixed-table')}</div>
@@ -3532,6 +3846,7 @@ class Handler(BaseHTTPRequestHandler):
                 rel = data.setdefault("released", {})
                 for d in ["1", "3", "5", "10", "30"]:
                     rel.setdefault(d, {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": "", "missing_date": ""})
+                data.setdefault("all_companies", data.get("top_value", []))
             self.json(data)
             return
         if parsed.path == "/api/details":
@@ -3932,7 +4247,7 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=_rebuild_with_deposit, daemon=True).start()
             self.json({"job_id": job_id, "report_id": report_id})
             return
-        if parsed.path == "/api/upload_warehouses":
+        if parsed.path in ("/api/upload_warehouses", "/api/upload_wr_registry"):
             if not self.require_perm("upload"):
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
