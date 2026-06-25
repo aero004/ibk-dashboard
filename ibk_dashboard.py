@@ -25,7 +25,7 @@ from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
 
 
 APP_DIR = Path(__file__).resolve().parent
-DASHBOARD_DIR = Path(os.environ.get("IBK_GENERATOR_DIR", r"C:\Users\User1\Desktop\IBK_Dashboard_SQLite"))
+DASHBOARD_DIR = Path(os.environ.get("IBK_GENERATOR_DIR", str(APP_DIR)))
 sys.path.insert(0, str(DASHBOARD_DIR))
 
 import im70_74_excel_com as core  # noqa: E402
@@ -44,8 +44,8 @@ SESSION_PATH = DATA_DIR / "sessions.json"
 INDEX_PATH = DATA_DIR / "archive.json"
 DB_PATH = DATA_DIR / "ibk_dashboard.sqlite3"
 TEMPLATE_PATH = Path(os.environ.get("IM70_74_TEMPLATE", DASHBOARD_DIR / "template_im70_74.xlsx"))
-TOLOV_OUTPUT_DIR = Path(os.environ.get("IBK_TOLOV_OUTPUT_DIR", r"C:\Users\User1\Documents\Codex\tolov_generated_0406_0706"))
-TOLOV_GENERATOR_PATH = Path(os.environ.get("IBK_TOLOV_GENERATOR", r"C:\Users\User1\Documents\Codex\2026-06-04\powershell-https-aka-ms-pswindows-ps\outputs\tolov_generator.py"))
+TOLOV_OUTPUT_DIR = Path(os.environ.get("IBK_TOLOV_OUTPUT_DIR", str(APP_DIR / "data" / "tolov_generated")))
+TOLOV_GENERATOR_PATH = Path(os.environ.get("IBK_TOLOV_GENERATOR", str(APP_DIR / "tolov_generator.py")))
 TOLOV_FILES = {
     "1. Sbor11-12.xlsx": "Sbor 11-12: yig'imlar",
     "2. Sbor 44.xlsx": "Sbor 44: TR80 yig'imi",
