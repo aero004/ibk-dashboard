@@ -3192,7 +3192,8 @@ uploadPanel=function(){
   let yarSt=YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded?`<span class="uc-badge ok">⚠ ${YAROQLILIK_DATA.expired_count||0} muddati o'tgan</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   return `<div class=stack>
 <div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Har bir modul uchun alohida yuklash va qayta hisoblash. <b>Qayta hisoblash</b> — yangi fayl yuklamasdan serverdan qayta oladi.</p><div id=uploadStatus></div></div>
-<div class="panel uc-card"><div class=uc-header><h2>📋 BNRTE — Nazoratdagi tovarlar</h2>${bnrteSt}</div><div class=uc-body><div class=uc-field><label>Asos fayl (xls/xlsx)</label><input type=file id="ucBnrteSource" accept=".xls,.xlsx,.html,.htm"></div><div class=uc-field><label>Depozit fayl (ixtiyoriy)</label><input type=file id="ucBnrteDeposit" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadBnrte(this)">Yuklash</button><button class="btn light" onclick="refreshCurrentReport(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucBnrteStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>📋 BNRTE — Nazoratdagi tovarlar</h2>${bnrteSt}</div><div class=uc-body><div class=uc-field><label>Asos fayl (xls/xlsx)</label><input type=file id="ucBnrteSource" accept=".xls,.xlsx,.html,.htm"></div><div class=uc-btns><button onclick="ucUploadBnrte(this)">Yuklash</button><button class="btn light" onclick="refreshCurrentReport(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucBnrteStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>💾 Depozit fayl — alohida yuklash</h2>${depSt}</div><div class=uc-body><div class=uc-field><label>Depozit fayl (xlsx)</label><input type=file id="ucDepozitFile" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadDepozit(this)"${DATA?'':' disabled title="Avval BNRTE yuklang"'}>Yuklash</button></div></div><div class=muted style="margin-top:6px;font-size:12px">Joriy hisobotga (${repDate||'—'}) depozit ma'lumotlarini biriktiradi va qayta hisoblab chiqadi.</div><div class=muted id="ucDepozitStatus" style="margin-top:4px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>💰 To'lovlar jadvallari</h2>${tolovSt}</div><div class=uc-body><div class=uc-field><label>To'lov baza fayli (xlsx)</label><input type=file id="ucTolovSource" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadTolov(this)">Yuklash</button><button class="btn light" onclick="ucRecalcTolov(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucTolovStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>🏢 Omborlar reestri</h2>${wrSt}</div><div class=uc-body><div class=uc-field><label>Reestri fayli (omborlarReestri*.xlsx)</label><input type=file id="ucWrFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadWarehouse(this)">Yuklash</button><button class="btn light" onclick="ucRecalcWarehouse(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucWrStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#0ea5e9"><div class=uc-header><h2>✈ AVIA AWB</h2><div style="display:flex;gap:6px;flex-wrap:wrap">${aviaSt} ${aviaDbSt}</div></div><div class=uc-note>AWB Excel (Yuklarni qabul qilish.xlsx) → AWB ro'yxati, joylar, vazn. Qiymat (ming $) BNRTE asos faylidan olinadi — yangilash uchun BNRTE → Qayta hisoblash.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>AWB Excel (Yuklarni qabul qilish*.xlsx)</label><input type=file id="ucAviaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadAvia(this)">Yuklash</button><button class="btn light" onclick="ucRecalcAvia(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucAviaStatus" style="margin-top:8px"></div></div>
@@ -4086,6 +4087,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        try:
+            self._do_POST_inner()
+        except Exception as exc:
+            import traceback as _tb
+            try:
+                self.json({"error": f"Server xatosi: {type(exc).__name__}: {exc}", "trace": _tb.format_exc()[-800:]}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            except Exception:
+                pass
+
+    def _do_POST_inner(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/login":
             data = self.body_json()
