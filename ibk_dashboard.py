@@ -45,6 +45,7 @@ INDEX_PATH = DATA_DIR / "archive.json"
 DB_PATH = DATA_DIR / "ibk_dashboard.sqlite3"
 TEMPLATE_PATH = Path(os.environ.get("IM70_74_TEMPLATE", DASHBOARD_DIR / "template_im70_74.xlsx"))
 TOLOV_OUTPUT_DIR = Path(os.environ.get("IBK_TOLOV_OUTPUT_DIR", str(APP_DIR / "data" / "tolov_generated")))
+UI_CONFIG_PATH = DATA_DIR / "ui_config.json"
 TOLOV_GENERATOR_PATH = Path(os.environ.get("IBK_TOLOV_GENERATOR", str(APP_DIR / "tolov_generator.py")))
 TOLOV_FILES = {
     "1. Sbor11-12.xlsx": "Sbor 11-12: yig'imlar",
@@ -2200,7 +2201,7 @@ function clearBusy(){document.querySelectorAll(".is-busy").forEach(b=>setBusy(b,
 async function api(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);if(r.status===401){showLogin();throw Error("login")};return await r.json()} function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("meta").textContent="Kirish kerak"}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){DATA=await api("/api/reports/"+ARCHIVE[0].id);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){DATA=await api("/api/reports/"+ARCHIVE[0].id);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 let ARTIFACT_POLL_ID=null;
 async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try{let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});ARTIFACT_POLL_ID=j.job_id;render();pollArtifacts(j.job_id)}catch(e){if($("status"))$("status").textContent="Xatolik: "+String(e)}}
@@ -2908,7 +2909,7 @@ function initFlightsMap(){}
 detail=async function(key){if(!DATA||!key||Object.keys(key).length===0)return;if(key.view==="expired_inline"){let el=$("expiredInline");if(el)el.innerHTML=expiredTotalExcelTable();return}if(key.view==="regime_posts"){let rows=(DATA.regime_posts||{})[key.regime]||[];dlgTitle.textContent=`${key.regime} - postlar kesimida`;dlgBody.innerHTML=table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}],basicTotal(rows,"IBK bo'yicha Jami","post"));dlg.showModal();return}let filterText=JSON.stringify(key),q=new URLSearchParams({report:DATA.id,filters:filterText}),j=await api("/api/details?"+q);dlgTitle.textContent="Asos deklaratsiyalar";dlgBody.innerHTML=`<p><a class="btn light" href="/api/export_details?report=${DATA.id}&filters=${encodeURIComponent(filterText)}&token=${TOKEN}">Excelga yuklash</a></p>`+table([{k:"decl",t:"Deklaratsiya",w:"160px"},{k:"source_post",t:"Boshlang'ich post kodi",w:"90px"},{k:"source_post_name",t:"Boshlang'ich post nomi",w:"220px"},{k:"transport",t:"Transport",w:"92px"},{k:"date",t:"Sana",w:"86px"},{k:"regime",t:"Rejim",w:"64px"},{k:"post",t:"Nazorat posti",w:"170px"},{k:"stir",t:"STIR",w:"105px"},{k:"company",t:"Korxona",w:"220px"},{k:"hs",t:"TIF TN",w:"105px"},{k:"goods",t:"Tovar",w:"240px"},{k:"partiya",t:"Partiya",w:"70px",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",w:"90px",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",w:"105px",n:1,f:fmtN}],j.rows,"fixed-table details-wide");dlg.showModal()}
 function cleanTopActions(){let a=$("actions");if(!a)return;[...a.querySelectorAll("button")].forEach(b=>{if(["Sozlamalar","Nastroyki","Settings"].includes(b.textContent.trim()))b.remove()});[...a.querySelectorAll("a")].forEach(x=>{let t=x.textContent.trim();if(/^PNG\s+\d+$/i.test(t)||t==="Barcha PNG")x.remove()});if(DATA){let f=DATA.files||{};let has=a.querySelector("[data-pngzip]");if(!has&&(f.pngs||[]).length){let href=(f.pngs||[]).length>1?`/download/${DATA.id}/_pngs?token=${TOKEN}`:`/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}`;a.insertAdjacentHTML("afterbegin",`<a data-pngzip class=btn href="${href}">PNG</a> `)}}}
 function translateRuPage(){if(LANG!=="ru")return;let pairs=[["Kirish","Р’С…РѕРґ"],["Chiqish","Р’С‹С…РѕРґ"],["Ombor ma'lumot","РЎРєР»Р°РґСЃРєР°СЏ СЃРІРѕРґРєР°"],["Fayl yuklash","Р—Р°РіСЂСѓР·РєР° С„Р°Р№Р»РѕРІ"],["Umumiy","РћР±С‰РµРµ"],["Korxonalar","РџСЂРµРґРїСЂРёСЏС‚РёСЏ"],["Muddati o'tgan","РџСЂРѕСЃСЂРѕС‡РµРЅРЅС‹Рµ"],["Nazoratdan yechish","РЎРЅСЏС‚РёРµ СЃ РєРѕРЅС‚СЂРѕР»СЏ"],["Tovarlar","РўРѕРІР°СЂС‹"],["Omborlar","РЎРєР»Р°РґС‹"],["Rejimlar","Р РµР¶РёРјС‹"],["Oziq-ovqat","РџСЂРѕРґРѕРІРѕР»СЊСЃС‚РІРёРµ"],["Muddatlar","РЎСЂРѕРєРё"],["Boshqaruv","РЈРїСЂР°РІР»РµРЅРёРµ"],["Arxiv","РђСЂС…РёРІ"],["To'lovlar","РџР»Р°С‚РµР¶Рё"],["Davlatlar bo'yicha yo'nalishlar","РњР°СЂС€СЂСѓС‚С‹ РїРѕ СЃС‚СЂР°РЅР°Рј"],["Deklaratsiya post kodi bo'yicha tahlil","РђРЅР°Р»РёР· РїРѕ РєРѕРґСѓ РїРѕСЃС‚Р° РґРµРєР»Р°СЂР°С†РёРё"],["Transport turi bo'yicha ulushi","Р”РѕР»СЏ РїРѕ РІРёРґСѓ С‚СЂР°РЅСЃРїРѕСЂС‚Р°"],["Qiymat bo'yicha TOP 30 korxona","РўРћРџ-30 РїСЂРµРґРїСЂРёСЏС‚РёР№ РїРѕ СЃС‚РѕРёРјРѕСЃС‚Рё"],["Rahbar uchun qisqa xulosa","РљСЂР°С‚РєР°СЏ СЃРІРѕРґРєР° РґР»СЏ СЂСѓРєРѕРІРѕРґРёС‚РµР»СЏ"]];document.querySelectorAll("button,h2,h1,b,label,.muted,.btn").forEach(el=>{let s=el.childNodes.length===1?el.textContent.trim():"";let p=pairs.find(x=>x[0]===s);if(p)el.textContent=p[1]})}
-adminPanel=function(){return `<div class=admin-layout><div class="admin-card"><h2>Hodim qo'shish yoki tahrirlash</h2><form id=userForm class=admin-form><input type=hidden name=edit_mode value=""><label>Login</label><input name=user required><label>Yangi parol</label><div class="pass-wrap"><input name=password type=password placeholder="Tahrirda bo'sh qoldirish mumkin"><button class="eye-btn" type="button" onclick="let p=this.previousElementSibling;p.type=p.type==='password'?'text':'password'" title="Ko'rsatish/yashirish">&#128065;</button></div><label>F.I.Sh.</label><input name=full_name><label>Lavozim</label><input name=position><label>Telefon</label><input name=phone><label>Post kodi</label><input name=post_code placeholder="00 = IBK, aks holda post kodi"><label>Rol</label><select name=role><option value=foydalanuvchi>Foydalanuvchi</option><option value=inspektor>Inspektor</option><option value=rahbar>Rahbar</option><option value=admin>Admin</option></select><label>Til</label><select name=lang><option value=uz>O'zbek lotin</option><option value=uzc>O'zbek kirill</option><option value=ru>Rus tili</option></select><div class=perm-grid><label><input type=checkbox name=perm_view checked> Ko'rish</label><label><input type=checkbox name=perm_upload> Yuklash</label><label><input type=checkbox name=perm_export> Eksport</label><label><input type=checkbox name=perm_release> Yechish</label></div><div class=excel-actions><button>Saqlash</button><button type=button class=light onclick="resetUserForm()">Tozalash</button></div></form></div><div class="admin-card"><h2>Hodimlar ro'yxati</h2><div id=users></div></div></div>`}
+adminPanel=function(){return `<div class=stack><div class=admin-layout><div class="admin-card"><h2>👤 Hodim qo'shish yoki tahrirlash</h2><form id=userForm class=admin-form><input type=hidden name=edit_mode value=""><label>Login</label><input name=user required><label>Yangi parol</label><div class="pass-wrap"><input name=password type=password placeholder="Tahrirda bo'sh qoldirish mumkin"><button class="eye-btn" type="button" onclick="let p=this.previousElementSibling;p.type=p.type==='password'?'text':'password'" title="Ko'rsatish/yashirish">&#128065;</button></div><label>F.I.Sh.</label><input name=full_name><label>Lavozim</label><input name=position><label>Telefon</label><input name=phone><label>Post kodi</label><input name=post_code placeholder="00 = IBK, aks holda post kodi"><label>Rol</label><select name=role><option value=foydalanuvchi>Foydalanuvchi</option><option value=inspektor>Inspektor</option><option value=rahbar>Rahbar</option><option value=admin>Admin</option></select><label>Til</label><select name=lang><option value=uz>O'zbek lotin</option><option value=uzc>O'zbek kirill</option><option value=ru>Rus tili</option></select><div class=perm-grid><label><input type=checkbox name=perm_view checked> Ko'rish</label><label><input type=checkbox name=perm_upload> Yuklash</label><label><input type=checkbox name=perm_export> Eksport</label><label><input type=checkbox name=perm_release> Yechish</label></div><div class=excel-actions><button>Saqlash</button><button type=button class=light onclick="resetUserForm()">Tozalash</button></div></form></div><div class="admin-card"><h2>Hodimlar ro'yxati</h2><div id=users></div></div></div>${siteMapPanel()}</div>`}
 function resetUserForm(){let f=$("userForm");if(!f)return;f.reset();f.edit_mode.value="";f.user.disabled=false;f.perm_view.checked=true}
 bindUserForm=function(){let f=$("userForm");if(!f)return;f.onsubmit=async e=>{e.preventDefault();let perms=[];["view","upload","export","release"].forEach(p=>{if(f[`perm_${p}`]?.checked)perms.push(p)});let body={user:f.user.value,pass:f.password.value,full_name:f.full_name.value,position:f.position.value,phone:f.phone.value,post_code:f.post_code.value,role:f.role.value,lang:f.lang.value,perms,enabled:true};await api(f.edit_mode.value?"/api/users/update":"/api/users",{method:"POST",body:JSON.stringify(body)});resetUserForm();loadUsers()}}
 window.editUser=function(login){api("/api/users").then(j=>{let u=(j.users||[]).find(x=>x.user===login),f=$("userForm");if(!u||!f)return;f.edit_mode.value="1";f.user.value=u.user;f.user.disabled=true;f.password.value="";f.full_name.value=u.full_name||"";f.position.value=u.position||"";f.phone.value=u.phone||"";f.post_code.value=u.post_code||"";f.role.value=u.role||"foydalanuvchi";f.lang.value=u.lang||"uz";["view","upload","export","release"].forEach(p=>f[`perm_${p}`].checked=(u.perms||[]).includes(p));window.scrollTo({top:0,behavior:"smooth"})})}
@@ -2942,7 +2943,91 @@ let rows=users.map(u=>{let su=esc(u.user||''),ju=(u.user||'').replaceAll("'","")
 return `<tr style="border-bottom:1px solid var(--line)"><td style="padding:7px 9px;font-family:monospace;font-size:12px">${su}</td><td style="padding:7px 9px">${esc(u.full_name||'')}</td><td style="padding:7px 9px">${esc(roleTitle(u.role))}</td><td style="padding:7px 9px;text-align:center">${esc(u.post_code||'')}</td><td style="padding:7px 9px;font-size:11px;color:#5a7a9a">${(u.perms||[]).map(p=>esc(permTitle(p))).join(', ')}</td><td style="padding:4px 8px;text-align:center;white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center;align-items:center"><button class="icon-btn edit-btn" onclick="editUser('${ju}')" title="Tahrirlash">${SVG_EDIT}</button><button class="icon-btn" style="background:#f0fdf4;color:#166534;border-color:#bbf7d0" onmouseover="this.style.background='#bbf7d0'" onmouseout="this.style.background='#f0fdf4'" onclick="changePassword('${ju}')" title="Parol o'zgartirish">${SVG_KEY}</button><button class="icon-btn del-btn" onclick="deleteUser('${ju}')" title="O'chirish">${SVG_DEL}</button></div></td></tr>`}).join('');
 box.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><colgroup><col style="width:90px"><col style="width:200px"><col style="width:110px"><col style="width:70px"><col><col style="width:100px"></colgroup><thead><tr style="background:#f0f4fb;border-bottom:2px solid var(--line)"><th style="padding:8px 9px;text-align:left;font-weight:700">Login</th><th style="padding:8px 9px;text-align:left;font-weight:700">F.I.Sh.</th><th style="padding:8px 9px;text-align:left;font-weight:700">Rol</th><th style="padding:8px 9px;text-align:center;font-weight:700">Post</th><th style="padding:8px 9px;text-align:left;font-weight:700">Vakolatlar</th><th style="padding:8px 9px;text-align:center;font-weight:700">Amal</th></tr></thead><tbody>${rows}</tbody></table></div>`}catch(e){box.innerHTML="Admin vakolati kerak"}}
 const bindUploadFinal=bindUpload;bindUpload=function(){bindUploadFinal();let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)}catch(err){$("status").textContent=err.message}};let bf=$("bulkUpload");if(bf)bf.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="Yillik asos fayllar yuklanyapti...";let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});let skip=(j.skipped||[]).length?` O'tkazib yuborildi: ${j.skipped.map(x=>x.filename).join(", ")}`:"";$("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo'shildi.${skip}`;$("status").textContent="Bulk yuklash boshlandi";await loadArchive()}catch(err){$("status").textContent=err.message}}}
-const renderClean=render;render=function(){renderClean();cleanTopActions();if(LANG==="ru")translateRuPage()}
+// ── UI Config (sayt xaritasi) ─────────────────────────────────────────────
+let UI_CONFIG={};
+async function loadUIConfig(){try{UI_CONFIG=await api('/api/ui_config');}catch(e){}}
+const SM_ALL_TABS=[['umumiy','Umumiy'],['rejim','Rejimlar'],['korxona','Korxonalar'],['ombor','Omborlar'],['expired',"Muddati o'tgan"],['released',"Nazoratdan yechish"],['goods','Tovarlar'],['food','Oziq-ovqat'],['muddat','Muddatlar'],['yaroqlilik','Yaroqlilik'],['archive','Arxiv'],['avia','AVIA AWB'],['payments',"To'lovlar: Umumiy"],['pay_lists',"To'lovlar ro'yxati"],['pay_analysis',"To'lovlar tahlili"]];
+const SM_ROLES=['admin','rahbar','inspektor','foydalanuvchi'];
+const SM_RLBL={admin:'Admin',rahbar:'Rahbar',inspektor:'Inspektor',foydalanuvchi:"Foydalanuvchi"};
+
+function applyUIConfig(){
+  if(!ME)return;
+  const myRole=ME.role||'foydalanuvchi';
+  if(myRole==='admin')return; // admin sees everything
+  const hidden=UI_CONFIG.tab_hidden||[];
+  const tabRoles=UI_CONFIG.tab_roles||{};
+  const tabOrder=UI_CONFIG.tab_order||[];
+  // Hide forbidden tabs
+  document.querySelectorAll('#tabs .tab.sub').forEach(btn=>{
+    const m=btn.getAttribute('onclick')?.match(/TAB='([^']+)'/);
+    if(!m)return;
+    const id=m[1];
+    const shouldHide=hidden.includes(id)||(tabRoles[id]&&!tabRoles[id].includes(myRole));
+    btn.style.display=shouldHide?'none':'';
+    if(shouldHide&&TAB===id){const v=[...document.querySelectorAll('#tabs .tab.sub:not([style*="none"])')];if(v.length){const tm=v[0].getAttribute('onclick')?.match(/TAB='([^']+)'/);if(tm){TAB=tm[1];view();}}}
+  });
+  // Reorder tabs by drag order
+  if(tabOrder.length){
+    document.querySelectorAll('#tabs .subtabs').forEach(container=>{
+      const btns=[...container.querySelectorAll('.tab.sub')];
+      tabOrder.forEach(id=>{const btn=btns.find(b=>{const m=b.getAttribute('onclick')?.match(/TAB='([^']+)'/);return m&&m[1]===id;});if(btn)container.appendChild(btn);});
+    });
+  }
+}
+
+function siteMapPanel(){
+  const order=UI_CONFIG.tab_order||SM_ALL_TABS.map(t=>t[0]);
+  const hidden=UI_CONFIG.tab_hidden||[];
+  const tabRoles=UI_CONFIG.tab_roles||{};
+  const sorted=[...SM_ALL_TABS].sort((a,b)=>{let ai=order.indexOf(a[0]),bi=order.indexOf(b[0]);return(ai<0?999:ai)-(bi<0?999:bi);});
+  const rows=sorted.map(([id,label])=>{
+    const isH=hidden.includes(id);
+    const roles=tabRoles[id]||SM_ROLES;
+    const roleCells=SM_ROLES.map(r=>`<label style="cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap"><input type=checkbox data-tab="${id}" data-role="${r}" ${roles.includes(r)?'checked':''}><span style="font-size:11px">${SM_RLBL[r]}</span></label>`).join('');
+    return `<tr draggable="true" data-sm-id="${id}" ondragstart="smDs(event,this)" ondragover="smDo(event,this)" ondrop="smDp(event,this)" ondragend="smDe()" style="border-bottom:1px solid #e8edf3;background:${isH?'#fef2f2':'#fff'};cursor:pointer">
+<td style="padding:7px 5px;text-align:center;color:#94a3b8;font-size:17px;user-select:none;cursor:grab">⠿</td>
+<td style="padding:7px 10px;font-weight:600;min-width:140px;font-size:13px">${label}</td>
+<td style="padding:7px 10px"><label style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;color:${isH?'#dc2626':'#16a34a'}"><input type=checkbox data-tab="${id}" data-sm-hide="1" ${isH?'checked':''} onchange="smToggle(this)">${isH?'Yashirin':"Ko'rinadi"}</label></td>
+<td style="padding:7px 10px"><div style="display:flex;gap:10px;flex-wrap:wrap">${roleCells}</div></td>
+</tr>`;}).join('');
+  return `<div class=panel style="margin-top:14px"><h2>Sayt xaritasi — ko'rinish va tartib</h2><p class=muted style="margin-bottom:12px">Tablarni sudrab tartib o'zgartiring. Qaysi rol qaysi tabni ko'rishini belgilang. Admin rol har doim barcha tabni ko'radi.</p>
+<div style="overflow-x:auto;border:1px solid #e8edf3;border-radius:10px">
+<table style="width:100%;border-collapse:collapse">
+<thead><tr style="background:#f8fafc;border-bottom:2px solid #e8edf3"><th style="width:36px"></th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700">Tab</th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700;width:120px">Holat</th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700">Kimga ko'rinsin</th></tr></thead>
+<tbody id="smBody">${rows}</tbody></table></div>
+<div style="margin-top:12px;display:flex;align-items:center;gap:12px"><button onclick="saveSiteMap()">Saqlash</button><button class=light onclick="resetSiteMap()">Asl sozlamalar</button><span id="smMsg" class=muted></span></div></div>`;
+}
+let _smDrag=null,_smPrev=null;
+function smDs(e,el){_smDrag=el;e.dataTransfer.effectAllowed='move';el.style.opacity='.45';}
+function smDo(e,el){e.preventDefault();if(el===_smDrag)return;if(_smPrev)_smPrev.style.borderTop='';_smPrev=el;el.style.borderTop='2px solid #3b82f6';}
+function smDe(){if(_smDrag)_smDrag.style.opacity='';if(_smPrev)_smPrev.style.borderTop='';_smDrag=_smPrev=null;}
+function smDp(e,target){e.preventDefault();if(!_smDrag||_smDrag===target)return;const tb=document.getElementById('smBody');const rows=[...tb.querySelectorAll('tr')];rows.indexOf(_smDrag)<rows.indexOf(target)?target.after(_smDrag):target.before(_smDrag);}
+function smToggle(cb){const row=cb.closest('tr');row.style.background=cb.checked?'#fef2f2':'#fff';cb.nextElementSibling.textContent=cb.checked?'Yashirin':"Ko'rinadi";cb.nextElementSibling.style.color=cb.checked?'#dc2626':'#16a34a';}
+async function saveSiteMap(){
+  const tb=document.getElementById('smBody');if(!tb)return;
+  const rows=[...tb.querySelectorAll('tr[data-sm-id]')];
+  const tab_order=rows.map(r=>r.dataset.smId);
+  const tab_hidden=[];const tab_roles={};
+  rows.forEach(row=>{
+    const id=row.dataset.smId;
+    if(row.querySelector('[data-sm-hide="1"]')?.checked)tab_hidden.push(id);
+    const checked=[...row.querySelectorAll('[data-role]')].filter(el=>el.checked).map(el=>el.dataset.role);
+    tab_roles[id]=checked.includes('admin')?checked:[...checked,'admin']; // admin always has access
+  });
+  try{
+    const cfg={...UI_CONFIG,tab_order,tab_hidden,tab_roles};
+    await api('/api/ui_config',{method:'POST',body:JSON.stringify(cfg)});
+    UI_CONFIG=cfg;
+    const msg=$('smMsg');if(msg){msg.textContent='✓ Saqlandi';setTimeout(()=>msg.textContent='',3000);}
+    render();
+  }catch(e){const msg=$('smMsg');if(msg)msg.textContent='Xatolik: '+e.message;}
+}
+async function resetSiteMap(){
+  if(!confirm('Barcha tab sozlamalari asl holatga qaytariladi?'))return;
+  try{await api('/api/ui_config',{method:'POST',body:JSON.stringify({})});UI_CONFIG={};TAB='umumiy';render();}catch(e){}
+}
+// ─────────────────────────────────────────────────────────────────────────────
+const renderClean=render;render=function(){renderClean();cleanTopActions();if(LANG==="ru")translateRuPage();applyUIConfig()}
 function releaseCompanyRows(data){
   let all=[...(data.rows||[]),...(data.unreleased||[])], byc={};
   all.forEach(r=>{
@@ -3815,6 +3900,9 @@ class Handler(BaseHTTPRequestHandler):
             rec = load_json(USER_PATH, {}).get(user, {})
             self.json({"user": user, "role": rec.get("role", "user"), "full_name": rec.get("full_name", ""), "position": rec.get("position", ""), "phone": rec.get("phone", ""), "lang": rec.get("lang", "uz"), "perms": rec.get("perms", [])})
             return
+        if parsed.path == "/api/ui_config":
+            self.json(load_json(UI_CONFIG_PATH, {}))
+            return
         if parsed.path == "/api/users":
             if not self.require_admin():
                 return
@@ -4112,6 +4200,13 @@ class Handler(BaseHTTPRequestHandler):
             SESSIONS[token] = {"user": data["user"], "created": time.time()}
             save_json(SESSION_PATH, SESSIONS)
             self.json({"token": token, "user": {"user": data["user"], "role": rec.get("role", "user"), "role_label": rec.get("role_label", ROLE_LABELS.get(rec.get("role", "user"), "Foydalanuvchi")), "post_code": rec.get("post_code", ""), "full_name": rec.get("full_name", ""), "position": rec.get("position", ""), "phone": rec.get("phone", ""), "lang": rec.get("lang", "uz"), "perms": rec.get("perms", [])}})
+            return
+        if parsed.path == "/api/ui_config":
+            if not self.require_admin():
+                return
+            data = self.body_json()
+            save_json(UI_CONFIG_PATH, data)
+            self.json({"ok": True})
             return
         if parsed.path == "/api/users":
             if not self.require_admin():
