@@ -98,7 +98,12 @@ def read_source(path: Path) -> pd.DataFrame:
     df["_post_group"] = df[SRC["post"]].map(post_group)
     df["_regime_group"] = df[SRC["regime"]].map(regime_group)
     df["_regime_code"] = df[SRC["regime"]].map(regime_code)
-    df["_tnved_name"] = df[SRC["hs"]].map(lambda x: tnved_name(x, tnved))
+    hs_names = df[SRC["hs"]].map(lambda x: tnved_name(x, tnved))
+    fallback = hs_names == "Boshqa tovarlar"
+    if fallback.any():
+        hs_names = hs_names.copy()
+        hs_names[fallback] = df.loc[fallback, SRC["goods"]].map(lambda x: clean(x) or "Boshqa tovarlar")
+    df["_tnved_name"] = hs_names
     return df
 
 
