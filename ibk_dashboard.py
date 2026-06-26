@@ -2424,10 +2424,12 @@ function _whRows(){
   const pOn=m==='p',qOn=m==='q',vOn=m==='v',tOn=m==='t';
   return vis.map((r,idx)=>{
     const isTop=r._rank<=3;
-    const lic=(wrMap[(r.name||'').toLowerCase()]||{}).lic_num||'';
+    const wr=(wrMap[(r.name||'').toLowerCase()])||{};
+    const lic=wr.lic_num||'';
+    const badges=(wr.fvv?`<span class="wr-badge-fvv" style="font-size:9px;padding:0 3px">FVV</span>`:'')+(wr.ssv?`<span class="wr-badge-ssv" style="font-size:9px;padding:0 3px">GSP</span>`:'');
     return `<div class="rtab-row" style="animation-delay:${(idx*0.028).toFixed(3)}s">
       <div><span class="rtab-rank ${isTop?'top':'reg'}" style="animation-delay:${(idx*0.028+0.08).toFixed(3)}s">${r._rank}</span></div>
-      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.name||'')}">${esc(r.name||'')}</div><div class="rtab-stir">${lic?`<span>${esc(lic)}</span>${_cpBtn(lic)}`:`<span style="color:#c2ccd9">Litsenziya yo'q</span>`}</div></div>
+      <div style="overflow:hidden"><div class="rtab-name" title="${esc(r.name||'')}">${esc(r.name||'')}${badges}</div><div class="rtab-stir">${lic?`<span>${esc(lic)}</span>${_cpBtn(lic)}`:`<span style="color:#c2ccd9">Litsenziya yo'q</span>`}</div></div>
       <div class="rtab-p${pOn?' on':''}">${(+r.partiya||0).toLocaleString('ru-RU')}</div>
       <div class="rtab-cell${qOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.qiymat||0,tot.q)}</span><span class="rtab-val">${_rtFmt(r.qiymat)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.qiymat||0,mx.q,qOn)}"></div></div></div>
       <div class="rtab-cell${vOn?' on':''}"><div class="rtab-nums"><span class="rtab-pct">${_rtPct(+r.vazn||0,tot.v)}</span><span class="rtab-val">${_rtFmt(r.vazn)}</span></div><div class="rtab-bar-bg"><div style="${_rtBar(+r.vazn||0,mx.v,vOn)}"></div></div></div>
@@ -2446,7 +2448,7 @@ function whSearch(v){window._WH.query=v;_whRender()}
 function omborRatingPanel(rows,wrArg){
   rows=(rows||[]).filter(r=>r.name&&r.name!=="IBK bo'yicha Jami");
   const wrRows=Array.isArray(wrArg)?wrArg:(wrArg&&wrArg.warehouses)||[];
-  const wrMap={};(wrRows||[]).forEach(w=>{if(w.name)wrMap[w.name.toLowerCase()]={lic_num:w.lic_num||'',lic_exp:w.lic_exp||''}});
+  const wrMap={};(wrRows||[]).forEach(w=>{if(w.name)wrMap[w.name.toLowerCase()]={lic_num:w.lic_num||'',lic_exp:w.lic_exp||'',fvv:w.fvv||'',ssv:w.ssv||''}});
   window._WH.data=rows;window._WH.metric='q';window._WH.query='';window._WH.wrMap=wrMap;
   setTimeout(()=>animatePlaceholder('whSearchInput',['Ombor nomi yozing…','Litsenziya raqami kiriting…','Qidirish uchun yozing…']),50);
   return `<div class="rtab-wrap panel" style="padding:0;overflow:hidden;--rtab-grid:28px 1fr minmax(80px,0.7fr) minmax(120px,1fr) minmax(120px,1fr) minmax(120px,1fr)">
@@ -2567,6 +2569,8 @@ function wrMarkerHtml(w){
 }
 function wrInsTable(wrs,fileDate){
   let sorted=[...wrs].sort((a,b)=>(b.ins_sum||0)-(a.ins_sum||0));
+  let totalSum=wrs.reduce((a,w)=>a+(+w.ins_sum||0),0);
+  let totalRow=`<tr><td>IBK bo'yicha Jami</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="num">${totalSum?fmtN(totalSum/1e6)+' mln':'—'}</td><td>—</td><td>—</td></tr>`;
   let rows=sorted.map(w=>{
     let dCls=w.ins_days===null?'':(w.ins_days<0?'wr-risk-red':w.ins_days<90?'wr-risk-orange':'wr-risk-green');
     let dTxt=w.ins_days===null?'—':(w.ins_days<0?`${Math.abs(w.ins_days)} kun o'tgan!`:`${w.ins_days} kun qoldi`);
@@ -2574,7 +2578,7 @@ function wrInsTable(wrs,fileDate){
     let ssvBadge=w.ssv?`<span class="wr-badge-ssv">GSP</span>`:'';
     return `<tr><td>${esc(w.name)}${fvvBadge}${ssvBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
   }).join('');
-  return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta summasi</th><th>Muddat</th><th>Holat</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta summasi</th><th>Muddat</th><th>Holat</th></tr></thead><tbody>${totalRow}${rows}</tbody></table>`;
 }
 function wrDeadlineTable(wrs,fileDate){
   let at_risk=wrs.filter(w=>w.ins_days!==null&&w.ins_days<90).sort((a,b)=>(a.ins_days||0)-(b.ins_days||0));
@@ -2790,7 +2794,7 @@ function topNWithOther(rows,n,sortKey,labelKey){
 }
 function countryRows(){let rows=DATA.countries||DATA.country||[];return rows}
 function chartBlock(title,rows,label,value,fmt){return `<div class=panel><h2>${title}</h2>${bars(rows,label,value,fmt)}${miniChart(rows,value,label)}</div>`}
-function overviewPanels(){let topCompanies=by(DATA.top_value||[],"qiymat").slice(0,30), topGoods=topNWithOther(DATA.goods||[],30,"partiya","name");return `<div class="grid2">${executiveSummary()}<div class=panel><h2>70-74-80: postlar kesimida</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.all_post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}<div class=overview-note>Post qatorlari ustiga bosilganda asos deklaratsiyalar ochiladi.</div></div><div class="panel wide"><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}</div><div class="panel wide"><h2>Qiymat bo'yicha TOP 30 korxona</h2>${bars(topCompanies,"korxona","qiymat",fmtN)}</div>${chartBlock("Muddati o'tgan partiyalar (postlar kesimida)",DATA.post_summary||[],"post","partiya",fmtI)}${chartBlock("Tovar guruhlari partiya bo'yicha ulushi",topGoods,"name","partiya",fmtI)}<div id="_cfmSlot"></div></div>`}
+function overviewPanels(){let topCompanies=by(DATA.top_value||[],"qiymat").slice(0,30);return `<div class="grid2">${executiveSummary()}<div class=panel><h2>70-74-80: postlar kesimida</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.all_post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}<div class=overview-note>Post qatorlari ustiga bosilganda asos deklaratsiyalar ochiladi.</div></div><div class="panel wide"><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}</div><div class="panel wide"><h2>Qiymat bo'yicha TOP 30 korxona</h2>${bars(topCompanies,"korxona","qiymat",fmtN)}</div><div id="_cfmSlot"></div></div>`}
 function releaseAnalytics(rows){rows=rows||[];let byCompany={};rows.forEach(r=>{let k=r.stir||r.korxona||r.company||"";if(!byCompany[k])byCompany[k]={korxona:r.korxona||r.company||"",stir:r.stir||"",partiya:0,qiymat:0,vazn:0,count:0};byCompany[k].partiya+=+r.released_partiya||0;byCompany[k].qiymat+=+r.released_qiymat||0;byCompany[k].vazn+=+r.released_vazn||0;byCompany[k].count++});let list=Object.values(byCompany);let cols=[{k:"korxona",t:"Korxona nomi",w:"42%"},{k:"stir",t:"STIR",w:"12%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN}];return `<div class=grid2><div class=panel><h2>Eng ko'p nazoratdan yechgan korxonalar</h2>${table(cols,basicTotal(by(list,"qiymat").slice(0,20),"IBK bo'yicha Jami","korxona"),"fixed-table")}</div><div class=panel><h2>Eng tez nazoratdan yechadigan korxonalar</h2><div class=muted>To'liq tezlik tahlili bir nechta sanalar arxivga yuklangandan keyin avtomatik shakllanadi.</div>${table(cols,by(list,"partiya").slice(0,10),"fixed-table")}</div><div class=panel><h2>Eng sekin nazoratdan yechadigan korxonalar</h2><div class=muted>Yakuniy davrda qoldiq ko'p qolgan korxonalar alohida hisoblanadi.</div>${table(cols,by(list,"vazn").slice(-10).reverse(),"fixed-table")}</div></div>`}
 async function buildRelease(){let base=$("relBase").value, final=$("relFinal").value, j=await api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`);if(j.missing){$("releaseResult").innerHTML=`<div class=muted>Arxivda yo'q sana: ${j.missing.join(", ")}. Shu davr uchun asos fayl yuklash kerak.</div>`;return}let raw=(j.rows||[]).map(r=>Object.assign({korxona:r.korxona||r.company||"",partiya:r.released_partiya,qiymat:r.released_qiymat,vazn:r.released_vazn},r));let rows=numbered([Object.assign({korxona:"IBK bo'yicha Jami",stir:"",decl:"",regime:"",partiya:(j.total||{}).released_partiya,qiymat:(j.total||{}).released_qiymat,vazn:(j.total||{}).released_vazn},j.total||{})].concat(raw));let cols=[{k:"rn",t:"T/r",n:1,f:v=>v,w:"38px"},{k:"korxona",t:"Korxona nomi",w:"280px"},{k:"stir",t:"STIR",w:"90px"},{k:"decl",t:"Deklaratsiya",w:"145px"},{k:"regime",t:"Rejim",w:"70px"},{k:"partiya",t:"Partiya",n:1,f:fmtI,w:"80px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"120px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"110px"}];$("releaseResult").innerHTML=`<h2>${base} - ${final} <a class="btn light" href="/api/export?kind=release&base=${base}&final=${final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${base}. Yakuniy davr: ${final}.</div>${table(cols,rows,"release-table fixed-table")}${releaseAnalytics(raw)}${miniChart(raw,"qiymat","korxona")}`}
 function startIdleTimer(){let t;function reset(){clearTimeout(t);t=setTimeout(()=>{logout();alert("20 daqiqa foydalanilmagani uchun profil avtomatik yopildi.")},1200000)}["click","keydown","mousemove","scroll","touchstart"].forEach(e=>document.addEventListener(e,reset,{passive:true}));reset()}startIdleTimer();
