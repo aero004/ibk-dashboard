@@ -3394,11 +3394,12 @@ async function ucUploadWarehouse(btn){
   let src=$('ucWrFile'),st=$('ucWrStatus');
   if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('file',src.files[0]);
   try{
-    let j=await api('/api/upload_wr_registry',{method:'POST',body:fd});
+    const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
+    if(st)st.textContent='Qayta ishlanmoqda...';
+    let j=await api('/api/chunk_finalize_wr',{method:'POST',body:JSON.stringify(info)});
     if(j.warehouses)WR_DATA=j.warehouses;
-    if(st)st.textContent=j.success?`Tayyor: ${(j.warehouses||[]).length} ombor`:'Xatolik';
+    if(st)st.textContent=j.success?`Tayyor: ${(j.warehouses||[]).length} ombor`:(j.error||'Xatolik');
   }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
 }
 async function ucRecalcWarehouse(btn){
@@ -3423,9 +3424,11 @@ async function ucUploadAvia(btn){
   let src=$('ucAviaFile'),st=$('ucAviaStatus');
   if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('file',src.files[0]);
   try{
-    let j=await api('/api/upload_avia_awb',{method:'POST',body:fd});AVIA_DATA=j;
+    const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
+    if(st)st.textContent='Qayta ishlanmoqda...';
+    let j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
+    AVIA_DATA=j;
     if(st)st.textContent=j.loaded?`Tayyor: ${fmtI(j.unique_awb)} AWB yuklandi`:`Xatolik: ${esc(j.error||'')}`;
     if($('kpis'))$('kpis').innerHTML=renderKpis();
     if(TAB==='avia')loadAviaAwb();
@@ -3869,7 +3872,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/server_info"):
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/server_info"):
             allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
             if allowed:
@@ -4644,6 +4647,60 @@ class Handler(BaseHTTPRequestHandler):
             JOBS[job_id] = {"status": "navbatda", "data": None}
             threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
             self.json({"job_id": job_id}, cors=True)
+            return
+        if parsed.path == "/api/chunk_finalize_wr":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            dest = DASHBOARD_DIR / safe_name(filename)
+            with open(dest, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            try:
+                result = load_warehouse_registry(dest)
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self.json(result, cors=True)
+            return
+        if parsed.path == "/api/chunk_finalize_avia":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            dest = DASHBOARD_DIR / safe_name(filename)
+            with open(dest, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            try:
+                result = load_avia_awb(dest)
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            self.json(result, cors=True)
             return
         if parsed.path == "/api/reports_bulk":
             if not self.require_perm("upload"):
