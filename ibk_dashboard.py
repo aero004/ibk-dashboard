@@ -3228,7 +3228,7 @@ async function chunkedUpload(file,onProgress){
   for(let i=0;i<total;i++){
     const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
     const r=await fetch('/api/chunk_upload',{method:'POST',headers:{
-      'Authorization':'Bearer '+TOKEN,
+      'X-Token':TOKEN,
       'X-Upload-Id':uid,'X-Chunk-Index':String(i),'X-Total-Chunks':String(total),
       'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'
     },body:blob});
