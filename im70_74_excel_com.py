@@ -74,9 +74,21 @@ def regime_group(value: str) -> str:
     return clean(value) or "Бошқа"
 
 
+def _pick_best_table(tables: list) -> pd.DataFrame:
+    best, best_count = tables[0], 0
+    for t in tables:
+        if len(t.columns) <= SRC["decl_no"]:
+            continue
+        candidate = t.iloc[2:].copy()
+        valid = candidate[SRC["decl_no"]].map(lambda v: bool(clean(str(v)) and not pd.isna(v))).sum()
+        if valid > best_count:
+            best, best_count = candidate, valid
+    return best if best_count > 0 else tables[0].iloc[2:].copy()
+
+
 def read_source(path: Path) -> pd.DataFrame:
-    raw = pd.read_html(path, encoding="utf-8")[0]
-    df = raw.iloc[2:].copy()
+    tables = pd.read_html(path, encoding="utf-8")
+    df = _pick_best_table(tables)
     df = df[df[SRC["decl_no"]].notna()].copy()
     df = df[~df[SRC["reason"]].map(clean).str.lower().str.startswith("сабаби:")].copy()
     df["_decl_sort"] = df[SRC["decl_no"]].map(clean)
