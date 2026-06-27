@@ -2783,7 +2783,7 @@ async function uploadWrRegistry(){
 }
 
 function render(){if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","archive","avia","yaroqlilik"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA&&DATA.meta?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim",tr("regimes")],["korxona",tr("companies")],["ombor",tr("warehouses")],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat",tr("deadlines")],["yaroqlilik",tr("validity")],["archive",tr("archive")],["avia","✈ AVIA AWB"]], payTabs=[["payments",tr("pay_overview")],["pay_lists",tr("pay_lists")],["pay_analysis",tr("pay_analysis")]], commonTabs=[["upload",tr("upload")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=ARTIFACT_POLL_ID?`<button class="light" disabled style="opacity:.7">⏳ Tayyorlanmoqda...</button>`:`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(!ARTIFACT_POLL_ID&&f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view();}
-function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=stack><div class=panel><h2>Profil</h2><b style="font-size:18px">${esc(ME.full_name||ME.user)}</b><p class=muted>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).map(p=>permTitle(p)).join(", ")||'—'}</p></div><div class=panel><h2>Parolni o'zgartirish</h2><form id="changePwForm" class=admin-form style="max-width:340px"><label>Joriy parol</label><div class="pass-wrap"><input id="cpOld" type=password placeholder="Joriy parol"><button class="eye-btn" type="button" onclick="let p=$('cpOld');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol</label><div class="pass-wrap"><input id="cpNew" type=password placeholder="Kamida 6 ta belgi"><button class="eye-btn" type="button" onclick="let p=$('cpNew');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol (takror)</label><div class="pass-wrap"><input id="cpNew2" type=password placeholder="Yangi parolni takrorlang"><button class="eye-btn" type="button" onclick="let p=$('cpNew2');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><button onclick="selfChangePassword(event)">Saqlash</button><span id="cpMsg" class=muted style="margin-left:10px"></span></form></div></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=stack><div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button></div></div>${layoutEditorPanel()}</div>`;leBindDrag();return}if(TAB==="admin"){v.innerHTML=adminPanel();bindUserForm();loadUsers();return}if(!DATA){v.innerHTML=landingPanel();return}
+function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=stack><div class=panel><h2>Profil</h2><b style="font-size:18px">${esc(ME.full_name||ME.user)}</b><p class=muted>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).map(p=>permTitle(p)).join(", ")||'—'}</p></div><div class=panel><h2>Parolni o'zgartirish</h2><form id="changePwForm" class=admin-form style="max-width:340px"><label>Joriy parol</label><div class="pass-wrap"><input id="cpOld" type=password placeholder="Joriy parol"><button class="eye-btn" type="button" onclick="let p=$('cpOld');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol</label><div class="pass-wrap"><input id="cpNew" type=password placeholder="Kamida 6 ta belgi"><button class="eye-btn" type="button" onclick="let p=$('cpNew');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol (takror)</label><div class="pass-wrap"><input id="cpNew2" type=password placeholder="Yangi parolni takrorlang"><button class="eye-btn" type="button" onclick="let p=$('cpNew2');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><button onclick="selfChangePassword(event)">Saqlash</button><span id="cpMsg" class=muted style="margin-left:10px"></span></form></div></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=stack><div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button></div></div>${layoutEditorPanel()}</div>`;setTimeout(leBindDrag,0);return}if(TAB==="admin"){v.innerHTML=adminPanel();bindUserForm();loadUsers();return}if(!DATA){v.innerHTML=landingPanel();return}
 if(TAB==="umumiy"){let topC=by(DATA.top_value||[],"qiymat").slice(0,30);v.innerHTML=wlayout('umumiy',{exec:()=>`<div>${executiveSummary()}</div>`,post:()=>`<div class=panel><h2>70-74-80: postlar kesimida ${staleBadge()}</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.all_post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}<div class=overview-note>Post qatorlari ustiga bosilganda asos deklaratsiyalar ochiladi.</div></div>`,expired_sum:()=>`<div class="panel wide"><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}</div>`,top_bars:()=>`<div class="panel wide"><h2>Qiymat bo'yicha TOP 30 korxona</h2>${bars(topC,"korxona","qiymat",fmtN)}</div>`});$('_cfmSlot')||v.querySelector('.wlayout')?.insertAdjacentHTML('beforeend','<div id="_cfmSlot"></div>');return}
 if(TAB==="avia"){v.innerHTML=aviaPanel();loadAviaAwb();return}
 if(TAB==="payments"){v.innerHTML=paymentModule("overview");return}if(TAB==="pay_lists"){v.innerHTML=paymentModule("lists");return}if(TAB==="pay_analysis"){v.innerHTML=paymentModule("analysis");return}
@@ -3287,7 +3287,7 @@ async function chunkedUpload(file,onProgress){
   }
   const base=DIRECT_UPLOAD_URL||'';
   const isLAN=!!DIRECT_UPLOAD_URL;
-  const PARALLEL=isLAN?4:2;
+  const PARALLEL=isLAN?4:1;
   const MAX_RETRY=3;
   let done=0;
   async function uploadOne(i){
@@ -4543,17 +4543,39 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"error": "X-Upload-Id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
             length = int(self.headers.get("Content-Length", "0") or "0")
+            te = self.headers.get("Transfer-Encoding", "").lower()
+            try:
+                self.connection.settimeout(90)
+                if "chunked" in te:
+                    body = b""
+                    while True:
+                        sz_line = self.rfile.readline().strip()
+                        if not sz_line:
+                            break
+                        chunk_sz = int(sz_line, 16)
+                        if chunk_sz == 0:
+                            break
+                        body += self.rfile.read(chunk_sz)
+                        self.rfile.read(2)
+                elif length > 0:
+                    body = self.rfile.read(length)
+                else:
+                    body = b""
+            except Exception as e:
+                self.json({"error": f"Yuklab olishda xato: {e}"}, HTTPStatus.REQUEST_TIMEOUT)
+                return
+            finally:
+                try:
+                    self.connection.settimeout(None)
+                except Exception:
+                    pass
+            if not body:
+                self.json({"error": "Bo'sh chunk"}, HTTPStatus.BAD_REQUEST)
+                return
             cd = CHUNK_DIR / uid
             cd.mkdir(parents=True, exist_ok=True)
             chunk_path = cd / f"{idx:06d}.bin"
-            with open(chunk_path, "wb") as fh:
-                remaining = length
-                while remaining > 0:
-                    data = self.rfile.read(min(65536, remaining))
-                    if not data:
-                        break
-                    fh.write(data)
-                    remaining -= len(data)
+            chunk_path.write_bytes(body)
             self.json({"ok": True, "received": idx + 1, "total": total}, cors=True)
             return
         if parsed.path == "/api/chunk_finalize":
