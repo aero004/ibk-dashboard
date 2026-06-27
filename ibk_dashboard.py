@@ -2976,44 +2976,57 @@ function applyUIConfig(){
   }
 }
 
+const SM_MODULES=[
+  {id:'bnrte',label:'BNRTE',tabs:['umumiy','rejim','korxona','ombor','expired','released','goods','food','muddat','yaroqlilik','archive','avia']},
+  {id:'pay',label:"To'lovlar",tabs:['payments','pay_lists','pay_analysis']},
+  {id:'common',label:'Boshqaruv',tabs:['upload','profile','settings','admin']}
+];
 function siteMapPanel(){
   const order=UI_CONFIG.tab_order||SM_ALL_TABS.map(t=>t[0]);
   const hidden=UI_CONFIG.tab_hidden||[];
   const tabRoles=UI_CONFIG.tab_roles||{};
-  const sorted=[...SM_ALL_TABS].sort((a,b)=>{let ai=order.indexOf(a[0]),bi=order.indexOf(b[0]);return(ai<0?999:ai)-(bi<0?999:bi);});
-  const rows=sorted.map(([id,label])=>{
-    const isH=hidden.includes(id);
-    const roles=tabRoles[id]||SM_ROLES;
-    const roleCells=SM_ROLES.map(r=>`<label style="cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap"><input type=checkbox data-tab="${id}" data-role="${r}" ${roles.includes(r)?'checked':''}><span style="font-size:11px">${SM_RLBL[r]}</span></label>`).join('');
-    return `<tr draggable="true" data-sm-id="${id}" ondragstart="smDs(event,this)" ondragover="smDo(event,this)" ondrop="smDp(event,this)" ondragend="smDe()" style="border-bottom:1px solid #e8edf3;background:${isH?'#fef2f2':'#fff'};cursor:pointer">
+  const tabMap=Object.fromEntries(SM_ALL_TABS);
+  function sortedTabs(ids){return[...ids].sort((a,b)=>{let ai=order.indexOf(a),bi=order.indexOf(b);return(ai<0?999:ai)-(bi<0?999:bi);});}
+  function modSection(mod){
+    const rows=sortedTabs(mod.tabs).map(id=>{
+      const label=tabMap[id]||id;
+      const isH=hidden.includes(id);
+      const roles=tabRoles[id]||SM_ROLES;
+      const roleCells=SM_ROLES.map(r=>`<label style="cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap"><input type=checkbox data-tab="${id}" data-role="${r}" ${roles.includes(r)?'checked':''}><span style="font-size:11px">${SM_RLBL[r]}</span></label>`).join('');
+      return `<tr draggable="true" data-sm-id="${id}" data-sm-mod="${mod.id}" ondragstart="smDs(event,this)" ondragover="smDo(event,this)" ondrop="smDp(event,this)" ondragend="smDe()" style="border-bottom:1px solid #e8edf3;background:${isH?'#fef2f2':'#fff'}">
 <td style="padding:7px 5px;text-align:center;color:#94a3b8;font-size:17px;user-select:none;cursor:grab">⠿</td>
-<td style="padding:7px 10px;font-weight:600;min-width:140px;font-size:13px">${label}</td>
-<td style="padding:7px 10px"><label style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;color:${isH?'#dc2626':'#16a34a'}"><input type=checkbox data-tab="${id}" data-sm-hide="1" ${isH?'checked':''} onchange="smToggle(this)">${isH?'Yashirin':"Ko'rinadi"}</label></td>
-<td style="padding:7px 10px"><div style="display:flex;gap:10px;flex-wrap:wrap">${roleCells}</div></td>
+<td style="padding:7px 10px;font-weight:600;min-width:130px;font-size:13px">${label}</td>
+<td style="padding:7px 10px;width:110px"><label style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;color:${isH?'#dc2626':'#16a34a'}"><input type=checkbox data-tab="${id}" data-sm-hide="1" ${isH?'checked':''} onchange="smToggle(this)">${isH?'Yashirin':"Ko'rinadi"}</label></td>
+<td style="padding:7px 10px"><div style="display:flex;gap:8px;flex-wrap:wrap">${roleCells}</div></td>
 </tr>`;}).join('');
-  return `<div class=panel style="margin-top:14px"><h2>Sayt xaritasi — ko'rinish va tartib</h2><p class=muted style="margin-bottom:12px">Tablarni sudrab tartib o'zgartiring. Qaysi rol qaysi tabni ko'rishini belgilang. Admin rol har doim barcha tabni ko'radi.</p>
-<div style="overflow-x:auto;border:1px solid #e8edf3;border-radius:10px">
+    return `<div style="margin-bottom:14px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+<div style="background:#f1f5f9;padding:9px 14px;font-weight:700;font-size:13px;border-bottom:1px solid #e2e8f0;letter-spacing:.3px">${mod.label}</div>
 <table style="width:100%;border-collapse:collapse">
-<thead><tr style="background:#f8fafc;border-bottom:2px solid #e8edf3"><th style="width:36px"></th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700">Tab</th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700;width:120px">Holat</th><th style="padding:8px 10px;text-align:left;font-size:12px;font-weight:700">Kimga ko'rinsin</th></tr></thead>
-<tbody id="smBody">${rows}</tbody></table></div>
+<thead><tr style="background:#f8fafc;border-bottom:1px solid #e8edf3"><th style="width:36px"></th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b">Tab</th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b;width:110px">Holat</th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b">Kimga ko'rinsin</th></tr></thead>
+<tbody data-sm-mod="${mod.id}">${rows}</tbody></table></div>`;
+  }
+  return `<div class=panel style="margin-top:14px"><h2>Sayt xaritasi — ko'rinish va tartib</h2>
+<p class=muted style="margin-bottom:14px">Har modul ichida tablarni sudrab tartibini o'zgartiring. Qaysi rol qaysi tabni ko'rishini belgilang. Admin har doim barcha tabni ko'radi.</p>
+${SM_MODULES.map(m=>modSection(m)).join('')}
 <div style="margin-top:12px;display:flex;align-items:center;gap:12px"><button onclick="saveSiteMap()">Saqlash</button><button class=light onclick="resetSiteMap()">Asl sozlamalar</button><span id="smMsg" class=muted></span></div></div>`;
 }
 let _smDrag=null,_smPrev=null;
 function smDs(e,el){_smDrag=el;e.dataTransfer.effectAllowed='move';el.style.opacity='.45';}
-function smDo(e,el){e.preventDefault();if(el===_smDrag)return;if(_smPrev)_smPrev.style.borderTop='';_smPrev=el;el.style.borderTop='2px solid #3b82f6';}
+function smDo(e,el){e.preventDefault();if(el===_smDrag||!_smDrag)return;if(el.dataset.smMod!==_smDrag.dataset.smMod)return;if(_smPrev)_smPrev.style.borderTop='';_smPrev=el;el.style.borderTop='2px solid #3b82f6';}
 function smDe(){if(_smDrag)_smDrag.style.opacity='';if(_smPrev)_smPrev.style.borderTop='';_smDrag=_smPrev=null;}
-function smDp(e,target){e.preventDefault();if(!_smDrag||_smDrag===target)return;const tb=document.getElementById('smBody');const rows=[...tb.querySelectorAll('tr')];rows.indexOf(_smDrag)<rows.indexOf(target)?target.after(_smDrag):target.before(_smDrag);}
+function smDp(e,target){e.preventDefault();if(!_smDrag||_smDrag===target)return;if(_smDrag.dataset.smMod!==target.dataset.smMod)return;const tbody=target.closest('tbody');const rows=[...tbody.querySelectorAll('tr')];rows.indexOf(_smDrag)<rows.indexOf(target)?target.after(_smDrag):target.before(_smDrag);}
 function smToggle(cb){const row=cb.closest('tr');row.style.background=cb.checked?'#fef2f2':'#fff';cb.nextElementSibling.textContent=cb.checked?'Yashirin':"Ko'rinadi";cb.nextElementSibling.style.color=cb.checked?'#dc2626':'#16a34a';}
 async function saveSiteMap(){
-  const tb=document.getElementById('smBody');if(!tb)return;
-  const rows=[...tb.querySelectorAll('tr[data-sm-id]')];
-  const tab_order=rows.map(r=>r.dataset.smId);
-  const tab_hidden=[];const tab_roles={};
-  rows.forEach(row=>{
-    const id=row.dataset.smId;
-    if(row.querySelector('[data-sm-hide="1"]')?.checked)tab_hidden.push(id);
-    const checked=[...row.querySelectorAll('[data-role]')].filter(el=>el.checked).map(el=>el.dataset.role);
-    tab_roles[id]=checked.includes('admin')?checked:[...checked,'admin']; // admin always has access
+  const tab_order=[];const tab_hidden=[];const tab_roles={};
+  SM_MODULES.forEach(mod=>{
+    const tbody=document.querySelector(`[data-sm-mod="${mod.id}"]`);if(!tbody)return;
+    [...tbody.querySelectorAll('tr[data-sm-id]')].forEach(row=>{
+      const id=row.dataset.smId;
+      tab_order.push(id);
+      if(row.querySelector('[data-sm-hide="1"]')?.checked)tab_hidden.push(id);
+      const checked=[...row.querySelectorAll('[data-role]')].filter(el=>el.checked).map(el=>el.dataset.role);
+      tab_roles[id]=checked.includes('admin')?checked:[...checked,'admin'];
+    });
   });
   try{
     const cfg={...UI_CONFIG,tab_order,tab_hidden,tab_roles};
