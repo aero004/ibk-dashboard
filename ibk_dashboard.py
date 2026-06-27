@@ -82,6 +82,14 @@ JOBS: dict[str, dict] = {}
 SESSIONS: dict[str, dict] = {}
 STORE: IBKStore | None = None
 
+# Login rate limiting: 5 urinishdan keyin 15 daqiqa blok
+LOGIN_FAILS: dict[str, dict] = {}
+LOGIN_BLOCK_AFTER = 5
+LOGIN_BLOCK_SECS = 900
+
+# CORS: faqat ibkinfo.uz dan cross-origin so'rovlarga ruxsat
+ALLOWED_ORIGINS = {"https://ibkinfo.uz"}
+
 TAS_ICAO = "UTTT"  # Toshkent (Islom Karimov) xalqaro aeroporti
 FLIGHTS_CACHE: dict = {"ts": 0.0, "data": None}
 FLIGHTS_CACHE_TTL = 60  # 1 daqiqa (FR24 schedule)
@@ -3777,21 +3785,29 @@ function renderCurrencyWidget(j){
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _cors_origin(self) -> str:
+        origin = self.headers.get("Origin", "")
+        return origin if origin in ALLOWED_ORIGINS else ""
+
     def json(self, data, status=HTTPStatus.OK, cors=False):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         if cors:
-            self.send_header("Access-Control-Allow-Origin", "*")
+            allowed = self._cors_origin()
+            if allowed:
+                self.send_header("Access-Control-Allow-Origin", allowed)
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
         if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/server_info"):
+            allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            if allowed:
+                self.send_header("Access-Control-Allow-Origin", allowed)
             self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "X-Token, X-Upload-Id, X-Chunk-Index, X-Total-Chunks, X-Filename, Content-Type")
             self.send_header("Content-Length", "0")
@@ -4318,15 +4334,28 @@ class Handler(BaseHTTPRequestHandler):
     def _do_POST_inner(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/login":
+            client_ip = self.client_address[0]
+            now = time.time()
+            fail = LOGIN_FAILS.get(client_ip, {"count": 0, "until": 0})
+            if fail["until"] > now:
+                mins = max(1, int((fail["until"] - now) / 60) + 1)
+                self.json({"error": f"Juda ko'p noto'g'ri urinish. {mins} daqiqadan so'ng qayta urining."}, HTTPStatus.TOO_MANY_REQUESTS)
+                return
             data = self.body_json()
             users = load_json(USER_PATH, {})
             rec = users.get(data.get("user", ""))
             if not rec or rec["password"] != hash_password(data.get("pass", ""), rec["salt"]):
+                fail["count"] = fail.get("count", 0) + 1
+                if fail["count"] >= LOGIN_BLOCK_AFTER:
+                    fail["until"] = now + LOGIN_BLOCK_SECS
+                    fail["count"] = 0
+                LOGIN_FAILS[client_ip] = fail
                 self.json({"error": "Login yoki parol xato"}, HTTPStatus.UNAUTHORIZED)
                 return
             if not rec.get("enabled", True):
                 self.json({"error": "Foydalanuvchiga ruxsat berilmagan"}, HTTPStatus.FORBIDDEN)
                 return
+            LOGIN_FAILS.pop(client_ip, None)
             token = secrets.token_urlsafe(32)
             SESSIONS[token] = {"user": data["user"], "created": time.time()}
             save_json(SESSION_PATH, SESSIONS)
