@@ -2812,7 +2812,12 @@ if(TAB==="yaroqlilik"){
   loadYaroqlilik();
   let yd=YAROQLILIK_DATA||{items:[],loaded:false};
   let items=yd.items||[];
-  if(!yd.loaded){v.innerHTML=`<div class=panel><h2>Iste'mol muddati tahlili</h2><div class=muted>Ma'lumotlar yuklanmagan yoki yuklanmoqda. "Boshqaruv → Fayl yuklash" bo'limidan yaroqlilik Excel faylini yuklang.</div><button onclick="GROUP='common';TAB='upload';render()">Fayl yuklash</button></div>`;return}
+  if(!yd.loaded){
+    let foodRows=DATA?(DATA.food||[]).filter(r=>(+r.over_qiymat||0)>0||( +r.over_vazn||0)>0):[];
+    let foodHtml=foodRows.length?`<div class="panel wide" style="margin-top:12px"><h2>Oziq-ovqat: 3 oy+ saqlanayotganlar (asos fayldan) ${staleBadge()}</h2><div class=muted style="margin-bottom:8px">Iste'mol muddati xavf ostida bo'lishi mumkin bo'lgan tovarlar. Aniq tahlil uchun yaroqlilik faylini yuklang.</div>${table([{k:"name",t:"Tovar turi",w:"40%"},{k:"over_vazn",t:"3 oy+ vazn (tn)",n:1,f:fmtN},{k:"over_qiymat",t:"3 oy+ qiymat (ming $)",n:1,f:fmtN},{k:"vazn",t:"Jami vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN}],foodRows)}</div>`:'';
+    v.innerHTML=`<div class=stack><div class=panel><h2>Iste'mol muddati tahlili</h2><div class=muted>Batafsil tahlil uchun yaroqlilik Excel faylini yuklang. Hozircha asos fayldan oziq-ovqat ma'lumotlari ko'rsatilmoqda.</div><button onclick="GROUP='common';TAB='upload';render()">Yaroqlilik faylini yuklash</button></div>${foodHtml}</div>`;
+    return;
+  }
   let expired=items.filter(r=>r.holat==="Muddati o'tgan");
   let warn180=items.filter(r=>r.holat==="180 kundan kam qolgan");
   let warn30=items.filter(r=>r.holat==="1 oy ichida muddati tugaydi");
@@ -3359,9 +3364,10 @@ async function ucUploadBnrte(btn){
   }catch(e){if(st)st.textContent='Xatolik: '+e.message;showUploadProgress('✗ '+e.message,0);setBusy(btn,false)}
 }
 async function ucUploadDepozit(btn){
-  if(!DATA){if($('ucDepozitStatus'))$('ucDepozitStatus').textContent='Avval BNRTE hisobotini yuklang';return}
-  let src=$('ucDepozitFile'),st=$('ucDepozitStatus');
-  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  let st=$('ucDepozitStatus');
+  if(!DATA){if(st)st.innerHTML='<span style="color:#b91c1c;font-weight:600">⚠ Avval BNRTE asos faylini yuklang va hisoblash tugashini kuting</span>';return}
+  let src=$('ucDepozitFile');
+  if(!src?.files?.length){if(st)st.innerHTML='<span style="color:#92400e;font-weight:600">⚠ Depozit fayl tanlanmagan — "Fayl tanlash" tugmasini bosing</span>';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
   let fd=new FormData();fd.append('report_id',DATA.id);fd.append('deposit',src.files[0]);
   try{let j=await api('/api/deposit',{method:'POST',body:fd});if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
@@ -3448,7 +3454,7 @@ uploadPanel=function(){
   return `<div class=stack>
 <div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Har bir modul uchun alohida yuklash va qayta hisoblash. <b>Qayta hisoblash</b> — yangi fayl yuklamasdan serverdan qayta oladi.</p><div id=uploadStatus></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>📋 BNRTE — Nazoratdagi tovarlar</h2>${bnrteSt}</div><div class=uc-body><div class=uc-field><label>Asos fayl (xls/xlsx)</label><input type=file id="ucBnrteSource" accept=".xls,.xlsx,.html,.htm"></div><div class=uc-btns><button onclick="ucUploadBnrte(this)">Yuklash</button><button class="btn light" onclick="refreshCurrentReport(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucBnrteStatus" style="margin-top:8px"></div></div>
-<div class="panel uc-card"><div class=uc-header><h2>💾 Depozit fayl — alohida yuklash</h2>${depSt}</div><div class=uc-body><div class=uc-field><label>Depozit fayl (xlsx)</label><input type=file id="ucDepozitFile" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadDepozit(this)"${DATA?'':' disabled title="Avval BNRTE yuklang"'}>Yuklash</button></div></div><div class=muted style="margin-top:6px;font-size:12px">Joriy hisobotga (${repDate||'—'}) depozit ma'lumotlarini biriktiradi va qayta hisoblab chiqadi.</div><div class=muted id="ucDepozitStatus" style="margin-top:4px"></div></div>
+<div class="panel uc-card"><div class=uc-header><h2>💾 Depozit fayl — alohida yuklash</h2>${depSt}</div><div class=uc-body><div class=uc-field><label>Depozit fayl (xlsx)</label><input type=file id="ucDepozitFile" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadDepozit(this)">Yuklash</button></div></div><div class=muted style="margin-top:6px;font-size:12px">Joriy hisobotga (${repDate||'—'}) depozit ma'lumotlarini biriktiradi va qayta hisoblab chiqadi.</div><div id="ucDepozitStatus" style="margin-top:6px;font-size:13px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>💰 To'lovlar jadvallari</h2>${tolovSt}</div><div class=uc-body><div class=uc-field><label>To'lov baza fayli (xlsx)</label><input type=file id="ucTolovSource" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadTolov(this)">Yuklash</button><button class="btn light" onclick="ucRecalcTolov(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucTolovStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>🏢 Omborlar reestri</h2>${wrSt}</div><div class=uc-body><div class=uc-field><label>Reestri fayli (omborlarReestri*.xlsx)</label><input type=file id="ucWrFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadWarehouse(this)">Yuklash</button><button class="btn light" onclick="ucRecalcWarehouse(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucWrStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#0ea5e9"><div class=uc-header><h2>✈ AVIA AWB</h2><div style="display:flex;gap:6px;flex-wrap:wrap">${aviaSt} ${aviaDbSt}</div></div><div class=uc-note>AWB Excel (Yuklarni qabul qilish.xlsx) → AWB ro'yxati, joylar, vazn. Qiymat (ming $) BNRTE asos faylidan olinadi — yangilash uchun BNRTE → Qayta hisoblash.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>AWB Excel (Yuklarni qabul qilish*.xlsx)</label><input type=file id="ucAviaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadAvia(this)">Yuklash</button><button class="btn light" onclick="ucRecalcAvia(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucAviaStatus" style="margin-top:8px"></div></div>
