@@ -1,14 +1,20 @@
-# IBK Dashboard — avto-yangilanish va qayta ishga tushirish
+# IBK Dashboard — avto-yangilanish, server va cloudflared nazorati
 
 param(
-    [string]$RepoDir    = "C:\servers\ibk-dashboard",
-    [string]$ScriptName = "ibk_dashboard.py",
-    [int]   $IntervalSec = 60
+    [string]$RepoDir      = "C:\servers\ibk-dashboard",
+    [string]$ScriptName   = "ibk_dashboard.py",
+    [string]$CFExe        = "C:\Program Files\cloudflared\cloudflared.exe",
+    [string]$CFConfig     = "C:\ProgramData\Cloudflare\config.yml",
+    [int]   $IntervalSec  = 60
 )
 
 function Get-IBKProcess {
     Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='python3.exe'" |
         Where-Object { $_.CommandLine -like "*$ScriptName*" }
+}
+
+function Get-CFProcess {
+    Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'"
 }
 
 Write-Host "[auto-update] Ishga tushdi. Papka: $RepoDir | Interval: ${IntervalSec}s"
@@ -17,6 +23,7 @@ while ($true) {
     try {
         Set-Location $RepoDir
 
+        # --- Python server: git pull va yangilash ---
         $before = git rev-parse HEAD 2>$null
         git fetch --quiet origin main 2>$null
         git reset --hard origin/main --quiet 2>$null
@@ -43,6 +50,13 @@ while ($true) {
         if (-not (Get-IBKProcess)) {
             Write-Host "[auto-update] Server ishlamayapti. Ishga tushirilmoqda..."
             Start-Process python -ArgumentList "$RepoDir\$ScriptName" -WorkingDirectory $RepoDir -WindowStyle Hidden
+        }
+
+        # --- Cloudflare tunnel nazorati ---
+        if (-not (Get-CFProcess)) {
+            Write-Host "[auto-update] $ts Cloudflared ishlamayapti. Qayta ishga tushirilmoqda..."
+            Start-Process $CFExe -ArgumentList "tunnel","--config",$CFConfig,"run" -WindowStyle Hidden
+            Write-Host "[auto-update] Cloudflared ishga tushirildi."
         }
 
     } catch {
