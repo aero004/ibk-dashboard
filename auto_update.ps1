@@ -23,16 +23,18 @@ while ($true) {
     try {
         Set-Location $RepoDir
 
-        # --- Python server: git pull va yangilash ---
-        $before = git rev-parse HEAD 2>$null
-        git fetch --quiet origin main 2>$null
-        git reset --hard origin/main --quiet 2>$null
-        $after  = git rev-parse HEAD 2>$null
+        # --- Git: yangilanish bormi? ---
+        $before = git rev-parse HEAD 2>&1
+        $fetchOut = git fetch origin main 2>&1
+        if ($fetchOut) { Write-Host "[auto-update] git fetch: $fetchOut" }
+
+        $resetOut = git reset --hard origin/main 2>&1
+        $after  = git rev-parse HEAD 2>&1
 
         $ts = Get-Date -Format "HH:mm:ss"
 
         if ($before -ne $after) {
-            $short = $after.Substring(0, 7)
+            $short = ($after -replace '\s','').Substring(0, [Math]::Min(7, ($after -replace '\s','').Length))
             Write-Host "[auto-update] $ts Ozgarish topildi ($short). Qayta ishga tushirilmoqda..."
 
             $old = Get-IBKProcess
@@ -44,12 +46,13 @@ while ($true) {
             Start-Process python -ArgumentList "$RepoDir\$ScriptName" -WorkingDirectory $RepoDir -WindowStyle Hidden
             Write-Host "[auto-update] Server qayta ishga tushirildi."
         } else {
-            Write-Host "[auto-update] $ts Ozgarish yoq."
+            Write-Host "[auto-update] $ts Ozgarish yoq. ($($before.ToString().Trim().Substring(0,7)))"
         }
 
         if (-not (Get-IBKProcess)) {
-            Write-Host "[auto-update] Server ishlamayapti. Ishga tushirilmoqda..."
+            Write-Host "[auto-update] $ts Server ishlamayapti. Ishga tushirilmoqda..."
             Start-Process python -ArgumentList "$RepoDir\$ScriptName" -WorkingDirectory $RepoDir -WindowStyle Hidden
+            Write-Host "[auto-update] Server ishga tushirildi."
         }
 
         # --- Cloudflare tunnel nazorati ---
