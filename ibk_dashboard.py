@@ -38,6 +38,7 @@ PORT = int(os.environ.get("IBK_PORT", "8788"))
 DATA_DIR = APP_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 REPORT_DIR = DATA_DIR / "reports"
+CHUNK_DIR  = DATA_DIR / "chunks"
 ASSET_DIR = APP_DIR / "assets"
 USER_PATH = DATA_DIR / "users.json"
 SESSION_PATH = DATA_DIR / "sessions.json"
@@ -3220,14 +3221,44 @@ async function refreshCurrentReport(btn){
   setBusy(btn,true,"Yangilanmoqda");$("status").textContent="Ma'lumotlar yangilanmoqda...";
   try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
 }
+async function chunkedUpload(file,onProgress){
+  const CHUNK=2*1024*1024;
+  const total=Math.max(1,Math.ceil(file.size/CHUNK));
+  const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  for(let i=0;i<total;i++){
+    const fd=new FormData();
+    fd.append('upload_id',uid);fd.append('chunk_index',i);fd.append('total_chunks',total);
+    fd.append('chunk',file.slice(i*CHUNK,(i+1)*CHUNK),file.name);
+    const r=await fetch('/api/chunk_upload',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN},body:fd});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Chunk xato');}
+    if(onProgress)onProgress((i+1)/total);
+  }
+  return {upload_id:uid,filename:file.name,total_chunks:total};
+}
 async function ucUploadBnrte(btn){
   let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
   if(!src?.files?.length){if(st)st.textContent='Asos fayl tanlang';return}
-  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('source',src.files[0]);
-  if(dep?.files?.length)fd.append('deposit',dep.files[0]);
-  try{let j=await api('/api/reports',{method:'POST',body:fd});if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
-  catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
+  setBusy(btn,true,'Yuklanmoqda');
+  try{
+    if(st)st.textContent='Asos fayl bo\'laklarga bo\'linib yuklanyapti...';
+    showUploadProgress('Asos fayl yuklanyapti...',5);
+    const srcInfo=await chunkedUpload(src.files[0],p=>{
+      showUploadProgress(`Asos fayl: ${Math.round(p*100)}%`,5+p*70);
+      if(st)st.textContent=`Asos fayl: ${Math.round(p*100)}% yuklandi`;
+    });
+    let depInfo={upload_id:'',filename:''};
+    if(dep?.files?.length){
+      if(st)st.textContent='Depozit fayl yuklanyapti...';
+      showUploadProgress('Depozit fayl yuklanyapti...',76);
+      const d=await chunkedUpload(dep.files[0],p=>{
+        showUploadProgress(`Depozit: ${Math.round(p*100)}%`,76+p*15);
+      });
+      depInfo={upload_id:d.upload_id,filename:d.filename};
+    }
+    if(st)st.textContent='Hisoblanmoqda...';showUploadProgress('Hisoblanmoqda...',92);
+    const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...srcInfo,deposit_upload_id:depInfo.upload_id,deposit_filename:depInfo.filename})});
+    poll(j.job_id);
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message;showUploadProgress('✗ '+e.message,0);setBusy(btn,false)}
 }
 async function ucUploadDepozit(btn){
   if(!DATA){if($('ucDepozitStatus'))$('ucDepozitStatus').textContent='Avval BNRTE hisobotini yuklang';return}
@@ -3339,11 +3370,23 @@ const bindUploadFull=bindUpload;bindUpload=function(){
   let bf=$("bulkUpload");
   if(bf)bf.onsubmit=async e=>{
     e.preventDefault();let btn=e.submitter;
-    try{setBusy(btn,true,"Yuklanmoqda");showUploadProgress("Yillik fayllar yuklanyapti...",5);
-      let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});
-      let skip=(j.skipped||[]).length?` O\'tkazib: ${j.skipped.map(x=>x.filename).join(", ")}`:"";
-      $("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo\'shildi.${skip}`;
-      showUploadProgress(`${j.count||0} ta fayl navbatga qo\'shildi`,85);
+    try{
+      setBusy(btn,true,"Yuklanmoqda");
+      const files=[...(bf.querySelector('[name=sources]')?.files||[])];
+      if(!files.length){$("bulkResult").textContent="Fayl tanlanmagan";return}
+      let done=0,skipped=[];
+      for(let i=0;i<files.length;i++){
+        const f=files[i];
+        showUploadProgress(`${i+1}/${files.length}: ${f.name} yuklanyapti...`,Math.round(i/files.length*90));
+        try{
+          const info=await chunkedUpload(f,p=>showUploadProgress(`${i+1}/${files.length}: ${f.name} — ${Math.round(p*100)}%`,Math.round((i+p)/files.length*90)));
+          const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify(info)});
+          if(j.error)skipped.push(f.name+': '+j.error); else done++;
+        }catch(err){skipped.push(f.name+': '+err.message)}
+      }
+      let skipTxt=skipped.length?` O\'tkazildi: ${skipped.join(', ')}`:'';
+      $("bulkResult").textContent=`${done} ta fayl navbatga qo\'shildi.${skipTxt}`;
+      showUploadProgress(`${done} ta fayl navbatga qo\'shildi`,95);
       await loadArchive();setTimeout(()=>showUploadProgress("",0),3000);
     }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
     finally{setBusy(btn,false)};
@@ -4369,6 +4412,68 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
             self.json({"ok": True, "payments": rows})
+            return
+        if parsed.path == "/api/chunk_upload":
+            if not self.require_perm("upload"):
+                return
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            uid   = (form.get("upload_id") or {}).get("content", b"").decode("utf-8", errors="ignore").strip()
+            idx   = int((form.get("chunk_index") or {}).get("content", b"0").decode().strip() or "0")
+            total = int((form.get("total_chunks") or {}).get("content", b"1").decode().strip() or "1")
+            chunk_bytes = (form.get("chunk") or {}).get("content", b"")
+            if not uid:
+                self.json({"error": "upload_id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            cd.mkdir(parents=True, exist_ok=True)
+            (cd / f"{idx:06d}.bin").write_bytes(chunk_bytes)
+            self.json({"ok": True, "received": idx + 1, "total": total})
+            return
+        if parsed.path == "/api/chunk_finalize":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = body.get("filename", "").strip()
+            total    = int(body.get("total_chunks", 1))
+            dep_uid  = body.get("deposit_upload_id", "").strip()
+            dep_name = body.get("deposit_filename", "").strip()
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            report_date = report_date_from_name(filename)
+            dup = duplicate_report(filename, report_date)
+            if dup:
+                shutil.rmtree(cd, ignore_errors=True)
+                self.json({"error": "Bu fayl avval yuklangan"}, HTTPStatus.CONFLICT)
+                return
+            job_id = report_date.strftime("%Y%m%d_") + str(int(time.time() * 1000))
+            tmp = UPLOAD_DIR / job_id
+            tmp.mkdir(parents=True, exist_ok=True)
+            source = tmp / safe_name(filename)
+            with open(source, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            deposit = None
+            if dep_uid and dep_name:
+                dcd = CHUNK_DIR / dep_uid
+                dchunks = sorted(dcd.glob("*.bin"))
+                if dchunks:
+                    deposit = tmp / safe_name(dep_name)
+                    with open(deposit, "wb") as fh:
+                        for ch in dchunks:
+                            fh.write(ch.read_bytes())
+                    shutil.rmtree(dcd, ignore_errors=True)
+            JOBS[job_id] = {"status": "navbatda", "data": None}
+            threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
+            self.json({"job_id": job_id})
             return
         if parsed.path == "/api/reports_bulk":
             if not self.require_perm("upload"):
