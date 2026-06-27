@@ -3337,9 +3337,102 @@ async function chunkedUpload(file,onProgress){
     return {upload_id:uid,filename:file.name,total_chunks:total,direct:isLAN};
   }finally{_uploadActive=false;}
 }
+function detectFileType(name){
+  const n=name.toLowerCase().replace(/\s+/g,'');
+  if(/reestri|omborlar/.test(n))return 'ombor';
+  if(/depozit|deposit/.test(n))return 'depozit';
+  if(/qabul|awb|avia/.test(n))return 'avia';
+  if(/yaroqlilik/.test(n))return 'yaroqlilik';
+  if(/tolov|payment/.test(n))return 'tolov';
+  return 'bnrte';
+}
+const FILE_TYPE_LABELS={bnrte:'📋 BNRTE asos fayl',depozit:'💾 Depozit fayl',ombor:'🏢 Omborlar reestri',avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',tolov:'💰 To\'lovlar'};
+let _unifiedFiles=[];
+function handleUnifiedDrop(files){
+  _unifiedFiles=[...files];
+  const list=$('unifiedList');
+  const btn=$('unifiedBtn');
+  if(!list||!_unifiedFiles.length){if(list)list.innerHTML='';if(btn)btn.style.display='none';return}
+  list.innerHTML='<div style="margin:6px 0;font-size:13px;color:#6b7280;font-weight:600">Aniqlangan fayllar:</div>'+_unifiedFiles.map((f,i)=>{
+    const t=detectFileType(f.name);
+    const lbl=FILE_TYPE_LABELS[t]||t;
+    const sz=(f.size/1024/1024).toFixed(1)+' MB';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;margin-bottom:5px">
+      <select onchange="_unifiedFiles[${i}]._type=this.value" style="font-size:12px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px">
+        ${['bnrte','depozit','ombor','avia','yaroqlilik','tolov'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
+      </select>
+      <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.name)}">${esc(f.name)}</span>
+      <span style="font-size:11px;color:#94a3b8;flex-shrink:0">${sz}</span>
+    </div>`;
+  }).join('');
+  if(btn){btn.style.display='';btn.textContent=`🚀 Yuklash (${_unifiedFiles.length} ta fayl)`;}
+}
+async function runUnifiedUpload(btn){
+  if(!_unifiedFiles.length)return;
+  const prog=$('unifiedProgress');
+  setBusy(btn,true,'Yuklanmoqda');
+  const types=_unifiedFiles.map((f,i)=>f._type||detectFileType(f.name));
+  const bnrteIdx=types.findIndex(t=>t==='bnrte');
+  // Duplicate check BEFORE uploading
+  if(bnrteIdx>=0){
+    const f=_unifiedFiles[bnrteIdx];
+    try{
+      const chk=await api('/api/check_report_exists?filename='+encodeURIComponent(f.name));
+      if(chk.exists){
+        if(!confirm(`"${f.name}" (${chk.date}) avval yuklangan.\nQayta yuklash kerakmi?`)){setBusy(btn,false);return}
+      }
+    }catch(e){}
+  }
+  let results=[];
+  for(let i=0;i<_unifiedFiles.length;i++){
+    const f=_unifiedFiles[i];
+    const t=types[i];
+    if(prog)prog.innerHTML=`<div style="font-size:13px;color:#1d72b8;font-weight:600">${i+1}/${_unifiedFiles.length}: ${esc(f.name)} (${FILE_TYPE_LABELS[t]}) yuklanyapti...</div>`;
+    showUploadProgress(`${i+1}/${_unifiedFiles.length}: ${f.name}`,Math.round(i/_unifiedFiles.length*100));
+    try{
+      if(t==='ombor'){
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Omborlar: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize_wr',{method:'POST',body:JSON.stringify(info)});
+        if(j.warehouses)WR_DATA=j.warehouses;
+        results.push(`✓ Omborlar: ${(j.warehouses||[]).length} ombor`);
+      }else if(t==='avia'){
+        const info=await chunkedUpload(f,p=>showUploadProgress(`AVIA: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
+        AVIA_DATA=j;
+        results.push(`✓ AVIA: ${fmtI(j.unique_awb||0)} AWB`);
+      }else if(t==='depozit'&&DATA){
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:'',deposit_filename:''})});
+        if(j.job_id)poll(j.job_id);
+        results.push(`✓ Depozit: yuklandi`);
+      }else if(t==='bnrte'){
+        const depIdx=types.findIndex((x,xi)=>x==='depozit'&&xi!==i);
+        let depInfo={upload_id:'',filename:''};
+        if(depIdx>=0){
+          const df=_unifiedFiles[depIdx];
+          const di=await chunkedUpload(df,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+.5+p*.5)/_unifiedFiles.length*100)));
+          depInfo={upload_id:di.upload_id,filename:di.filename};
+          types[depIdx]='_done';
+        }
+        const info=await chunkedUpload(f,p=>showUploadProgress(`BNRTE asos: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:depInfo.upload_id,deposit_filename:depInfo.filename})});
+        if(j.job_id)poll(j.job_id);
+        results.push(`✓ BNRTE: hisoblash boshlandi`);
+      }else if(t!=='_done'){
+        results.push(`⏭ ${f.name}: o'tkazib yuborildi`);
+      }
+    }catch(e){results.push(`✗ ${esc(f.name)}: ${e.message}`);}
+  }
+  if(prog)prog.innerHTML=`<div style="font-size:13px;margin-top:4px">${results.map(r=>`<div>${r}</div>`).join('')}</div>`;
+  setBusy(btn,false);btn.textContent=`🚀 Yuklash (${_unifiedFiles.length} ta fayl)`;
+}
 async function ucUploadBnrte(btn){
   let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
   if(!src?.files?.length){if(st)st.textContent='Asos fayl tanlang';return}
+  try{
+    const chk=await api('/api/check_report_exists?filename='+encodeURIComponent(src.files[0].name));
+    if(chk.exists&&!confirm(`"${src.files[0].name}" (${chk.date}) avval yuklangan.\nQayta yuklash kerakmi?`))return;
+  }catch(e){}
   setBusy(btn,true,'Yuklanmoqda');
   try{
     const mode=DIRECT_UPLOAD_URL?'⚡ To\'g\'ridan-to\'g\'ri (LAN)':'☁️ Cloudflare orqali';
@@ -3455,7 +3548,12 @@ uploadPanel=function(){
   let aviaDbSt=AVIA_STATS?`<span class="uc-badge ok">💲 ${fmtN(AVIA_STATS.jami_qiymat_k)} ming $</span>`:'';
   let yarSt=YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded?`<span class="uc-badge ok">⚠ ${YAROQLILIK_DATA.expired_count||0} muddati o'tgan</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   return `<div class=stack>
-<div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Har bir modul uchun alohida yuklash va qayta hisoblash. <b>Qayta hisoblash</b> — yangi fayl yuklamasdan serverdan qayta oladi.</p><div id=uploadStatus></div></div>
+<div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Fayllarni birdan tanlang — tizim nomiga qarab o'zi ajratib oladi. Yoki quyida har birini alohida yuklang.</p><div id=uploadStatus></div></div>
+<div class="panel uc-card" style="border-left-color:#7c3aed"><div class=uc-header><h2>🗂 Barcha fayllarni birdan yuklash</h2></div>
+<div style="margin:10px 0 8px"><label for="unifiedFileInput" style="display:flex;flex-direction:column;align-items:center;gap:8px;border:2px dashed #c4b5fd;border-radius:10px;padding:22px 16px;cursor:pointer;background:#faf5ff;color:#5b21b6;font-weight:600;font-size:14px;transition:background .2s" id="unifiedDropZone" ondragover="event.preventDefault();this.style.background='#ede9fe'" ondragleave="this.style.background='#faf5ff'" ondrop="event.preventDefault();this.style.background='#faf5ff';handleUnifiedDrop(event.dataTransfer.files)">📁 Fayllarni shu yerga tashlang yoki bosib tanlang<span style="font-size:12px;font-weight:400;color:#7c3aed">BNRTE asos, depozit, omborlar reestri, AVIA AWB — barchasi birdan</span></label><input type=file id="unifiedFileInput" multiple accept=".xls,.xlsx,.html,.htm" style="display:none" onchange="handleUnifiedDrop(this.files)"></div>
+<div id="unifiedList" style="margin-top:4px"></div>
+<div id="unifiedProgress" style="margin-top:8px"></div>
+<div style="margin-top:10px;display:flex;gap:8px"><button id="unifiedBtn" onclick="runUnifiedUpload(this)" style="display:none">🚀 Yuklash</button></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>📋 BNRTE — Nazoratdagi tovarlar</h2>${bnrteSt}</div><div class=uc-body><div class=uc-field><label>Asos fayl (xls/xlsx)</label><input type=file id="ucBnrteSource" accept=".xls,.xlsx,.html,.htm"></div><div class=uc-btns><button onclick="ucUploadBnrte(this)">Yuklash</button><button class="btn light" onclick="refreshCurrentReport(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucBnrteStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>💾 Depozit fayl — alohida yuklash</h2>${depSt}</div><div class=uc-body><div class=uc-field><label>Depozit fayl (xlsx)</label><input type=file id="ucDepozitFile" accept=".xlsx"></div><div class=uc-btns><button onclick="ucUploadDepozit(this)">Yuklash</button></div></div><div class=muted style="margin-top:6px;font-size:12px">Joriy hisobotga (${repDate||'—'}) depozit ma'lumotlarini biriktiradi va qayta hisoblab chiqadi.</div><div id="ucDepozitStatus" style="margin-top:6px;font-size:13px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>💰 To'lovlar jadvallari</h2>${tolovSt}</div><div class=uc-body><div class=uc-field><label>To'lov baza fayli (xlsx)</label><input type=file id="ucTolovSource" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadTolov(this)">Yuklash</button><button class="btn light" onclick="ucRecalcTolov(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucTolovStatus" style="margin-top:8px"></div></div>
@@ -4118,6 +4216,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/server_info":
             self.json({"lan_url": f"http://{LAN_IP}:{PORT}", "port": PORT}, cors=True)
+            return
+        if parsed.path == "/api/check_report_exists":
+            filename = parse_qs(parsed.query).get("filename", [""])[0]
+            if not filename:
+                self.json({"exists": False})
+                return
+            try:
+                rdate = report_date_from_name(filename)
+                dup = duplicate_report(filename, rdate)
+                self.json({"exists": bool(dup), "date": fmt_date(rdate)})
+            except Exception:
+                self.json({"exists": False})
             return
         if parsed.path == "/api/users":
             if not self.require_admin():
