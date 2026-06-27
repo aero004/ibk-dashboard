@@ -2201,7 +2201,8 @@ function clearBusy(){document.querySelectorAll(".is-busy").forEach(b=>setBusy(b,
 async function api(url,opt={}){opt.headers=Object.assign({"X-Token":TOKEN},opt.headers||{});let r=await fetch(url,opt);if(r.status===401){showLogin();throw Error("login")};return await r.json()} function showLogin(){$("login").classList.remove("hidden");$("app").classList.add("hidden");$("meta").textContent="Kirish kerak"}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){DATA=await api("/api/reports/"+ARCHIVE[0].id);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[]} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+let ARCHIVE_CURRENT_ID=null;
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 let ARTIFACT_POLL_ID=null;
 async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try{let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});ARTIFACT_POLL_ID=j.job_id;render();pollArtifacts(j.job_id)}catch(e){if($("status"))$("status").textContent="Xatolik: "+String(e)}}
@@ -3106,12 +3107,34 @@ function uniqueArchiveRows(){
 }
 function compactArchivePanel(){
   let rows=uniqueArchiveRows();
+  let isAdmin=ME&&ME.role==="admin";
   let body=rows.map(r=>{
     let source=(r.source||"").split(/[\\/]/).pop(), deposit=r.deposit?((r.deposit||"").split(/[\\/]/).pop()||"Bor"):"-";
-    return `<tr><td class=num>${esc(r.date)}</td><td class=text title="${esc(source)}">${esc(source)}</td><td class=text title="${esc(deposit)}">${esc(deposit)}</td><td class=num><button class="light" onclick="loadReport('${esc(r.id)}')">Ochish</button></td></tr>`;
+    let isCurrent=r.id===ARCHIVE_CURRENT_ID||((!ARCHIVE_CURRENT_ID)&&r.id===ARCHIVE[0]?.id);
+    let isLoaded=DATA&&DATA.id===r.id;
+    let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
+    let loadedBadge=isLoaded&&!isCurrent?`<span style="background:#1d4ed8;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Ochiq</span>`:"";
+    let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteArchiveEntry('${esc(r.id)}','${esc(r.date)}')" title="O'chirish">🗑</button>${!isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentArchive('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:""
+    return `<tr><td class=num>${esc(r.date)}${badge}${loadedBadge}</td><td class=text title="${esc(source)}">${esc(source)}</td><td class=text title="${esc(deposit)}">${esc(deposit)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center"><button class="light" onclick="loadReport('${esc(r.id)}')">Ochish</button>${adminBtns}</div></td></tr>`;
   }).join("");
-  let html=`<table class="fixed-table compact-archive"><colgroup><col style="width:95px"><col style="width:360px"><col style="width:160px"><col style="width:90px"></colgroup><thead><tr><th>Sana</th><th>Asos fayl</th><th>Depozit</th><th></th></tr></thead><tbody>${body}</tbody></table>`;
-  return `<div class=panel><h2>Arxiv</h2><div class=muted>${rows.length} ta sana bo'yicha yagona arxiv yozuvi. Dublikat sanalar yashirildi va ro'yxatdan tozalandi.</div>${html}</div>`;
+  let html=`<table class="fixed-table compact-archive"><colgroup><col style="width:130px"><col style="width:320px"><col style="width:130px"><col></colgroup><thead><tr><th>Sana</th><th>Asos fayl</th><th>Depozit</th><th></th></tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class=panel><h2>Arxiv</h2><div class=muted>${rows.length} ta sana. "Joriy" — dashar ochilganda yuklanadigan hisobot. Admin o'chira yoki joriy qilib belgilashi mumkin.</div>${html}</div>`;
+}
+async function deleteArchiveEntry(id,date){
+  if(!confirm(`"${date}" arxiv yozuvini o'chirasizmi?`))return;
+  try{
+    await api("/api/archive/delete",{method:"POST",body:JSON.stringify({id})});
+    await loadArchive();
+    if(DATA&&DATA.id===id){DATA=ARCHIVE.length?await api("/api/reports/"+ARCHIVE[0].id):null;}
+    render();
+  }catch(e){alert("Xatolik: "+e.message)}
+}
+async function setCurrentArchive(id){
+  try{
+    await api("/api/archive/set_current",{method:"POST",body:JSON.stringify({id})});
+    await loadArchive();
+    render();
+  }catch(e){alert("Xatolik: "+e.message)}
 }
 const renderArchiveCompact=render;render=function(){
   renderArchiveCompact();
@@ -4460,6 +4483,38 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(result)
             except Exception as exc:
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if parsed.path == "/api/archive/delete":
+            if not self.require_admin():
+                return
+            data = self.body_json()
+            rid = data.get("id", "")
+            if not rid:
+                self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            archive["reports"] = [r for r in (archive.get("reports") or []) if r.get("id") != rid]
+            if archive.get("current_id") == rid:
+                archive.pop("current_id", None)
+            save_json(INDEX_PATH, archive)
+            self.json({"ok": True})
+            return
+        if parsed.path == "/api/archive/set_current":
+            if not self.require_admin():
+                return
+            data = self.body_json()
+            rid = data.get("id", "")
+            if not rid:
+                self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            archive["current_id"] = rid
+            save_json(INDEX_PATH, archive)
+            self.json({"ok": True})
             return
         if parsed.path == "/api/reports":
             if not self.require_perm("upload"):
