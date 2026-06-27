@@ -2292,6 +2292,8 @@ async function leSave(tab){let el=$('leList');if(!el)return;let items=[...el.que
 async function leReset(tab){if(UI_CONFIG&&UI_CONFIG.tab_layouts)delete UI_CONFIG.tab_layouts[tab];try{await api('/api/ui_config',{method:'POST',body:JSON.stringify(UI_CONFIG||{})});}catch(e){}let p=$('lePanel');if(p){p.outerHTML=layoutEditorPanel();leBindDrag();}}
 async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
+async function pollAvia(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollAvia(id,st,btn),1800);return}AVIA_DATA=j.avia_data||{};if(st)st.textContent=`✓ Tayyor: ${fmtI(AVIA_DATA.unique_awb||0)} AWB yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();if(TAB==='avia')loadAviaAwb();}catch(e){setTimeout(()=>pollAvia(id,st,btn),3000)}}
+async function pollWr(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollWr(id,st,btn),1800);return}if(j.wr_data?.warehouses)WR_DATA=j.wr_data.warehouses;if(st)st.textContent=`✓ Tayyor: ${(WR_DATA||[]).length} ombor yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();}catch(e){setTimeout(()=>pollWr(id,st,btn),3000)}}
 let ARTIFACT_POLL_ID=null;
 async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try{let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});ARTIFACT_POLL_ID=j.job_id;render();pollArtifacts(j.job_id)}catch(e){if($("status"))$("status").textContent="Xatolik: "+String(e)}}
 async function pollArtifacts(id){if(ARTIFACT_POLL_ID!==id)return;try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status==="tayyor"?"✓ Excel/PNG/PDF tayyor":j.status;if(j.status==="xatolik"){ARTIFACT_POLL_ID=null;render();return}if(j.status!=="tayyor"){setTimeout(()=>pollArtifacts(id),2500);return}ARTIFACT_POLL_ID=null;DATA=j.data;render()}catch(e){setTimeout(()=>pollArtifacts(id),5000)}}
@@ -3501,16 +3503,16 @@ async function runUnifiedUpload(btn){
       if(t==='ombor'){
         const info=await chunkedUpload(f,p=>showUploadProgress(`Omborlar: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
         const j=await api('/api/chunk_finalize_wr',{method:'POST',body:JSON.stringify(info)});
-        if(j.warehouses)WR_DATA=j.warehouses;
-        results.push(`✓ Omborlar: ${(j.warehouses||[]).length} ombor`);
+        if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">Omborlar reestri tahlil qilinmoqda...</div>';pollWr(j.job_id,null,null);}
+        results.push(`✓ Omborlar: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='avia'){
         const info=await chunkedUpload(f,p=>showUploadProgress(`AVIA: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
         const j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
-        AVIA_DATA=j;
-        results.push(`✓ AVIA: ${fmtI(j.unique_awb||0)} AWB`);
+        if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">AVIA AWB tahlil qilinmoqda...</div>';pollAvia(j.job_id,null,null);}
+        results.push(`✓ AVIA: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='depozit'&&DATA){
         const info=await chunkedUpload(f,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
-        const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:'',deposit_filename:''})});
+        const j=await api('/api/chunk_finalize_deposit',{method:'POST',body:JSON.stringify({...info,report_id:DATA.id})});
         if(j.job_id)poll(j.job_id);
         results.push(`✓ Depozit: yuklandi`);
       }else if(t==='bnrte'){
@@ -3570,9 +3572,13 @@ async function ucUploadDepozit(btn){
   let src=$('ucDepozitFile');
   if(!src?.files?.length){if(st)st.innerHTML='<span style="color:#92400e;font-weight:600">⚠ Depozit fayl tanlanmagan — "Fayl tanlash" tugmasini bosing</span>';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('report_id',DATA.id);fd.append('deposit',src.files[0]);
-  try{let j=await api('/api/deposit',{method:'POST',body:fd});if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
-  catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
+  try{
+    const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
+    if(st)st.textContent='Qayta ishlanmoqda...';
+    let j=await api('/api/chunk_finalize_deposit',{method:'POST',body:JSON.stringify({...info,report_id:DATA.id})});
+    if(j.job_id){if(st)st.textContent='Hisoblanmoqda...';poll(j.job_id);}
+    else if(j.error){if(st)st.textContent='Xatolik: '+j.error;setBusy(btn,false);}
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
 }
 async function ucUploadTolov(btn){
   let src=$('ucTolovSource'),st=$('ucTolovStatus');
@@ -3629,11 +3635,9 @@ async function ucUploadAvia(btn){
     const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
     if(st)st.textContent='Qayta ishlanmoqda...';
     let j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
-    AVIA_DATA=j;
-    if(st)st.textContent=j.loaded?`Tayyor: ${fmtI(j.unique_awb)} AWB yuklandi`:`Xatolik: ${esc(j.error||'')}`;
-    if($('kpis'))$('kpis').innerHTML=renderKpis();
-    if(TAB==='avia')loadAviaAwb();
-  }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
+    if(j.job_id){pollAvia(j.job_id,st,btn);}
+    else{if(st)st.textContent='Xatolik: '+(j.error||'');setBusy(btn,false);}
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message;setBusy(btn,false)}
 }
 async function ucRecalcAvia(btn){
   let st=$('ucAviaStatus');
@@ -4078,7 +4082,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/server_info"):
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/server_info"):
             allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
             if allowed:
@@ -4886,12 +4890,18 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
-            try:
-                result = load_warehouse_registry(dest)
-            except Exception as exc:
-                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
-                return
-            self.json(result, cors=True)
+            job_id = "wr_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
+            def _load_wr(jid=job_id, dp=dest):
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Omborlar reestri tahlil qilinmoqda"
+                    result = load_warehouse_registry(dp)
+                    j.update({"status": "tayyor", "wr_data": result})
+                except Exception as exc:
+                    j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
+            threading.Thread(target=_load_wr, daemon=True).start()
+            self.json({"job_id": job_id, "type": "wr"}, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_avia":
             if not self.require_perm("upload"):
@@ -4913,12 +4923,69 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
-            try:
-                result = load_avia_awb(dest)
-            except Exception as exc:
-                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            job_id = "avia_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
+            def _load_avia(jid=job_id, dp=dest):
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "AVIA AWB tahlil qilinmoqda"
+                    result = load_avia_awb(dp)
+                    j.update({"status": "tayyor", "avia_data": result})
+                except Exception as exc:
+                    j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
+            threading.Thread(target=_load_avia, daemon=True).start()
+            self.json({"job_id": job_id, "type": "avia"}, cors=True)
+            return
+        if parsed.path == "/api/chunk_finalize_deposit":
+            if not self.require_perm("upload"):
                 return
-            self.json(result, cors=True)
+            body = self.body_json()
+            uid       = body.get("upload_id", "").strip()
+            filename  = unquote(body.get("filename", "").strip())
+            total     = int(body.get("total_chunks", 1))
+            report_id = body.get("report_id", "").strip()
+            if not uid or not filename or not report_id:
+                self.json({"error": "upload_id, filename va report_id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            item = next((r for r in archive.get("reports", []) if isinstance(r, dict) and r.get("id") == report_id), None)
+            if not item:
+                self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            report_dir = Path(item.get("dir", ""))
+            deposit_path = report_dir / safe_name(filename)
+            with open(deposit_path, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            item["deposit"] = str(deposit_path)
+            save_json(INDEX_PATH, archive)
+            job_id = "deposit_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "navbatda"}
+            def _rebuild_dep(jid=job_id, it=dict(item), dp=deposit_path):
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Depozit qayta ishlanmoqda"
+                    src = Path(it["source"])
+                    rd = datetime.strptime(it["date"], "%d.%m.%Y")
+                    data = build_dashboard(it["id"], src, dp, rd)
+                    rdir = Path(it["dir"])
+                    data_path = rdir / "dashboard.json"
+                    existing = load_json(data_path, {})
+                    data["files"] = existing.get("files", {})
+                    save_json(data_path, data)
+                    j.update({"status": "tayyor", "data": data})
+                except Exception as exc:
+                    j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+            threading.Thread(target=_rebuild_dep, daemon=True).start()
+            self.json({"job_id": job_id}, cors=True)
             return
         if parsed.path == "/api/reports_bulk":
             if not self.require_perm("upload"):
