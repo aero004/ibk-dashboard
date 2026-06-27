@@ -3222,10 +3222,12 @@ async function refreshCurrentReport(btn){
   try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
 }
 async function chunkedUpload(file,onProgress){
-  const CHUNK=256*1024;
+  const CHUNK=1024*1024;
+  const PARALLEL=3;
   const total=Math.max(1,Math.ceil(file.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  for(let i=0;i<total;i++){
+  let done=0;
+  async function uploadOne(i){
     const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
     const r=await fetch('/api/chunk_upload',{method:'POST',headers:{
       'X-Token':TOKEN,
@@ -3233,8 +3235,9 @@ async function chunkedUpload(file,onProgress){
       'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'
     },body:blob});
     if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);}
-    if(onProgress)onProgress((i+1)/total);
+    done++;if(onProgress)onProgress(done/total);
   }
+  for(let i=0;i<total;i+=PARALLEL)await Promise.all(Array.from({length:Math.min(PARALLEL,total-i)},(_,k)=>uploadOne(i+k)));
   return {upload_id:uid,filename:file.name,total_chunks:total};
 }
 async function ucUploadBnrte(btn){
