@@ -3239,9 +3239,16 @@ async function refreshCurrentReport(btn){
 }
 async function chunkedUpload(file,onProgress){
   const CHUNK=1024*1024;
-  const PARALLEL=3;
+  const PARALLEL=4;
   const total=Math.max(1,Math.ceil(file.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  if(DIRECT_UPLOAD_URL===null){
+    try{
+      const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN}}).then(r=>r.json());
+      const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(1200)});
+      DIRECT_UPLOAD_URL=t.ok?j.lan_url:'';
+    }catch{DIRECT_UPLOAD_URL='';}
+  }
   const base=DIRECT_UPLOAD_URL||'';
   let done=0;
   async function uploadOne(i){
@@ -4025,7 +4032,7 @@ class Handler(BaseHTTPRequestHandler):
             self.json(load_json(UI_CONFIG_PATH, {}))
             return
         if parsed.path == "/api/server_info":
-            self.json({"lan_url": f"http://{LAN_IP}:{PORT}", "port": PORT})
+            self.json({"lan_url": f"http://{LAN_IP}:{PORT}", "port": PORT}, cors=True)
             return
         if parsed.path == "/api/users":
             if not self.require_admin():
