@@ -3276,30 +3276,45 @@ async function refreshCurrentReport(btn){
 }
 async function chunkedUpload(file,onProgress){
   const CHUNK=1024*1024;
-  const PARALLEL=4;
   const total=Math.max(1,Math.ceil(file.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   if(DIRECT_UPLOAD_URL===null){
     try{
       const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN}}).then(r=>r.json());
-      const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(1200)});
+      const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(2000)});
       DIRECT_UPLOAD_URL=t.ok?j.lan_url:'';
     }catch{DIRECT_UPLOAD_URL='';}
   }
   const base=DIRECT_UPLOAD_URL||'';
+  const isLAN=!!DIRECT_UPLOAD_URL;
+  const PARALLEL=isLAN?4:2;
+  const MAX_RETRY=3;
   let done=0;
   async function uploadOne(i){
     const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
-    const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
-      'X-Token':TOKEN,
-      'X-Upload-Id':uid,'X-Chunk-Index':String(i),'X-Total-Chunks':String(total),
-      'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'
-    },body:blob});
-    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);}
-    done++;if(onProgress)onProgress(done/total);
+    let lastErr;
+    for(let attempt=0;attempt<MAX_RETRY;attempt++){
+      if(attempt>0)await new Promise(r=>setTimeout(r,1500*attempt));
+      try{
+        const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
+          'X-Token':TOKEN,'X-Upload-Id':uid,'X-Chunk-Index':String(i),
+          'X-Total-Chunks':String(total),'X-Filename':encodeURIComponent(file.name),
+          'Content-Type':'application/octet-stream'
+        },body:blob});
+        if(!r.ok){
+          const j=await r.json().catch(()=>({}));
+          lastErr=new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);
+          if(r.status===401||r.status===403)throw lastErr;
+          continue;
+        }
+        done++;if(onProgress)onProgress(done/total);
+        return;
+      }catch(e){lastErr=e;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
+    }
+    throw lastErr;
   }
   for(let i=0;i<total;i+=PARALLEL)await Promise.all(Array.from({length:Math.min(PARALLEL,total-i)},(_,k)=>uploadOne(i+k)));
-  return {upload_id:uid,filename:file.name,total_chunks:total,direct:!!DIRECT_UPLOAD_URL};
+  return {upload_id:uid,filename:file.name,total_chunks:total,direct:isLAN};
 }
 async function ucUploadBnrte(btn){
   let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
