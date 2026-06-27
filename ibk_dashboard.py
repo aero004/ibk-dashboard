@@ -3222,15 +3222,17 @@ async function refreshCurrentReport(btn){
   try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
 }
 async function chunkedUpload(file,onProgress){
-  const CHUNK=2*1024*1024;
+  const CHUNK=256*1024;
   const total=Math.max(1,Math.ceil(file.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   for(let i=0;i<total;i++){
-    const fd=new FormData();
-    fd.append('upload_id',uid);fd.append('chunk_index',i);fd.append('total_chunks',total);
-    fd.append('chunk',file.slice(i*CHUNK,(i+1)*CHUNK),file.name);
-    const r=await fetch('/api/chunk_upload',{method:'POST',headers:{'Authorization':'Bearer '+TOKEN},body:fd});
-    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Chunk xato');}
+    const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
+    const r=await fetch('/api/chunk_upload',{method:'POST',headers:{
+      'Authorization':'Bearer '+TOKEN,
+      'X-Upload-Id':uid,'X-Chunk-Index':String(i),'X-Total-Chunks':String(total),
+      'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'
+    },body:blob});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);}
     if(onProgress)onProgress((i+1)/total);
   }
   return {upload_id:uid,filename:file.name,total_chunks:total};
@@ -4416,18 +4418,24 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/chunk_upload":
             if not self.require_perm("upload"):
                 return
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
-            uid   = (form.get("upload_id") or {}).get("content", b"").decode("utf-8", errors="ignore").strip()
-            idx   = int((form.get("chunk_index") or {}).get("content", b"0").decode().strip() or "0")
-            total = int((form.get("total_chunks") or {}).get("content", b"1").decode().strip() or "1")
-            chunk_bytes = (form.get("chunk") or {}).get("content", b"")
+            uid   = self.headers.get("X-Upload-Id", "").strip()
+            idx   = int(self.headers.get("X-Chunk-Index", "0") or "0")
+            total = int(self.headers.get("X-Total-Chunks", "1") or "1")
             if not uid:
-                self.json({"error": "upload_id kerak"}, HTTPStatus.BAD_REQUEST)
+                self.json({"error": "X-Upload-Id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
+            length = int(self.headers.get("Content-Length", "0") or "0")
             cd = CHUNK_DIR / uid
             cd.mkdir(parents=True, exist_ok=True)
-            (cd / f"{idx:06d}.bin").write_bytes(chunk_bytes)
+            chunk_path = cd / f"{idx:06d}.bin"
+            with open(chunk_path, "wb") as fh:
+                remaining = length
+                while remaining > 0:
+                    data = self.rfile.read(min(65536, remaining))
+                    if not data:
+                        break
+                    fh.write(data)
+                    remaining -= len(data)
             self.json({"ok": True, "received": idx + 1, "total": total})
             return
         if parsed.path == "/api/chunk_finalize":
@@ -4435,10 +4443,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             body = self.body_json()
             uid      = body.get("upload_id", "").strip()
-            filename = body.get("filename", "").strip()
+            filename = unquote(body.get("filename", "").strip())
             total    = int(body.get("total_chunks", 1))
             dep_uid  = body.get("deposit_upload_id", "").strip()
-            dep_name = body.get("deposit_filename", "").strip()
+            dep_name = unquote(body.get("deposit_filename", "").strip())
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
