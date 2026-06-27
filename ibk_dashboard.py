@@ -19,6 +19,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import Request, urlopen
 
+import socket
+
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
@@ -35,6 +37,18 @@ from ibk_store import IBKStore  # noqa: E402
 
 HOST = os.environ.get("IBK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("IBK_PORT", "8788"))
+
+def _lan_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+LAN_IP = _lan_ip()
 DATA_DIR = APP_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 REPORT_DIR = DATA_DIR / "reports"
@@ -2204,9 +2218,11 @@ async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)er
 async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
 let ARCHIVE_CURRENT_ID=null;
 let DATA_IS_STALE=false;
+let DIRECT_UPLOAD_URL=null;
+async function detectDirectUpload(){try{const j=await api('/api/server_info');const u=j.lan_url;const r=await fetch(u+'/api/server_info',{signal:AbortSignal.timeout(1500)});if(r.ok){DIRECT_UPLOAD_URL=u;console.log('[Direct upload] LAN orqali yuklash faol:',u);}}catch(e){DIRECT_UPLOAD_URL=null;}}
 function todayUzDate(){let d=new Date();return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();}
 function staleBanner(rd){return `<div style="background:linear-gradient(135deg,#fef9c3,#fef3c7);border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:13px"><span style="font-size:18px">⚠️</span><div><b style="color:#92400e">Bugungi (${todayUzDate()}) ma'lumot yuklanmagan</b><span style="color:#78350f"> &nbsp;·&nbsp; Ko'rsatilayotgan holat: </span><b style="color:#b45309;font-size:14px">${rd}</b></div></div>`;}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 let ARTIFACT_POLL_ID=null;
 async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try{let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});ARTIFACT_POLL_ID=j.job_id;render();pollArtifacts(j.job_id)}catch(e){if($("status"))$("status").textContent="Xatolik: "+String(e)}}
@@ -3226,10 +3242,11 @@ async function chunkedUpload(file,onProgress){
   const PARALLEL=3;
   const total=Math.max(1,Math.ceil(file.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const base=DIRECT_UPLOAD_URL||'';
   let done=0;
   async function uploadOne(i){
     const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
-    const r=await fetch('/api/chunk_upload',{method:'POST',headers:{
+    const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
       'X-Token':TOKEN,
       'X-Upload-Id':uid,'X-Chunk-Index':String(i),'X-Total-Chunks':String(total),
       'X-Filename':encodeURIComponent(file.name),'Content-Type':'application/octet-stream'
@@ -3238,15 +3255,16 @@ async function chunkedUpload(file,onProgress){
     done++;if(onProgress)onProgress(done/total);
   }
   for(let i=0;i<total;i+=PARALLEL)await Promise.all(Array.from({length:Math.min(PARALLEL,total-i)},(_,k)=>uploadOne(i+k)));
-  return {upload_id:uid,filename:file.name,total_chunks:total};
+  return {upload_id:uid,filename:file.name,total_chunks:total,direct:!!DIRECT_UPLOAD_URL};
 }
 async function ucUploadBnrte(btn){
   let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
   if(!src?.files?.length){if(st)st.textContent='Asos fayl tanlang';return}
   setBusy(btn,true,'Yuklanmoqda');
   try{
-    if(st)st.textContent='Asos fayl bo\'laklarga bo\'linib yuklanyapti...';
-    showUploadProgress('Asos fayl yuklanyapti...',5);
+    const mode=DIRECT_UPLOAD_URL?'⚡ To\'g\'ridan-to\'g\'ri (LAN)':'☁️ Cloudflare orqali';
+    if(st)st.textContent='Yuklanyapti... '+mode;
+    showUploadProgress('Asos fayl yuklanyapti... '+mode,5);
     const srcInfo=await chunkedUpload(src.files[0],p=>{
       showUploadProgress(`Asos fayl: ${Math.round(p*100)}%`,5+p*70);
       if(st)st.textContent=`Asos fayl: ${Math.round(p*100)}% yuklandi`;
@@ -3752,13 +3770,27 @@ function renderCurrencyWidget(j){
 
 
 class Handler(BaseHTTPRequestHandler):
-    def json(self, data, status=HTTPStatus.OK):
+    def json(self, data, status=HTTPStatus.OK, cors=False):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        if cors:
+            self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        parsed = urlparse(self.path)
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/server_info"):
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "X-Token, X-Upload-Id, X-Chunk-Index, X-Total-Chunks, X-Filename, Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self.send_error(405)
 
     def body_json(self):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0") or "0")).decode("utf-8") or "{}")
@@ -3991,6 +4023,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/ui_config":
             self.json(load_json(UI_CONFIG_PATH, {}))
+            return
+        if parsed.path == "/api/server_info":
+            self.json({"lan_url": f"http://{LAN_IP}:{PORT}", "port": PORT})
             return
         if parsed.path == "/api/users":
             if not self.require_admin():
@@ -4439,7 +4474,7 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     fh.write(data)
                     remaining -= len(data)
-            self.json({"ok": True, "received": idx + 1, "total": total})
+            self.json({"ok": True, "received": idx + 1, "total": total}, cors=True)
             return
         if parsed.path == "/api/chunk_finalize":
             if not self.require_perm("upload"):
@@ -4484,7 +4519,7 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.rmtree(dcd, ignore_errors=True)
             JOBS[job_id] = {"status": "navbatda", "data": None}
             threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
-            self.json({"job_id": job_id})
+            self.json({"job_id": job_id}, cors=True)
             return
         if parsed.path == "/api/reports_bulk":
             if not self.require_perm("upload"):
