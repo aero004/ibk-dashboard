@@ -2159,6 +2159,32 @@ body.logged-in main{
 .sm-eye{background:none;border:1px solid var(--border);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:14px;flex-shrink:0}
 .sm-eye.hidden-eye{opacity:.4}
 .le-hidden{opacity:.45;text-decoration:line-through}
+.icon-btn.edit-btn{background:#eff6ff;color:#2563eb;border-color:#bfdbfe}.icon-btn.edit-btn:hover{background:#bfdbfe}
+.sm-module{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.sm-mod-header{background:#f1f5f9;padding:9px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.sm-cards-row{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;min-height:56px}
+.sm-card{background:var(--card);border:1.5px solid var(--border);border-radius:9px;padding:10px 10px 8px;cursor:pointer;transition:.13s;width:110px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;position:relative;user-select:none}
+.sm-card:hover{border-color:#3b82f6;box-shadow:0 1px 6px rgba(59,130,246,.18)}
+.sm-card.sm-hid{opacity:.4}
+.sm-card.sm-drag-over{border:2px dashed #3b82f6;background:#eff6ff}
+.sm-card.dragging{opacity:.35;border-style:dashed}
+.sm-card-icon{font-size:22px;line-height:1.1}
+.sm-card-name{font-weight:700;font-size:11px;color:var(--text);line-height:1.25;margin-top:1px}
+.sm-card-desc{font-size:9.5px;color:var(--muted);line-height:1.25}
+.sm-card-eye{position:absolute;top:3px;right:3px;width:17px;height:17px;border-radius:4px;border:none;background:transparent;cursor:pointer;font-size:12px;display:none;padding:0;line-height:1;color:var(--muted)}
+.sm-card-nav{position:absolute;bottom:3px;right:3px;font-size:9px;color:#3b82f6;display:none}
+.sm-edit-mode .sm-card{cursor:grab}.sm-edit-mode .sm-card-eye{display:flex;align-items:center;justify-content:center}
+.sm-mod-drop{border:2px dashed #3b82f6!important;background:#f0f7ff!important}
+.sm-role-section{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.sm-role-hdr{background:#f8fafc;padding:8px 12px;font-weight:700;font-size:12px;border-bottom:1px solid var(--border)}
+.sm-role-row{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px}
+.sm-role-row:last-child{border-bottom:none}
+.sm-role-lbl{font-weight:600;width:130px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sm-role-vis{flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:12px;cursor:pointer;border:1px solid var(--border)}
+.sm-role-chips{display:flex;gap:5px;flex-wrap:wrap}
+.sm-chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;padding:2px 7px;border-radius:10px;border:1px solid var(--border);background:var(--card);cursor:pointer}
+.sm-chip input{display:none}.sm-chip.on{background:#dbeafe;border-color:#93c5fd;color:#1d4ed8}
+.dark .sm-mod-header{background:#1e2d40}.dark .sm-role-hdr{background:#1a2535}.dark .sm-card{background:#1a2535}.dark .sm-chip.on{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd}
 @keyframes summaryCard{0%,100%{filter:drop-shadow(0 2px 10px rgba(42,110,184,.06))}50%{filter:drop-shadow(0 7px 28px rgba(42,110,184,.35))}}
 .exec-summary .summary-item{animation:summaryCard 4s ease-in-out infinite}
 @keyframes ringShine{0%,100%{filter:saturate(1) brightness(1)}50%{filter:saturate(1.55) brightness(1.07)}}
@@ -3023,10 +3049,11 @@ box.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-coll
 const bindUploadFinal=bindUpload;bindUpload=function(){bindUploadFinal();let f=$("upload");if(f)f.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="BNRTE fayllari yuklanyapti...";let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id)}catch(err){$("status").textContent=err.message}};let bf=$("bulkUpload");if(bf)bf.onsubmit=async e=>{e.preventDefault();try{$("status").textContent="Yillik asos fayllar yuklanyapti...";let j=await api("/api/reports_bulk",{method:"POST",body:new FormData(bf)});let skip=(j.skipped||[]).length?` O'tkazib yuborildi: ${j.skipped.map(x=>x.filename).join(", ")}`:"";$("bulkResult").textContent=`${j.count||0} ta fayl navbatga qo'shildi.${skip}`;$("status").textContent="Bulk yuklash boshlandi";await loadArchive()}catch(err){$("status").textContent=err.message}}}
 // ── UI Config (sayt xaritasi) ─────────────────────────────────────────────
 let UI_CONFIG={};
-async function loadUIConfig(){try{UI_CONFIG=await api('/api/ui_config');}catch(e){}}
+async function loadUIConfig(){try{UI_CONFIG=await api('/api/ui_config');if(UI_CONFIG.sm_modules?.length){UI_CONFIG.sm_modules.forEach(m=>{const def=SM_MODULES.find(x=>x.id===m.id);if(def&&m.tabs?.length)def.tabs=m.tabs;});}}catch(e){}}
 const SM_ALL_TABS=[['umumiy','Umumiy'],['rejim','Rejimlar'],['korxona','Korxonalar'],['ombor','Omborlar'],['expired',"Muddati o'tgan"],['released',"Nazoratdan yechish"],['goods','Tovarlar'],['food','Oziq-ovqat'],['muddat','Muddatlar'],['yaroqlilik','Yaroqlilik'],['archive','Arxiv'],['avia','AVIA AWB'],['payments',"To'lovlar: Umumiy"],['pay_lists',"To'lovlar ro'yxati"],['pay_analysis',"To'lovlar tahlili"]];
 const SM_ROLES=['admin','rahbar','inspektor','foydalanuvchi'];
 const SM_RLBL={admin:'Admin',rahbar:'Rahbar',inspektor:'Inspektor',foydalanuvchi:"Foydalanuvchi"};
+const TAB_META={umumiy:{icon:'📊',desc:"KPI ko'rsatkichlar"},rejim:{icon:'📑',desc:"IM70/IM74/TR80"},korxona:{icon:'🏭',desc:"Korxonalar jadvali"},ombor:{icon:'🏢',desc:"Omborlar ma'lumoti"},expired:{icon:'⏰',desc:"Muddati o'tgan"},released:{icon:'✅',desc:"Nazoratdan yechilgan"},goods:{icon:'📦',desc:"Tovarlar guruhi"},food:{icon:'🥗',desc:"Oziq-ovqat nazorati"},muddat:{icon:'📅',desc:"Muddat tahlili"},yaroqlilik:{icon:'⚠️',desc:"Yaroqlilik muddati"},avia:{icon:'✈️',desc:"AVIA AWB"},payments:{icon:'💰',desc:"To'lovlar umumiy"},pay_lists:{icon:'📋',desc:"To'lovlar ro'yxati"},pay_analysis:{icon:'📈',desc:"To'lovlar tahlili"},upload:{icon:'📤',desc:"Fayl yuklash"},archive:{icon:'🗂️',desc:"Arxiv va tarix"},profile:{icon:'👤',desc:"Profil va parol"},settings:{icon:'⚙️',desc:"Sozlamalar"},admin:{icon:'👑',desc:"Foydalanuvchilar"}};
 
 function applyUIConfig(){
   if(!ME)return;
@@ -3058,58 +3085,139 @@ const SM_MODULES=[
   {id:'pay',label:"To'lovlar",tabs:['payments','pay_lists','pay_analysis']},
   {id:'common',label:'Boshqaruv',tabs:['upload','archive','profile','settings','admin']}
 ];
+let _smEditMode=false;
+function smToggleEdit(){
+  _smEditMode=!_smEditMode;
+  const grid=$('smMapGrid');const btn=$('smEditBtn');const rp=$('smRolePanel');
+  if(grid)grid.classList.toggle('sm-edit-mode',_smEditMode);
+  if(btn)btn.textContent=_smEditMode?'✓ Tugallash':'✏ Tartib & Rol';
+  if(rp)rp.style.display=_smEditMode?'':'none';
+  grid?.querySelectorAll('.sm-card').forEach(c=>{c.draggable=_smEditMode;});
+}
+let _smDrag=null,_smPrevMod=null;
+function smCardDs(e,el){if(!_smEditMode)return;_smDrag=el;e.dataTransfer.effectAllowed='move';el.classList.add('dragging');}
+function smCardDo(e,el){e.preventDefault();if(!_smDrag||el===_smDrag)return;el.classList.add('sm-drag-over');}
+function smCardDl(el){el.classList.remove('sm-drag-over');}
+function smCardDe(){_smDrag?.classList.remove('dragging');_smDrag=null;}
+function smCardDp(e,target){
+  e.preventDefault();target.classList.remove('sm-drag-over');
+  if(!_smDrag||_smDrag===target)return;
+  const srcRow=_smDrag.closest('.sm-cards-row');
+  const tgtRow=target.closest('.sm-cards-row');
+  if(!srcRow||!tgtRow)return;
+  const cards=[...tgtRow.querySelectorAll('.sm-card')];
+  if(cards.indexOf(_smDrag)<cards.indexOf(target)||srcRow!==tgtRow)target.before(_smDrag);
+  else target.after(_smDrag);
+}
+function smModDo(e,el){e.preventDefault();if(!_smDrag)return;el.classList.add('sm-mod-drop');}
+function smModDl(el){el.classList.remove('sm-mod-drop');}
+function smModDp(e,container){
+  e.preventDefault();container.classList.remove('sm-mod-drop');
+  if(!_smDrag)return;
+  const already=container.querySelector(`[data-sm-id="${_smDrag.dataset.smId}"]`);
+  if(!already)container.appendChild(_smDrag);
+}
+function smCardEye(id,btn){
+  const card=$('smMapGrid')?.querySelector(`[data-sm-id="${id}"]`);
+  if(!card)return;
+  const h=!card.classList.contains('sm-hid');
+  card.classList.toggle('sm-hid',h);
+  btn.textContent=h?'👁':'🙈';
+}
+function smToggle(cb){const row=cb.closest('[data-sm-hide]')||cb.closest('.sm-role-row');if(!row)return;const id=cb.dataset.tab;const card=$('smMapGrid')?.querySelector(`[data-sm-id="${id}"]`);if(card)card.classList.toggle('sm-hid',cb.checked);}
 function siteMapPanel(){
-  const order=UI_CONFIG.tab_order||SM_ALL_TABS.map(t=>t[0]);
   const hidden=UI_CONFIG.tab_hidden||[];
   const tabRoles=UI_CONFIG.tab_roles||{};
   const tabMap=Object.fromEntries(SM_ALL_TABS);
-  function sortedTabs(ids){return[...ids].sort((a,b)=>{let ai=order.indexOf(a),bi=order.indexOf(b);return(ai<0?999:ai)-(bi<0?999:bi);});}
+  function tabCard(id,modId){
+    const m=TAB_META[id]||{icon:'📄',desc:''};
+    const label=tabMap[id]||id;
+    const isH=hidden.includes(id);
+    const eyeIcon=isH?'🙈':'👁';
+    return `<div class="sm-card${isH?' sm-hid':''}" data-sm-id="${id}" data-sm-mod="${modId}"
+      ondragstart="smCardDs(event,this)" ondragover="smCardDo(event,this)" ondragleave="smCardDl(this)" ondrop="smCardDp(event,this)" ondragend="smCardDe()"
+      onclick="_smEditMode?null:(TAB='${id}';${['bnrte'].includes(modId)?`GROUP='bnrte'`:['pay'].includes(modId)?`GROUP='payments'`:`GROUP='common'`};render())">
+      <button class=sm-card-eye onclick="event.stopPropagation();smCardEye('${id}',this)" title="Ko'rish/Yashirish">${eyeIcon}</button>
+      <div class=sm-card-icon>${m.icon}</div>
+      <div class=sm-card-name>${esc(label)}</div>
+      <div class=sm-card-desc>${esc(m.desc)}</div>
+    </div>`;
+  }
   function modSection(mod){
-    const rows=sortedTabs(mod.tabs).map(id=>{
-      const label=tabMap[id]||id;
+    const groupKey=mod.id==='bnrte'?'bnrte':mod.id==='pay'?'pay':'common';
+    return `<div class=sm-module>
+      <div class=sm-mod-header><span>${esc(mod.label)}</span></div>
+      <div class="sm-cards-row" data-sm-mod-cards="${mod.id}" data-sm-mod="${mod.id}"
+        ondragover="smModDo(event,this)" ondragleave="smModDl(this)" ondrop="smModDp(event,this)">
+        ${mod.tabs.map(id=>tabCard(id,mod.id)).join('')}
+      </div>
+    </div>`;
+  }
+  function roleSection(mod){
+    const tabMap2=Object.fromEntries(SM_ALL_TABS);
+    const rows=mod.tabs.map(id=>{
+      const label=tabMap2[id]||id;
       const isH=hidden.includes(id);
       const roles=tabRoles[id]||SM_ROLES;
-      const roleCells=SM_ROLES.map(r=>`<label style="cursor:pointer;display:flex;align-items:center;gap:3px;white-space:nowrap"><input type=checkbox data-tab="${id}" data-role="${r}" ${roles.includes(r)?'checked':''}><span style="font-size:11px">${SM_RLBL[r]}</span></label>`).join('');
-      return `<tr draggable="true" data-sm-id="${id}" data-sm-mod="${mod.id}" ondragstart="smDs(event,this)" ondragover="smDo(event,this)" ondrop="smDp(event,this)" ondragend="smDe()" style="border-bottom:1px solid #e8edf3;background:${isH?'#fef2f2':'#fff'}">
-<td style="padding:7px 5px;text-align:center;color:#94a3b8;font-size:17px;user-select:none;cursor:grab">⠿</td>
-<td style="padding:7px 10px;font-weight:600;min-width:130px;font-size:13px">${label}</td>
-<td style="padding:7px 10px;width:110px"><label style="cursor:pointer;display:flex;align-items:center;gap:4px;font-size:12px;color:${isH?'#dc2626':'#16a34a'}"><input type=checkbox data-tab="${id}" data-sm-hide="1" ${isH?'checked':''} onchange="smToggle(this)">${isH?'Yashirin':"Ko'rinadi"}</label></td>
-<td style="padding:7px 10px"><div style="display:flex;gap:8px;flex-wrap:wrap">${roleCells}</div></td>
-</tr>`;}).join('');
-    return `<div style="margin-bottom:14px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-<div style="background:#f1f5f9;padding:9px 14px;font-weight:700;font-size:13px;border-bottom:1px solid #e2e8f0;letter-spacing:.3px">${mod.label}</div>
-<table style="width:100%;border-collapse:collapse">
-<thead><tr style="background:#f8fafc;border-bottom:1px solid #e8edf3"><th style="width:36px"></th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b">Tab</th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b;width:110px">Holat</th><th style="padding:6px 10px;text-align:left;font-size:11px;font-weight:700;color:#64748b">Kimga ko'rinsin</th></tr></thead>
-<tbody data-sm-mod="${mod.id}">${rows}</tbody></table></div>`;
+      const chips=['rahbar','inspektor','foydalanuvchi'].map(r=>`<label class="sm-chip${roles.includes(r)?' on':''}"><input type=checkbox data-tab="${id}" data-role="${r}" ${roles.includes(r)?'checked':''} onchange="this.closest('.sm-chip').classList.toggle('on',this.checked)"><span>${SM_RLBL[r]}</span></label>`).join('');
+      return `<div class=sm-role-row data-sm-id="${id}" data-sm-mod="${mod.id}">
+        <span class=sm-role-lbl title="${esc(label)}">${esc(label)}</span>
+        <label class=sm-role-vis style="color:${isH?'#dc2626':'#16a34a'}"><input type=checkbox data-tab="${id}" data-sm-hide="1" ${isH?'checked':''} onchange="smToggle(this)"><span>${isH?'Yashirin':"Ko'rinadi"}</span></label>
+        <div class=sm-role-chips>${chips}</div>
+      </div>`;
+    }).join('');
+    return `<div class=sm-role-section><div class=sm-role-hdr>${esc(mod.label)}</div>${rows}</div>`;
   }
-  return `<div class=panel style="margin-top:14px"><h2>Sayt xaritasi — ko'rinish va tartib</h2>
-<p class=muted style="margin-bottom:14px">Har modul ichida tablarni sudrab tartibini o'zgartiring. Qaysi rol qaysi tabni ko'rishini belgilang. Admin har doim barcha tabni ko'radi.</p>
-${SM_MODULES.map(m=>modSection(m)).join('')}
-<div style="margin-top:12px;display:flex;align-items:center;gap:12px"><button onclick="saveSiteMap()">Saqlash</button><button class=light onclick="resetSiteMap()">Asl sozlamalar</button><span id="smMsg" class=muted></span></div></div>`;
+  return `<div class=panel style="margin-top:14px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+  <h2>🗺 Sayt xaritasi</h2>
+  <div style="display:flex;gap:7px">
+    <button id="smEditBtn" class=light onclick="smToggleEdit()">✏ Tartib &amp; Rol</button>
+    <button onclick="saveSiteMap()">Saqlash</button>
+    <button class=light onclick="resetSiteMap()">Reset</button>
+  </div>
+</div>
+<p class=muted style="margin:0 0 10px;font-size:12px">Tabni bosing — shu tabga o'tiladi. "Tartib & Rol" tugmasi → sudrab ko'chirish (modullar orasida ham) + yashirish + rol belgilash.</p>
+<div id="smMapGrid">${SM_MODULES.map(m=>modSection(m)).join('')}</div>
+<div id="smRolePanel" style="display:none;margin-top:12px">
+  <div style="font-size:12px;color:#64748b;margin-bottom:8px">Har tab uchun kimga ko'rinishini belgilang (Admin har doim ko'radi):</div>
+  ${SM_MODULES.map(m=>roleSection(m)).join('')}
+</div>
+<div style="margin-top:10px;display:flex;align-items:center;gap:12px"><span id="smMsg" class=muted></span></div>
+</div>`;
 }
-let _smDrag=null,_smPrev=null;
-function smDs(e,el){_smDrag=el;e.dataTransfer.effectAllowed='move';el.style.opacity='.45';}
-function smDo(e,el){e.preventDefault();if(el===_smDrag||!_smDrag)return;if(el.dataset.smMod!==_smDrag.dataset.smMod)return;if(_smPrev)_smPrev.style.borderTop='';_smPrev=el;el.style.borderTop='2px solid #3b82f6';}
-function smDe(){if(_smDrag)_smDrag.style.opacity='';if(_smPrev)_smPrev.style.borderTop='';_smDrag=_smPrev=null;}
-function smDp(e,target){e.preventDefault();if(!_smDrag||_smDrag===target)return;if(_smDrag.dataset.smMod!==target.dataset.smMod)return;const tbody=target.closest('tbody');const rows=[...tbody.querySelectorAll('tr')];rows.indexOf(_smDrag)<rows.indexOf(target)?target.after(_smDrag):target.before(_smDrag);}
-function smToggle(cb){const row=cb.closest('tr');row.style.background=cb.checked?'#fef2f2':'#fff';cb.nextElementSibling.textContent=cb.checked?'Yashirin':"Ko'rinadi";cb.nextElementSibling.style.color=cb.checked?'#dc2626':'#16a34a';}
 async function saveSiteMap(){
-  const tab_order=[];const tab_hidden=[];const tab_roles={};
-  SM_MODULES.forEach(mod=>{
-    const tbody=document.querySelector(`[data-sm-mod="${mod.id}"]`);if(!tbody)return;
-    [...tbody.querySelectorAll('tr[data-sm-id]')].forEach(row=>{
-      const id=row.dataset.smId;
+  const grid=$('smMapGrid');
+  if(!grid){return;}
+  const tab_order=[],tab_hidden=[],tab_roles={};
+  const sm_modules=[];
+  grid.querySelectorAll('[data-sm-mod-cards]').forEach(container=>{
+    const modId=container.dataset.smModCards;
+    const modDef=SM_MODULES.find(m=>m.id===modId);
+    const tabs=[];
+    container.querySelectorAll('[data-sm-id]').forEach(card=>{
+      const id=card.dataset.smId;
+      tabs.push(id);
       tab_order.push(id);
-      if(row.querySelector('[data-sm-hide="1"]')?.checked)tab_hidden.push(id);
-      const checked=[...row.querySelectorAll('[data-role]')].filter(el=>el.checked).map(el=>el.dataset.role);
-      tab_roles[id]=checked.includes('admin')?checked:[...checked,'admin'];
+      if(card.classList.contains('sm-hid'))tab_hidden.push(id);
     });
+    sm_modules.push({id:modId,label:modDef?.label||modId,tabs});
+  });
+  document.querySelectorAll('[data-sm-hide="1"]').forEach(cb=>{
+    const id=cb.dataset.tab;
+    if(cb.checked&&!tab_hidden.includes(id))tab_hidden.push(id);
+  });
+  document.querySelectorAll('[data-role]').forEach(cb=>{
+    const id=cb.dataset.tab,r=cb.dataset.role;
+    if(!tab_roles[id])tab_roles[id]=['admin'];
+    if(cb.checked&&!tab_roles[id].includes(r))tab_roles[id].push(r);
   });
   try{
-    const cfg={...UI_CONFIG,tab_order,tab_hidden,tab_roles};
+    const cfg={...UI_CONFIG,tab_order,tab_hidden,tab_roles,sm_modules};
     await api('/api/ui_config',{method:'POST',body:JSON.stringify(cfg)});
     UI_CONFIG=cfg;
-    const msg=$('smMsg');if(msg){msg.textContent='✓ Saqlandi';setTimeout(()=>msg.textContent='',3000);}
+    SM_MODULES.forEach((m,i)=>{if(sm_modules[i])m.tabs=sm_modules[i].tabs;});
+    const msg=$('smMsg');if(msg){msg.textContent='✓ Saqlandi';setTimeout(()=>msg.textContent='',2500);}
     render();
   }catch(e){const msg=$('smMsg');if(msg)msg.textContent='Xatolik: '+e.message;}
 }
