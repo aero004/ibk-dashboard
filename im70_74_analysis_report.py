@@ -145,7 +145,93 @@ def draw_reason_bars(draw, x: int, y: int, title: str, data: list[tuple[str, flo
         draw.text((x + 540 + bar_w + 12, yy + 5), fmt_int(value), fill="#1B1F23", font=font(22, True))
 
 
-def build(source: Path, output_png: Path, output_pdf: Path, report_date: datetime, deposit_path: Path | None = None):
+def _vaqtincha_page(vd: dict, report_date: datetime) -> "Image.Image":
+    items = vd.get("items", [])
+    im42  = [x for x in items if x.get("regime") == "ИМ" and x.get("regime_code") == 42]
+    ek12  = [x for x in items if x.get("regime") == "ЭК" and x.get("regime_code") == 12]
+    exp   = [x for x in items if x.get("expired")]
+
+    img, draw = new_page(f"Vaqtincha IM42/EK12 | {report_date:%d.%m.%Y} holatiga")
+
+    draw_kpis(draw, [
+        ("Jami partiya",    fmt_int(len(items))),
+        ("IM42 — kirish",   fmt_int(len(im42))),
+        ("EK12 — chiqish",  fmt_int(len(ek12))),
+        ("Muddati o'tgan",  fmt_int(len(exp))),
+        ("Jami qiymat ($)", fmt_num(float(vd.get("total_value_usd", 0)))),
+    ])
+
+    comp_map: dict[str, dict] = {}
+    for it in items:
+        k = it.get("stir", "—") or "—"
+        if k not in comp_map:
+            comp_map[k] = {"name": it.get("company", ""), "cnt": 0, "w": 0.0, "v": 0.0, "exp": 0}
+        comp_map[k]["cnt"] += 1
+        comp_map[k]["w"]   += it.get("weight_net", 0)
+        comp_map[k]["v"]   += it.get("value_usd", 0)
+        if it.get("expired"):
+            comp_map[k]["exp"] += 1
+    companies = sorted(comp_map.values(), key=lambda x: x["v"], reverse=True)[:20]
+    comp_rows = [
+        [i + 1, trunc(r["name"], 32), fmt_int(r["cnt"]), fmt_num(r["w"]), fmt_num(r["v"]),
+         str(r["exp"]) if r["exp"] else "—"]
+        for i, r in enumerate(companies)
+    ]
+    draw_table(draw, 60, 360,
+               "TOP 20 korxona (qiymat bo'yicha)",
+               ["N", "Korxona", "Partiya", "Vazn, kg", "Qiymat, $", "O'tgan"],
+               comp_rows, [45, 380, 90, 135, 145, 80], row_h=42)
+
+    goods_map: dict[str, dict] = {}
+    for it in items:
+        k = str(it.get("hs_code", "") or "")[:4] or "—"
+        if k not in goods_map:
+            goods_map[k] = {"name": it.get("goods", ""), "cnt": 0, "v": 0.0}
+        goods_map[k]["cnt"] += 1
+        goods_map[k]["v"]   += it.get("value_usd", 0)
+    goods = sorted(goods_map.items(), key=lambda x: x[1]["v"], reverse=True)[:10]
+    goods_rows = [
+        [i + 1, k, trunc(r["name"], 28), fmt_int(r["cnt"]), fmt_num(r["v"])]
+        for i, (k, r) in enumerate(goods)
+    ]
+    draw_table(draw, 60, 1375,
+               "TOP 10 tovar guruhi (TN VED kesimida)",
+               ["N", "TN VED", "Tovar", "Partiya", "Qiymat, $"],
+               goods_rows, [45, 105, 380, 90, 145], row_h=42)
+
+    cmp_rows = [
+        ["Partiya soni", fmt_int(len(im42)),                           fmt_int(len(ek12)),                           fmt_int(len(exp))],
+        ["Vazn, kg",     fmt_num(float(vd.get("im42_weight", 0))),     fmt_num(float(vd.get("ek12_weight", 0))),     fmt_num(float(vd.get("expired_weight", 0)))],
+        ["Qiymat, $",    fmt_num(float(vd.get("im42_value",  0))),     fmt_num(float(vd.get("ek12_value",  0))),     fmt_num(float(vd.get("expired_value",  0)))],
+    ]
+    draw_table(draw, 1700, 360,
+               "IM42 / EK12 / Muddati o'tgan taqqoslash",
+               ["Ko'rsatkich", "IM42", "EK12", "Muddati o'tgan"],
+               cmp_rows, [260, 220, 220, 230])
+
+    if exp:
+        exp_comp: dict[str, int] = {}
+        for it in exp:
+            k = it.get("company", "—") or "—"
+            exp_comp[k] = exp_comp.get(k, 0) + 1
+        draw_barh(draw, 1700, 730,
+                  "Muddati o'tgan — korxonalar kesimida",
+                  sorted(exp_comp.items(), key=lambda x: x[1], reverse=True)[:8],
+                  1400, label_w=480)
+
+        exp_goods: dict[str, int] = {}
+        for it in exp:
+            k = str(it.get("hs_code", "") or "")[:4] or "—"
+            exp_goods[k] = exp_goods.get(k, 0) + 1
+        draw_barh(draw, 1700, 1340,
+                  "Muddati o'tgan — TN VED kesimida",
+                  sorted(exp_goods.items(), key=lambda x: x[1], reverse=True)[:8],
+                  1400, label_w=180)
+
+    return img
+
+
+def build(source: Path, output_png: Path, output_pdf: Path, report_date: datetime, deposit_path: Path | None = None, vaqtincha: dict | None = None):
     df = core.read_source(source)
     df["_regime_code"] = df[core.SRC["regime"]].map(core.regime_code)
     deposits, deposit_date, deposit_total = core.read_deposit(deposit_path)
@@ -275,6 +361,12 @@ def build(source: Path, output_png: Path, output_pdf: Path, report_date: datetim
     page5 = output_png.with_name(base_name + "_5_oz_ombor.png")
     img.save(page5)
     pages.append(page5)
+
+    if vaqtincha and vaqtincha.get("loaded") and vaqtincha.get("items"):
+        vq_img = _vaqtincha_page(vaqtincha, report_date)
+        vq_path = output_png.with_name(base_name + "_6_vaqtincha.png")
+        vq_img.save(vq_path)
+        pages.append(vq_path)
 
     c = canvas.Canvas(str(output_pdf), pagesize=landscape(A4))
     page_w, page_h = landscape(A4)

@@ -1894,18 +1894,147 @@ def update_report_files(job_id: str, report_dir: Path, report_date: datetime, er
     job["files"] = files
     return files
 
+def add_vaqtincha_excel_sheet(excel_path: Path, vd: dict) -> None:
+    """IM42/EK12 varaqini tayyor Excel fayliga qo'shadi (openpyxl orqali)."""
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+
+    items = vd.get("items", [])
+    im42 = [x for x in items if x.get("regime") == "ИМ" and x.get("regime_code") == 42]
+    ek12 = [x for x in items if x.get("regime") == "ЭК" and x.get("regime_code") == 12]
+    exp_all = [x for x in items if x.get("expired")]
+
+    wb = load_workbook(excel_path)
+    if "Vaqtincha IM42/EK12" in wb.sheetnames:
+        del wb["Vaqtincha IM42/EK12"]
+    ws = wb.create_sheet("Vaqtincha IM42/EK12")
+
+    thin = Side(style="thin", color="BBBBBB")
+    brd  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    hdr_font = Font(bold=True, color="FFFFFF", size=10)
+    hdr_fill = PatternFill("solid", fgColor="1D3952")
+    hdr_aln  = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A1:M1")
+    c = ws["A1"]
+    c.value = f"Vaqtincha IM42/EK12 — {vd.get('report_date', '')} holatiga"
+    c.font  = Font(bold=True, color="FFFFFF", size=13)
+    c.fill  = PatternFill("solid", fgColor="0D2137")
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 24
+
+    kpi_blocks = [
+        ("Jami",             len(items),   vd.get("total_weight_net", 0), vd.get("total_value_usd", 0), "1D72B8", "A", "C"),
+        ("IM42 — kirish",    len(im42),    vd.get("im42_weight", 0),      vd.get("im42_value", 0),      "0EA5E9", "D", "F"),
+        ("EK12 — chiqish",   len(ek12),    vd.get("ek12_weight", 0),      vd.get("ek12_value", 0),      "8B5CF6", "G", "I"),
+        ("Muddati o'tgan",   len(exp_all), vd.get("expired_weight", 0),   vd.get("expired_value", 0),   "DC2626", "J", "M"),
+    ]
+    for (label, cnt, w, v, color, cs, ce) in kpi_blocks:
+        ws.merge_cells(f"{cs}3:{ce}3")
+        lc = ws[f"{cs}3"]
+        lc.value = label
+        lc.font  = Font(bold=True, color="FFFFFF", size=10)
+        lc.fill  = PatternFill("solid", fgColor=color)
+        lc.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"{cs}4:{ce}4")
+        nc = ws[f"{cs}4"]
+        nc.value = cnt
+        nc.font  = Font(bold=True, size=16)
+        nc.fill  = PatternFill("solid", fgColor="F7F9FC")
+        nc.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"{cs}5:{ce}5")
+        lbl = ws[f"{cs}5"]
+        lbl.value = "partiya"
+        lbl.font  = Font(size=9, color="666666")
+        lbl.fill  = PatternFill("solid", fgColor="F7F9FC")
+        lbl.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.merge_cells(f"{cs}6:{ce}6")
+        vc = ws[f"{cs}6"]
+        vc.value = f"{w:,.1f} kg  |  $ {v:,.2f}"
+        vc.font  = Font(size=9)
+        vc.fill  = PatternFill("solid", fgColor="F7F9FC")
+        vc.alignment = Alignment(horizontal="center", vertical="center")
+
+    for r in (3, 4, 5, 6):
+        ws.row_dimensions[r].height = 20 if r == 4 else 16
+
+    HEADERS = ["#", "Rejim", "Kod", "STIR", "Korxona", "TN VED", "Tovar nomi",
+               "Kirish sanasi", "Muddat", "Uzaytirilgan", "Netto kg", "Qiymat $", "O'tgan?"]
+    ws.row_dimensions[8].height = 20
+    for ci, h in enumerate(HEADERS, 1):
+        c = ws.cell(row=8, column=ci)
+        c.value = h
+        c.font  = hdr_font
+        c.fill  = hdr_fill
+        c.alignment = hdr_aln
+        c.border = brd
+
+    for ri, item in enumerate(items, 9):
+        is_exp = item.get("expired")
+        row_bg = "FFF5F5" if is_exp else ("F7F9FC" if ri % 2 == 0 else "FFFFFF")
+        vals = [
+            ri - 8,
+            item.get("regime", ""),
+            item.get("regime_code", ""),
+            item.get("stir", ""),
+            item.get("company", ""),
+            item.get("hs_code", ""),
+            item.get("goods", ""),
+            item.get("date_in", ""),
+            item.get("date_end", ""),
+            item.get("date_ext", ""),
+            item.get("weight_net", 0),
+            item.get("value_usd", 0),
+            "HA" if is_exp else "",
+        ]
+        for ci, val in enumerate(vals, 1):
+            c = ws.cell(row=ri, column=ci)
+            c.value = val
+            c.font  = Font(bold=(ci == 13 and is_exp),
+                           color="DC2626" if (ci == 13 and is_exp) else "000000",
+                           size=10)
+            c.fill  = PatternFill("solid", fgColor=row_bg)
+            c.alignment = Alignment(
+                horizontal="right"  if ci in (1, 11, 12) else
+                           "center" if ci in (2, 3, 8, 9, 10, 13) else "left",
+                vertical="center",
+            )
+            c.border = brd
+
+    for ci, w in enumerate([5, 8, 6, 14, 38, 12, 42, 13, 13, 13, 12, 13, 10], 1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+    ws.freeze_panes = "A9"
+    if items:
+        ws.auto_filter.ref = f"A8:M{8 + len(items)}"
+
+    wb.save(excel_path)
+
+
 def generate_artifacts(job_id: str, stored_source: Path, stored_deposit: Path | None, report_date: datetime, report_dir: Path):
     excel_path = report_dir / f"Ombor_malumot_{report_date:%Y_%m_%d}.xlsx"
     png_path = report_dir / f"IBK_tahlil_{report_date:%Y_%m_%d}.png"
     pdf_path = report_dir / f"IBK_tahlil_{report_date:%Y_%m_%d}.pdf"
+    vd = VAQTINCHA_CACHE or {}
     try:
         core.build(stored_source, TEMPLATE_PATH, excel_path, report_date, stored_deposit)
+        if vd.get("loaded") and vd.get("items"):
+            try:
+                add_vaqtincha_excel_sheet(excel_path, vd)
+            except Exception:
+                pass
         update_report_files(job_id, report_dir, report_date)
     except Exception as exc:
         update_report_files(job_id, report_dir, report_date, f"Excel: {type(exc).__name__}: {exc}")
         return
     try:
-        build_png_report(stored_source, png_path, pdf_path, report_date, stored_deposit)
+        build_png_report(
+            stored_source, png_path, pdf_path, report_date, stored_deposit,
+            vaqtincha=vd if vd.get("loaded") and vd.get("items") else None,
+        )
         update_report_files(job_id, report_dir, report_date)
     except Exception as exc:
         update_report_files(job_id, report_dir, report_date, f"PNG/PDF: {type(exc).__name__}: {exc}")
