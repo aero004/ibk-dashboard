@@ -217,6 +217,7 @@ AVIA_AWB_PATH: Path | None = None
 AVIA_AWB_CACHE: dict | None = None
 
 YAROQLILIK_CACHE: dict | None = None
+VAQTINCHA_CACHE: dict | None = None
 
 _AVIA_COUNTRY_LAT: dict[str, str] = {
     "НИДЕРЛАНДЫ": "Niderlandiya", "АКШ": "AQSH", "США": "AQSH",
@@ -624,6 +625,111 @@ def save_yaroqlilik(data: dict) -> None:
     YAROQLILIK_CACHE = data
     yar_path = DATA_DIR / "yaroqlilik.json"
     yar_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def parse_vaqtincha_xls(file_bytes: bytes) -> dict:
+    """Parse IM42/EK12 vaqtincha declarations XLS (HTML-format)."""
+    import io as _io
+    from datetime import date as _date
+    buf = _io.BytesIO(file_bytes)
+    report_date = datetime.today().strftime("%Y-%m-%d")
+    try:
+        dfs = pd.read_html(buf, encoding='utf-8')
+    except Exception as exc:
+        return {"items": [], "loaded": True, "error": str(exc), "report_date": report_date}
+    if not dfs:
+        return {"items": [], "loaded": True, "error": "Jadval topilmadi", "report_date": report_date}
+    df = dfs[0]
+    COLS = ['num','date_in','date_end','date_ext','note_ext','gtd_year','gtd_date','gtd_num',
+            'regime','regime_code','okpo','stir','company','country_code','hs_code','goods',
+            'qty_places','qty','unit','weight_gross','weight_net','value_usd',
+            'rem_weight_net','rem_value_usd','writeoff_type','writeoff_date','writeoff_reason','writeoff_file']
+    if len(df.columns) >= len(COLS):
+        df.columns = list(COLS) + list(range(len(df.columns) - len(COLS)))
+    else:
+        df.columns = COLS[:len(df.columns)]
+
+    today = pd.Timestamp(_date.today())
+
+    def _dt(v):
+        if pd.isna(v): return None
+        try: return pd.to_datetime(v, dayfirst=True)
+        except: return None
+
+    def _sf(v):
+        try: return float(str(v).replace(',', '.'))
+        except: return 0.0
+
+    items: list[dict] = []
+    for _, row in df.iterrows():
+        regime = str(row.get('regime', '') or '').strip()
+        try: regime_code = int(float(str(row.get('regime_code', 0))))
+        except: regime_code = 0
+        if regime not in ('ИМ', 'ЭК') or regime_code not in (42, 12, 31):
+            continue
+        d_in  = _dt(row.get('date_in'))
+        d_end = _dt(row.get('date_end'))
+        d_ext = _dt(row.get('date_ext'))
+        eff   = d_ext if d_ext is not None else d_end
+        items.append({
+            'num':          str(row.get('num', '') or '').strip(),
+            'date_in':      d_in.strftime('%Y-%m-%d')  if d_in  else None,
+            'date_end':     d_end.strftime('%Y-%m-%d') if d_end else None,
+            'date_ext':     d_ext.strftime('%Y-%m-%d') if d_ext else None,
+            'eff_end':      eff.strftime('%Y-%m-%d')   if eff   else None,
+            'gtd_num':      str(row.get('gtd_num', '') or '').strip(),
+            'regime':       regime,
+            'regime_code':  regime_code,
+            'stir':         str(row.get('stir', '') or '').strip(),
+            'company':      str(row.get('company', '') or '').strip(),
+            'country_code': str(row.get('country_code', '') or '').strip(),
+            'hs_code':      str(row.get('hs_code', '') or '').strip(),
+            'goods':        str(row.get('goods', '') or '').strip(),
+            'qty':          _sf(row.get('qty')),
+            'unit':         str(row.get('unit', '') or '').strip(),
+            'weight_gross': _sf(row.get('weight_gross')),
+            'weight_net':   _sf(row.get('weight_net')),
+            'value_usd':    _sf(row.get('value_usd')),
+            'rem_weight_net': _sf(row.get('rem_weight_net')),
+            'rem_value_usd':  _sf(row.get('rem_value_usd')),
+            'expired':      bool(eff and eff < today),
+        })
+
+    im42 = [x for x in items if x['regime'] == 'ИМ' and x['regime_code'] == 42]
+    ek12 = [x for x in items if x['regime'] == 'ЭК' and x['regime_code'] == 12]
+    return {
+        "items": items,
+        "loaded": True,
+        "report_date": report_date,
+        "count": len(items),
+        "im42_count": len(im42),
+        "ek12_count": len(ek12),
+        "expired_count":  sum(1 for x in items if x['expired']),
+        "expired_im42":   sum(1 for x in im42  if x['expired']),
+        "expired_ek12":   sum(1 for x in ek12  if x['expired']),
+        "total_value_usd":   round(sum(x['value_usd']   for x in items), 2),
+        "total_weight_net":  round(sum(x['weight_net']  for x in items), 2),
+    }
+
+
+def load_vaqtincha_cached() -> dict:
+    global VAQTINCHA_CACHE
+    if VAQTINCHA_CACHE is not None:
+        return VAQTINCHA_CACHE
+    p = DATA_DIR / "vaqtincha.json"
+    if p.exists():
+        try:
+            VAQTINCHA_CACHE = json.loads(p.read_text(encoding="utf-8"))
+            return VAQTINCHA_CACHE
+        except Exception:
+            pass
+    return {"items": [], "loaded": False, "report_date": ""}
+
+
+def save_vaqtincha(data: dict) -> None:
+    global VAQTINCHA_CACHE
+    VAQTINCHA_CACHE = data
+    (DATA_DIR / "vaqtincha.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def fetch_cbu_rates() -> dict:
@@ -2244,11 +2350,11 @@ tr.expired-row td{background:rgba(220,38,38,.04)!important}
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="currencyWidget" class="currency-widget"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
 <script>
-let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null, AVIA_STATS=null, YAROQLILIK_DATA=null, YAROQLILIK_FILTER='expired';
+let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null, AVIA_STATS=null, YAROQLILIK_DATA=null, YAROQLILIK_FILTER='expired', VAQTINCHA_DATA=null, VAQTINCHA_FILTER='all', VAQTINCHA_REGIME='all', VAQTINCHA_SEARCH='';
 const I18N={
-  uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish",regimes:"Rejimlar",warehouses:"Omborlar",deadlines:"Muddatlar",validity:"Yaroqlilik",pay_overview:"Umumiy",pay_lists:"Hosil bo'lgan jadvallar",pay_analysis:"Tahlil"},
-  uzc:{archive:"Архив",upload:"Файл юклаш",general:"Умумий",companies:"Корхоналар",expired:"Муддати ўтган",released:"Назоратдан ечиш",goods:"Товарлар",food:"Озиқ-овқат",profile:"Профил",settings:"Созламалар",admin:"Админ",dark:"Тунги режим",logout:"Чиқиш",regimes:"Режимлар",warehouses:"Омборлар",deadlines:"Муддатлар",validity:"Яроқлилик",pay_overview:"Умумий",pay_lists:"Ҳосил бўлган жадваллар",pay_analysis:"Таҳлил"},
-  ru:{archive:"Архив",upload:"Загрузка файла",general:"Общий",companies:"Компании",expired:"Просроченные",released:"Снятие с контроля",goods:"Товары",food:"Продукты",profile:"Профиль",settings:"Настройки",admin:"Админ",dark:"Тёмный режим",logout:"Выход",regimes:"Режимы",warehouses:"Склады",deadlines:"Сроки",validity:"Срок годности",pay_overview:"Общий",pay_lists:"Сформированные таблицы",pay_analysis:"Анализ"}
+  uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish",regimes:"Rejimlar",warehouses:"Omborlar",deadlines:"Muddatlar",validity:"Yaroqlilik",pay_overview:"Umumiy",pay_lists:"Hosil bo'lgan jadvallar",pay_analysis:"Tahlil",vaqtincha:"Vaqtincha IM42/EK12"},
+  uzc:{archive:"Архив",upload:"Файл юклаш",general:"Умумий",companies:"Корхоналар",expired:"Муддати ўтган",released:"Назоратдан ечиш",goods:"Товарлар",food:"Озиқ-овқат",profile:"Профил",settings:"Созламалар",admin:"Админ",dark:"Тунги режим",logout:"Чиқиш",regimes:"Режимлар",warehouses:"Омборлар",deadlines:"Муддатлар",validity:"Яроқлилик",pay_overview:"Умумий",pay_lists:"Ҳосил бўлган жадваллар",pay_analysis:"Таҳлил",vaqtincha:"Вақтинча ИМ42/ЭК12"},
+  ru:{archive:"Архив",upload:"Загрузка файла",general:"Общий",companies:"Компании",expired:"Просроченные",released:"Снятие с контроля",goods:"Товары",food:"Продукты",profile:"Профиль",settings:"Настройки",admin:"Админ",dark:"Тёмный режим",logout:"Выход",regimes:"Режимы",warehouses:"Склады",deadlines:"Сроки",validity:"Срок годности",pay_overview:"Общий",pay_lists:"Сформированные таблицы",pay_analysis:"Анализ",vaqtincha:"Временный ИМ42/ЭК12"}
 };
 function tr(k){return (I18N[LANG]||I18N.uz)[k]||k} function setBg(v){}function setLang(v){LANG=v;localStorage.ibk_lang=v;render()} const $=id=>document.getElementById(id);
 const fmtN=v=>Math.abs(+v||0)<.005?"0":(+v).toLocaleString("ru-RU",{minimumFractionDigits:2,maximumFractionDigits:2}).replace(/\u00a0/g," "), fmtI=v=>Math.round(+v||0).toLocaleString("ru-RU").replace(/\u00a0/g," "), esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -2279,6 +2385,7 @@ const WIDGET_DEFS={
   expired:[{id:'rejim',l:"Postlar va rejimlar jadvali"},{id:'post',l:"Postlar kesimida jadvali"},{id:'jamlanma',l:"Jamlanma jadvali"},{id:'korxona',l:"Korxonalar jadvali"}],
   goods:[{id:'rating',l:"Tovar reytingi bloki"},{id:'trend',l:"Davriy tendensiya grafigi"},{id:'jadval',l:"Tovarlar guruhlari jadvali"},{id:'bars_group',l:"Partiya, qiymat, vazn diagrammalari"}],
   food:[{id:'jadval',l:"Oziq-ovqatlar jadvali"},{id:'bars',l:"Qiymat ulushi diagrammasi"}],
+  vaqtincha:[{id:'kpi',l:"KPI ko'rsatkichlar"},{id:'table',l:"Deklaratsiyalar jadvali"},{id:'expired_list',l:"Muddati o'tganlar ro'yxati"}],
 };
 function getTabLayout(tab){let defs=(WIDGET_DEFS[tab]||[]).map(d=>d.id);let saved=((UI_CONFIG||{}).tab_layouts||{})[tab];if(!saved||!saved.length)return defs;let order=saved.map(x=>x.id||x).filter(id=>defs.includes(id));defs.forEach(id=>{if(!order.includes(id))order.push(id);});return order;}
 function getTabHidden(tab){let saved=((UI_CONFIG||{}).tab_layouts||{})[tab];if(!saved)return new Set();return new Set(saved.filter(x=>x&&x.hidden).map(x=>x.id));}
@@ -2823,10 +2930,11 @@ async function uploadWrRegistry(){
   }catch(e){if(st)st.textContent='Xatolik: '+String(e)}
 }
 
-function render(){if(_uploadActive&&!confirm("Fayl yuklanmoqda! Boshqa tabga o'tsangiz yuklash to'xtab qoladi. Davom etasizmi?"))return;if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","avia","yaroqlilik"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin","archive"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA&&DATA.meta?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim",tr("regimes")],["korxona",tr("companies")],["ombor",tr("warehouses")],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat",tr("deadlines")],["yaroqlilik",tr("validity")],["avia","✈ AVIA AWB"]], payTabs=[["payments",tr("pay_overview")],["pay_lists",tr("pay_lists")],["pay_analysis",tr("pay_analysis")]], commonTabs=[["upload",tr("upload")],["archive",tr("archive")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=ARTIFACT_POLL_ID?`<button class="light" disabled style="opacity:.7">⏳ Tayyorlanmoqda...</button>`:`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(!ARTIFACT_POLL_ID&&f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view();}
+function render(){if(_uploadActive&&!confirm("Fayl yuklanmoqda! Boshqa tabga o'tsangiz yuklash to'xtab qoladi. Davom etasizmi?"))return;if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","avia","yaroqlilik"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin","archive"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA&&DATA.meta?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim",tr("regimes")],["korxona",tr("companies")],["ombor",tr("warehouses")],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat",tr("deadlines")],["yaroqlilik",tr("validity")],["vaqtincha",tr("vaqtincha")],["avia","✈ AVIA AWB"]], payTabs=[["payments",tr("pay_overview")],["pay_lists",tr("pay_lists")],["pay_analysis",tr("pay_analysis")]], commonTabs=[["upload",tr("upload")],["archive",tr("archive")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=ARTIFACT_POLL_ID?`<button class="light" disabled style="opacity:.7">⏳ Tayyorlanmoqda...</button>`:`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(!ARTIFACT_POLL_ID&&f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view();}
 function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=stack><div class=panel><h2>Profil</h2><b style="font-size:18px">${esc(ME.full_name||ME.user)}</b><p class=muted>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).map(p=>permTitle(p)).join(", ")||'—'}</p></div><div class=panel><h2>Parolni o'zgartirish</h2><form id="changePwForm" class=admin-form style="max-width:340px"><label>Joriy parol</label><div class="pass-wrap"><input id="cpOld" type=password placeholder="Joriy parol"><button class="eye-btn" type="button" onclick="let p=$('cpOld');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol</label><div class="pass-wrap"><input id="cpNew" type=password placeholder="Kamida 6 ta belgi"><button class="eye-btn" type="button" onclick="let p=$('cpNew');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol (takror)</label><div class="pass-wrap"><input id="cpNew2" type=password placeholder="Yangi parolni takrorlang"><button class="eye-btn" type="button" onclick="let p=$('cpNew2');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><button onclick="selfChangePassword(event)">Saqlash</button><span id="cpMsg" class=muted style="margin-left:10px"></span></form></div></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=stack><div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button></div></div>${layoutEditorPanel()}</div>`;setTimeout(leBindDrag,0);return}if(TAB==="admin"){v.innerHTML=adminPanel();bindUserForm();loadUsers();return}if(!DATA){v.innerHTML=landingPanel();return}
 if(TAB==="umumiy"){let topC=by(DATA.top_value||[],"qiymat").slice(0,30);v.innerHTML=wlayout('umumiy',{exec:()=>`<div>${executiveSummary()}</div>`,post:()=>`<div class=panel><h2>70-74-80: postlar kesimida ${staleBadge()}</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.all_post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}<div class=overview-note>Post qatorlari ustiga bosilganda asos deklaratsiyalar ochiladi.</div></div>`,expired_sum:()=>`<div class="panel wide"><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}</div>`,top_bars:()=>`<div class="panel wide"><h2>Qiymat bo'yicha TOP 30 korxona</h2>${bars(topC,"korxona","qiymat",fmtN)}</div>`});$('_cfmSlot')||v.querySelector('.wlayout')?.insertAdjacentHTML('beforeend','<div id="_cfmSlot"></div>');return}
 if(TAB==="avia"){v.innerHTML=aviaPanel();loadAviaAwb();return}
+if(TAB==="vaqtincha"){v.innerHTML=vaqtinchaPanel();loadVaqtincha();return}
 if(TAB==="payments"){v.innerHTML=paymentModule("overview");return}if(TAB==="pay_lists"){v.innerHTML=paymentModule("lists");return}if(TAB==="pay_analysis"){v.innerHTML=paymentModule("analysis");return}
 if(TAB==="rejim"){v.innerHTML=wlayout('rejim',{jami:()=>`<div class=panel><h2>Jami va 70-74-80 ${staleBadge()}</h2>${table(sumCols,regimeSummaryRows())}</div>`,kesim:()=>`<div class=panel><h2>70-74-80 rejimlar kesimida</h2>${table(regimeCols,basicTotal(DATA.regimes||[],"IBK bo'yicha Jami","rejim"))}</div>`,qiymat:()=>`<div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div>`,tolov:()=>`<div class=panel><h2>Rejimlar to'lov ulushi</h2>${bars(DATA.regimes||[],"rejim","tolov",fmtN)}</div>`});return}
 if(TAB==="ombor"){v.innerHTML=wlayout('ombor',{rating:()=>omborRatingPanel(DATA.warehouse||[],WR_DATA),reestri:()=>`<div class="panel wide" id="wrRegistryPanel"><h2>Omborlar reestri</h2><div class="muted">Yuklanmoqda...</div></div>`,kesim:()=>`<div class="panel wide"><h2>Omborlar kesimida ${staleBadge()}</h2>${table(sumCols,basicTotal(DATA.warehouse||[]))}</div>`,bars_group:()=>`<div class=stack><div class=panel><h2>Omborlar qiymat ulushi</h2>${bars(DATA.warehouse||[],"name","qiymat",fmtN)}</div><div class=panel><h2>O'z ombor jami</h2>${table(ownCols,expiredTotal(DATA.own_all||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class="panel wide"><h2>O'z ombor 3 oy+</h2>${table(ownCols,expiredTotal(DATA.own_3m||[]).map(r=>Object.assign({korxona:r.korxona||"IBK bo'yicha Jami"},r)))}</div><div class=panel><h2>O'z ombor partiya ulushi</h2>${bars(DATA.own_all||[],"korxona","partiya",fmtI)}</div></div>`,oborot:()=>`<div class="panel wide"><h2>Omborlar oboroti (nazoratdan yechilgan)</h2><div class="filters compact-filters" style="margin-bottom:8px"><label style="font-size:12px;color:#557086">Boshlang'ich sana:</label><select id="omborOborotBase">${dateOptions()}</select><label style="font-size:12px;color:#557086">Yakuniy sana:</label><select id="omborOborotFinal">${dateOptions()}</select><button onclick="buildOmborOborot()">Hisoblash</button></div><div id="omborOborotResult" class="muted">Boshlang'ich sana (eskiroq) va yakuniy sana (yangiroq) tanlang, so'ng Hisoblash tugmasini bosing.</div></div>`,trend:()=>`<div class="panel wide" id="warehouseTrendPanel"><h3>Omborlar bo'yicha yuk oqimi tendensiyasi</h3><div class="muted">Yuklanmoqda...</div></div>`});let bSel=$('omborOborotBase'),fSel=$('omborOborotFinal');if(bSel&&fSel&&bSel.options.length>1){bSel.selectedIndex=bSel.options.length-1;fSel.selectedIndex=0;buildOmborOborot();}loadWarehouseTrends();loadWarehouseRegistry();return}
@@ -3068,10 +3176,10 @@ const bindUploadFinal=bindUpload;bindUpload=function(){bindUploadFinal();let f=$
 // ── UI Config (sayt xaritasi) ─────────────────────────────────────────────
 let UI_CONFIG={};
 async function loadUIConfig(){try{UI_CONFIG=await api('/api/ui_config');if(UI_CONFIG.sm_modules?.length){UI_CONFIG.sm_modules.forEach(m=>{const def=SM_MODULES.find(x=>x.id===m.id);if(def&&m.tabs?.length)def.tabs=m.tabs;});}}catch(e){}}
-const SM_ALL_TABS=[['umumiy','Umumiy'],['rejim','Rejimlar'],['korxona','Korxonalar'],['ombor','Omborlar'],['expired',"Muddati o'tgan"],['released',"Nazoratdan yechish"],['goods','Tovarlar'],['food','Oziq-ovqat'],['muddat','Muddatlar'],['yaroqlilik','Yaroqlilik'],['archive','Arxiv'],['avia','AVIA AWB'],['payments',"To'lovlar: Umumiy"],['pay_lists',"To'lovlar ro'yxati"],['pay_analysis',"To'lovlar tahlili"]];
+const SM_ALL_TABS=[['umumiy','Umumiy'],['rejim','Rejimlar'],['korxona','Korxonalar'],['ombor','Omborlar'],['expired',"Muddati o'tgan"],['released',"Nazoratdan yechish"],['goods','Tovarlar'],['food','Oziq-ovqat'],['muddat','Muddatlar'],['yaroqlilik','Yaroqlilik'],['vaqtincha','Vaqtincha IM42/EK12'],['archive','Arxiv'],['avia','AVIA AWB'],['payments',"To'lovlar: Umumiy"],['pay_lists',"To'lovlar ro'yxati"],['pay_analysis',"To'lovlar tahlili"]];
 const SM_ROLES=['admin','rahbar','inspektor','foydalanuvchi'];
 const SM_RLBL={admin:'Admin',rahbar:'Rahbar',inspektor:'Inspektor',foydalanuvchi:"Foydalanuvchi"};
-const TAB_META={umumiy:{icon:'📊',desc:"KPI ko'rsatkichlar"},rejim:{icon:'📑',desc:"IM70/IM74/TR80"},korxona:{icon:'🏭',desc:"Korxonalar jadvali"},ombor:{icon:'🏢',desc:"Omborlar ma'lumoti"},expired:{icon:'⏰',desc:"Muddati o'tgan"},released:{icon:'✅',desc:"Nazoratdan yechilgan"},goods:{icon:'📦',desc:"Tovarlar guruhi"},food:{icon:'🥗',desc:"Oziq-ovqat nazorati"},muddat:{icon:'📅',desc:"Muddat tahlili"},yaroqlilik:{icon:'⚠️',desc:"Yaroqlilik muddati"},avia:{icon:'✈️',desc:"AVIA AWB"},payments:{icon:'💰',desc:"To'lovlar umumiy"},pay_lists:{icon:'📋',desc:"To'lovlar ro'yxati"},pay_analysis:{icon:'📈',desc:"To'lovlar tahlili"},upload:{icon:'📤',desc:"Fayl yuklash"},archive:{icon:'🗂️',desc:"Arxiv va tarix"},profile:{icon:'👤',desc:"Profil va parol"},settings:{icon:'⚙️',desc:"Sozlamalar"},admin:{icon:'👑',desc:"Foydalanuvchilar"}};
+const TAB_META={umumiy:{icon:'📊',desc:"KPI ko'rsatkichlar"},rejim:{icon:'📑',desc:"IM70/IM74/TR80"},korxona:{icon:'🏭',desc:"Korxonalar jadvali"},ombor:{icon:'🏢',desc:"Omborlar ma'lumoti"},expired:{icon:'⏰',desc:"Muddati o'tgan"},released:{icon:'✅',desc:"Nazoratdan yechilgan"},goods:{icon:'📦',desc:"Tovarlar guruhi"},food:{icon:'🥗',desc:"Oziq-ovqat nazorati"},muddat:{icon:'📅',desc:"Muddat tahlili"},yaroqlilik:{icon:'⚠️',desc:"Yaroqlilik muddati"},vaqtincha:{icon:'🔄',desc:"Vaqtincha IM42/EK12"},avia:{icon:'✈️',desc:"AVIA AWB"},payments:{icon:'💰',desc:"To'lovlar umumiy"},pay_lists:{icon:'📋',desc:"To'lovlar ro'yxati"},pay_analysis:{icon:'📈',desc:"To'lovlar tahlili"},upload:{icon:'📤',desc:"Fayl yuklash"},archive:{icon:'🗂️',desc:"Arxiv va tarix"},profile:{icon:'👤',desc:"Profil va parol"},settings:{icon:'⚙️',desc:"Sozlamalar"},admin:{icon:'👑',desc:"Foydalanuvchilar"}};
 
 function applyUIConfig(){
   if(!ME)return;
@@ -3099,7 +3207,7 @@ function applyUIConfig(){
 }
 
 const SM_MODULES=[
-  {id:'bnrte',label:'BNRTE',tabs:['umumiy','rejim','korxona','ombor','expired','released','goods','food','muddat','yaroqlilik','avia']},
+  {id:'bnrte',label:'BNRTE',tabs:['umumiy','rejim','korxona','ombor','expired','released','goods','food','muddat','yaroqlilik','vaqtincha','avia']},
   {id:'pay',label:"To'lovlar",tabs:['payments','pay_lists','pay_analysis']},
   {id:'common',label:'Boshqaruv',tabs:['upload','archive','profile','settings','admin']}
 ];
@@ -3469,10 +3577,11 @@ function detectFileType(name){
   if(/depozit|deposit/.test(n))return 'depozit';
   if(/qabul|awb|avia/.test(n))return 'avia';
   if(/yaroqlilik/.test(n))return 'yaroqlilik';
+  if(/vaqtincha|im42|ek12/i.test(n))return 'vaqtincha';
   if(/tolov|payment/.test(n))return 'tolov';
   return 'bnrte';
 }
-const FILE_TYPE_LABELS={bnrte:'📋 BNRTE asos fayl',depozit:'💾 Depozit fayl',ombor:'🏢 Omborlar reestri',avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',tolov:'💰 To\'lovlar'};
+const FILE_TYPE_LABELS={bnrte:'📋 BNRTE asos fayl',depozit:'💾 Depozit fayl',ombor:'🏢 Omborlar reestri',avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',vaqtincha:'🔄 Vaqtincha IM42/EK12',tolov:'💰 To\'lovlar'};
 let _unifiedFiles=[];
 function handleUnifiedDrop(files){
   _unifiedFiles=[...files];
@@ -3485,7 +3594,7 @@ function handleUnifiedDrop(files){
     const sz=(f.size/1024/1024).toFixed(1)+' MB';
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;margin-bottom:5px">
       <select onchange="_unifiedFiles[${i}]._type=this.value" style="font-size:12px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px">
-        ${['bnrte','depozit','ombor','avia','yaroqlilik','tolov'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
+        ${['bnrte','depozit','ombor','avia','yaroqlilik','vaqtincha','tolov'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
       </select>
       <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.name)}">${esc(f.name)}</span>
       <span style="font-size:11px;color:#94a3b8;flex-shrink:0">${sz}</span>
@@ -3526,6 +3635,11 @@ async function runUnifiedUpload(btn){
         const j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
         if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">AVIA AWB tahlil qilinmoqda...</div>';pollAvia(j.job_id,null,null);}
         results.push(`✓ AVIA: yuklandi (tahlil davom etmoqda)`);
+      }else if(t==='vaqtincha'){
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Vaqtincha: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize_vaqtincha',{method:'POST',body:JSON.stringify(info)});
+        if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">Vaqtincha deklaratsiyalar tahlil qilinmoqda...</div>';pollVaqtincha(j.job_id);}
+        results.push(`✓ Vaqtincha: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='depozit'&&DATA){
         const info=await chunkedUpload(f,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
         const j=await api('/api/chunk_finalize_deposit',{method:'POST',body:JSON.stringify({...info,report_id:DATA.id})});
@@ -3950,6 +4064,103 @@ forceLoginView();
 })();
 
 /* ===== AVIA AWB MODULE ===== */
+function vaqtinchaPanel(){
+  const vd=VAQTINCHA_DATA||{items:[],loaded:false};
+  const items=vd.items||[];
+  if(!vd.loaded){
+    return `<div class=stack><div class=panel><h2>🔄 Vaqtincha IM42/EK12</h2>
+    <p class=muted>Vaqtincha olib kirish (IM42) va vaqtincha olib chiqish (EK12) rejimlaridagi deklaratsiyalar. Fayl yuklash uchun <b>Yuklash</b> bo'limiga o'ting.</p>
+    <div style="margin-top:12px"><button onclick="TAB='upload';render()">📤 Fayl yuklash</button></div></div></div>`;
+  }
+  // Filter
+  let rows=items;
+  if(VAQTINCHA_REGIME==='im42')rows=rows.filter(r=>r.regime==='ИМ'&&r.regime_code===42);
+  else if(VAQTINCHA_REGIME==='ek12')rows=rows.filter(r=>r.regime==='ЭК'&&r.regime_code===12);
+  if(VAQTINCHA_FILTER==='expired')rows=rows.filter(r=>r.expired);
+  else if(VAQTINCHA_FILTER==='active')rows=rows.filter(r=>!r.expired);
+  if(VAQTINCHA_SEARCH){const q=VAQTINCHA_SEARCH.toLowerCase();rows=rows.filter(r=>(r.company||'').toLowerCase().includes(q)||(r.stir||'').includes(q)||(r.goods||'').toLowerCase().includes(q)||(r.hs_code||'').includes(q));}
+  // KPI cards
+  const all=items,im42c=all.filter(r=>r.regime==='ИМ'&&r.regime_code===42),ek12c=all.filter(r=>r.regime==='ЭК'&&r.regime_code===12);
+  const expAll=all.filter(r=>r.expired),expIm=im42c.filter(r=>r.expired),expEk=ek12c.filter(r=>r.expired);
+  const kpi=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    <div class=kpi style="border-left:4px solid #1d72b8"><div class=kpi-val>${fmtI(all.length)}</div><div class=kpi-lbl>Jami deklaratsiya</div></div>
+    <div class=kpi style="border-left:4px solid #0ea5e9"><div class=kpi-val>${fmtI(im42c.length)}</div><div class=kpi-lbl>IM42 (vaqt. kirish)</div></div>
+    <div class=kpi style="border-left:4px solid #8b5cf6"><div class=kpi-val>${fmtI(ek12c.length)}</div><div class=kpi-lbl>EK12 (vaqt. chiqish)</div></div>
+    <div class=kpi style="border-left:4px solid #ef4444"><div class=kpi-val style="color:#ef4444">${fmtI(expAll.length)}</div><div class=kpi-lbl>Muddati o'tgan</div></div>
+    <div class=kpi style="border-left:4px solid #f97316"><div class=kpi-val style="color:#ef4444">${fmtI(expIm.length)}</div><div class=kpi-lbl>IM42 muddati o'tgan</div></div>
+    <div class=kpi style="border-left:4px solid #a855f7"><div class=kpi-val style="color:#ef4444">${fmtI(expEk.length)}</div><div class=kpi-lbl>EK12 muddati o'tgan</div></div>
+    <div class=kpi style="border-left:4px solid #10b981"><div class=kpi-val>${fmtN(vd.total_value_usd||0)}</div><div class=kpi-lbl>Jami qiymat ($)</div></div>
+    <div class=kpi style="border-left:4px solid #059669"><div class=kpi-val>${fmtN(vd.total_weight_net||0)}</div><div class=kpi-lbl>Jami vazn netto (kg)</div></div>
+  </div>`;
+  // Table
+  const cols=[
+    {k:'num',t:'№',w:'40px'},
+    {k:'regime',t:'Rejim',w:'55px'},
+    {k:'gtd_num',t:'GTD raqam',w:'80px'},
+    {k:'stir',t:'STIR',w:'90px'},
+    {k:'company',t:'Korxona',w:'200px'},
+    {k:'hs_code',t:'TN VED',w:'90px'},
+    {k:'goods',t:'Tovar nomi',w:''},
+    {k:'weight_net',t:'Netto (kg)',w:'80px',n:true},
+    {k:'value_usd',t:'Qiymat ($)',w:'80px',n:true},
+    {k:'date_in',t:'Kiritilgan',w:'90px'},
+    {k:'eff_end',t:'Muddat tugashi',w:'100px'},
+  ];
+  const hdr=`<thead><tr style="background:#f0f4fb;border-bottom:2px solid var(--line)">${cols.map(c=>`<th style="padding:7px 8px;text-align:${c.n?'right':'left'};font-weight:700;font-size:12px;white-space:nowrap${c.w?';width:'+c.w:''}">${c.t}</th>`).join('')}</tr></thead>`;
+  const tbody=rows.slice(0,500).map(r=>{
+    const isExp=r.expired;
+    const regime=r.regime==='ИМ'?'IM'+r.regime_code:'EK'+r.regime_code;
+    return `<tr style="border-bottom:1px solid var(--line)${isExp?';background:#fff5f5':''}" title="${esc(r.goods||'')}">
+      <td style="padding:6px 8px;font-size:12px;color:#6b7280">${esc(r.num||'')}</td>
+      <td style="padding:6px 8px;font-size:12px"><span style="background:${r.regime==='ИМ'?'#dbeafe':'#ede9fe'};color:${r.regime==='ИМ'?'#1e40af':'#6d28d9'};padding:2px 6px;border-radius:10px;font-weight:600;font-size:11px">${regime}</span></td>
+      <td style="padding:6px 8px;font-size:11px;color:#374151">${esc(r.gtd_num||'')}</td>
+      <td style="padding:6px 8px;font-size:11px">${esc(r.stir||'')}</td>
+      <td style="padding:6px 8px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.company||'')}">${esc(r.company||'')}</td>
+      <td style="padding:6px 8px;font-size:11px;font-family:monospace">${esc(r.hs_code||'')}</td>
+      <td style="padding:6px 8px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.goods||'')}">${esc((r.goods||'').substring(0,60))}</td>
+      <td style="padding:6px 8px;font-size:12px;text-align:right">${fmtN(r.weight_net||0)}</td>
+      <td style="padding:6px 8px;font-size:12px;text-align:right">${fmtN(r.value_usd||0)}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#6b7280">${r.date_in||''}</td>
+      <td style="padding:6px 8px;font-size:11px;font-weight:600;color:${isExp?'#dc2626':'#15803d'}">${r.eff_end||''}${isExp?' ⚠':''}</td>
+    </tr>`;
+  }).join('');
+  const tbl=`<div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><colgroup>${cols.map(c=>`<col${c.w?` style="width:${c.w}"`:''}>`).join('')}</colgroup>${hdr}<tbody>${tbody}${rows.length>500?`<tr><td colspan="${cols.length}" style="padding:10px;text-align:center;color:#6b7280;font-size:12px">... va yana ${rows.length-500} ta qator</td></tr>`:''}</tbody></table></div>`;
+  // Filters bar
+  const filters=`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px">
+    <div style="display:flex;gap:4px">
+      ${[['all',"Barchasi"],['im42','IM42'],['ek12','EK12']].map(([v,l])=>`<button class="${VAQTINCHA_REGIME===v?'tab active':'tab sub'}" style="font-size:12px;padding:5px 10px" onclick="VAQTINCHA_REGIME='${v}';render()">${l}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:4px">
+      ${[['all',"Barchasi"],['active',"Aktiv"],['expired',"Muddati o'tgan"]].map(([v,l])=>`<button class="${VAQTINCHA_FILTER===v?'tab active':'tab sub'}" style="font-size:12px;padding:5px 10px;${v==='expired'?'color:#dc2626':''}" onclick="VAQTINCHA_FILTER='${v}';render()">${l}</button>`).join('')}
+    </div>
+    <input type=search placeholder="Korxona, STIR, tovar..." value="${esc(VAQTINCHA_SEARCH)}" oninput="VAQTINCHA_SEARCH=this.value;render()" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:var(--bg)">
+    <span style="font-size:12px;color:#6b7280;white-space:nowrap">${fmtI(rows.length)} / ${fmtI(items.length)} ta</span>
+  </div>`;
+  return `<div class=stack>
+    <div class=panel><h2>🔄 Vaqtincha IM42/EK12 — ${vd.report_date||''}</h2>
+    <p class=muted style="margin-bottom:12px">Vaqtincha olib kirish (IM42) va vaqtincha olib chiqish (EK12) rejimidagi deklaratsiyalar tovarlar kesimida. <span style="color:#dc2626">Qizil</span> = muddati o'tgan.</p>
+    ${kpi}</div>
+    <div class="panel wide">${filters}${tbl}</div>
+    ${expAll.length?`<div class="panel wide"><h2 style="color:#dc2626">⚠ Muddati o'tgan deklaratsiyalar — ${expAll.length} ta</h2>
+    <div style="overflow-x:auto;max-height:400px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><colgroup>${cols.map(c=>`<col${c.w?` style="width:${c.w}"`:''}>`).join('')}</colgroup>${hdr}<tbody>${expAll.map(r=>{
+      const regime=r.regime==='ИМ'?'IM'+r.regime_code:'EK'+r.regime_code;
+      return `<tr style="border-bottom:1px solid #fca5a5;background:#fff5f5">
+        <td style="padding:6px 8px;font-size:12px;color:#6b7280">${esc(r.num||'')}</td>
+        <td style="padding:6px 8px"><span style="background:${r.regime==='ИМ'?'#dbeafe':'#ede9fe'};color:${r.regime==='ИМ'?'#1e40af':'#6d28d9'};padding:2px 6px;border-radius:10px;font-weight:600;font-size:11px">${regime}</span></td>
+        <td style="padding:6px 8px;font-size:11px">${esc(r.gtd_num||'')}</td>
+        <td style="padding:6px 8px;font-size:11px">${esc(r.stir||'')}</td>
+        <td style="padding:6px 8px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.company||'')}">${esc(r.company||'')}</td>
+        <td style="padding:6px 8px;font-size:11px;font-family:monospace">${esc(r.hs_code||'')}</td>
+        <td style="padding:6px 8px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.goods||'')}">${esc((r.goods||'').substring(0,60))}</td>
+        <td style="padding:6px 8px;font-size:12px;text-align:right">${fmtN(r.weight_net||0)}</td>
+        <td style="padding:6px 8px;font-size:12px;text-align:right">${fmtN(r.value_usd||0)}</td>
+        <td style="padding:6px 8px;font-size:11px">${r.date_in||''}</td>
+        <td style="padding:6px 8px;font-size:12px;font-weight:700;color:#dc2626">${r.eff_end||''} ⚠</td>
+      </tr>`;
+    }).join('')}</tbody></table></div></div>`:''}
+  </div>`;
+}
+
 function aviaPanel(){
   return `<div class=stack><div class=panel><h2>✈ AVIA AWB — Nazoratdagi havo yuklar</h2><div class=muted>Havo yuki AWB (Air Waybill) ro'yxati. Har bir AWB bir necha reysda bo'linishi mumkin — ular yig'ilib ko'rsatiladi. 15 kun o'tgan AWBlar muddati o'tgan hisoblanadi.</div></div><div id=aviaStatsContainer><div class=muted style="padding:16px">Statistika yuklanmoqda...</div></div><div id=aviaContainer><div class=muted style="padding:16px">AWB ro'yxati yuklanmoqda...</div></div></div>`;
 }
@@ -3961,6 +4172,27 @@ async function loadYaroqlilik(){
     YAROQLILIK_DATA=j;
     if(TAB==='yaroqlilik')render();
   }catch(e){}
+}
+async function loadVaqtincha(){
+  if(VAQTINCHA_DATA&&VAQTINCHA_DATA.loaded)return;
+  try{
+    let j=await api('/api/vaqtincha');
+    VAQTINCHA_DATA=j;
+    if(TAB==='vaqtincha')render();
+  }catch(e){}
+}
+function pollVaqtincha(jobId){
+  const timer=setInterval(async()=>{
+    try{
+      const j=await api('/api/job/'+jobId);
+      if(j.status==='tayyor'){
+        clearInterval(timer);
+        if(j.vaqtincha_data){VAQTINCHA_DATA=j.vaqtincha_data;}
+        else{try{VAQTINCHA_DATA=await api('/api/vaqtincha');}catch(e){}}
+        if(TAB==='vaqtincha')render();
+      }else if(j.status==='xatolik'){clearInterval(timer);console.error('Vaqtincha xatolik:',j.error);}
+    }catch(e){clearInterval(timer);}
+  },1500);
 }
 
 async function loadAviaAwb(){
@@ -4098,7 +4330,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/server_info"):
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/chunk_finalize_vaqtincha", "/api/server_info"):
             allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
             if allowed:
@@ -4289,6 +4521,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_user():
                 return
             self.json(load_yaroqlilik_cached())
+            return
+        if parsed.path == "/api/vaqtincha":
+            if not self.require_user():
+                return
+            self.json(load_vaqtincha_cached())
             return
         if parsed.path == "/api/avia_awb":
             if not self.require_user():
@@ -4959,6 +5196,40 @@ class Handler(BaseHTTPRequestHandler):
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_avia, daemon=True).start()
             self.json({"job_id": job_id, "type": "avia"}, cors=True)
+            return
+        if parsed.path == "/api/chunk_finalize_vaqtincha":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            dest = DASHBOARD_DIR / safe_name(filename)
+            with open(dest, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            job_id = "vaqtincha_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
+            def _load_vaqtincha(jid=job_id, dp=dest):
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Vaqtincha deklaratsiyalar tahlil qilinmoqda"
+                    result = parse_vaqtincha_xls(dp.read_bytes())
+                    save_vaqtincha(result)
+                    j.update({"status": "tayyor", "vaqtincha_data": result})
+                except Exception as exc:
+                    j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
+            threading.Thread(target=_load_vaqtincha, daemon=True).start()
+            self.json({"job_id": job_id, "type": "vaqtincha"}, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_deposit":
             if not self.require_perm("upload"):
