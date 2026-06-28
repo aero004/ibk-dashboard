@@ -697,18 +697,28 @@ def parse_vaqtincha_xls(file_bytes: bytes) -> dict:
 
     im42 = [x for x in items if x['regime'] == 'ИМ' and x['regime_code'] == 42]
     ek12 = [x for x in items if x['regime'] == 'ЭК' and x['regime_code'] == 12]
+    exp_all  = [x for x in items if x['expired']]
+    exp_im42 = [x for x in im42  if x['expired']]
+    exp_ek12 = [x for x in ek12  if x['expired']]
+    def _sum(lst, key): return round(sum(x[key] for x in lst), 2)
     return {
         "items": items,
         "loaded": True,
         "report_date": report_date,
-        "count": len(items),
-        "im42_count": len(im42),
-        "ek12_count": len(ek12),
-        "expired_count":  sum(1 for x in items if x['expired']),
-        "expired_im42":   sum(1 for x in im42  if x['expired']),
-        "expired_ek12":   sum(1 for x in ek12  if x['expired']),
-        "total_value_usd":   round(sum(x['value_usd']   for x in items), 2),
-        "total_weight_net":  round(sum(x['weight_net']  for x in items), 2),
+        "count":       len(items),
+        "im42_count":  len(im42),
+        "ek12_count":  len(ek12),
+        "total_value_usd":  _sum(items, 'value_usd'),
+        "total_weight_net": _sum(items, 'weight_net'),
+        "im42_value":   _sum(im42, 'value_usd'),
+        "im42_weight":  _sum(im42, 'weight_net'),
+        "ek12_value":   _sum(ek12, 'value_usd'),
+        "ek12_weight":  _sum(ek12, 'weight_net'),
+        "expired_count":  len(exp_all),
+        "expired_im42":   len(exp_im42),
+        "expired_ek12":   len(exp_ek12),
+        "expired_value":  _sum(exp_all, 'value_usd'),
+        "expired_weight": _sum(exp_all, 'weight_net'),
     }
 
 
@@ -4082,15 +4092,27 @@ function vaqtinchaPanel(){
   // KPI cards
   const all=items,im42c=all.filter(r=>r.regime==='ИМ'&&r.regime_code===42),ek12c=all.filter(r=>r.regime==='ЭК'&&r.regime_code===12);
   const expAll=all.filter(r=>r.expired),expIm=im42c.filter(r=>r.expired),expEk=ek12c.filter(r=>r.expired);
-  const kpi=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
-    <div class=kpi style="border-left:4px solid #1d72b8"><div class=kpi-val>${fmtI(all.length)}</div><div class=kpi-lbl>Jami deklaratsiya</div></div>
-    <div class=kpi style="border-left:4px solid #0ea5e9"><div class=kpi-val>${fmtI(im42c.length)}</div><div class=kpi-lbl>IM42 (vaqt. kirish)</div></div>
-    <div class=kpi style="border-left:4px solid #8b5cf6"><div class=kpi-val>${fmtI(ek12c.length)}</div><div class=kpi-lbl>EK12 (vaqt. chiqish)</div></div>
-    <div class=kpi style="border-left:4px solid #ef4444"><div class=kpi-val style="color:#ef4444">${fmtI(expAll.length)}</div><div class=kpi-lbl>Muddati o'tgan</div></div>
-    <div class=kpi style="border-left:4px solid #f97316"><div class=kpi-val style="color:#ef4444">${fmtI(expIm.length)}</div><div class=kpi-lbl>IM42 muddati o'tgan</div></div>
-    <div class=kpi style="border-left:4px solid #a855f7"><div class=kpi-val style="color:#ef4444">${fmtI(expEk.length)}</div><div class=kpi-lbl>EK12 muddati o'tgan</div></div>
-    <div class=kpi style="border-left:4px solid #10b981"><div class=kpi-val>${fmtN(vd.total_value_usd||0)}</div><div class=kpi-lbl>Jami qiymat ($)</div></div>
-    <div class=kpi style="border-left:4px solid #059669"><div class=kpi-val>${fmtN(vd.total_weight_net||0)}</div><div class=kpi-lbl>Jami vazn netto (kg)</div></div>
+  function kpiBlock(label,count,weight,value,color,danger){
+    return `<div class=kpi style="border-left:3px solid ${color};padding:10px 12px">
+      <div style="font-size:12px;font-weight:600;color:${color};margin-bottom:6px">${label}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+        <div><div style="font-size:16px;font-weight:700;color:${danger?'#dc2626':'inherit'}">${fmtI(count)}</div><div class=kpi-lbl>partiya</div></div>
+        <div><div style="font-size:15px;font-weight:600">${fmtN(weight)}</div><div class=kpi-lbl>kg vazn</div></div>
+        <div><div style="font-size:15px;font-weight:600">${fmtN(value)}</div><div class=kpi-lbl>$ qiymat</div></div>
+      </div>
+    </div>`
+  }
+  const im42w=vd.im42_weight||im42c.reduce((a,r)=>a+(r.weight_net||0),0);
+  const im42v=vd.im42_value||im42c.reduce((a,r)=>a+(r.value_usd||0),0);
+  const ek12w=vd.ek12_weight||ek12c.reduce((a,r)=>a+(r.weight_net||0),0);
+  const ek12v=vd.ek12_value||ek12c.reduce((a,r)=>a+(r.value_usd||0),0);
+  const expW=vd.expired_weight||expAll.reduce((a,r)=>a+(r.weight_net||0),0);
+  const expV=vd.expired_value||expAll.reduce((a,r)=>a+(r.value_usd||0),0);
+  const kpi=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-bottom:16px">
+    ${kpiBlock("Jami",all.length,vd.total_weight_net||0,vd.total_value_usd||0,"#1d72b8",false)}
+    ${kpiBlock("IM42 — vaqtincha olib kirish",im42c.length,im42w,im42v,"#0ea5e9",false)}
+    ${kpiBlock("EK12 — vaqtincha olib chiqish",ek12c.length,ek12w,ek12v,"#8b5cf6",false)}
+    ${kpiBlock("Muddati o'tgan",expAll.length,expW,expV,"#dc2626",true)}
   </div>`;
   // Table
   const cols=[
