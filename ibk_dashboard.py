@@ -1809,6 +1809,16 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
     for row in core.expired_block_rows(df, report_date):
         expired_block.append({"key": {}, "name": core.to_latin(core.clean(row[0])), "korxona": core.clean(row[1]), "stir": core.clean(row[2]), "partiya": int(row[3] or 0), "qiymat": float(row[4] or 0), "vazn": float(row[5] or 0), "tolov": float(row[6] or 0), "reason": core.to_latin(core.clean(row[7]))})
 
+    yar_cache = load_yaroqlilik_cached()
+    yaroq_expired_stirs = {core.clean(str(i.get("stir", ""))) for i in yar_cache.get("items", []) if i.get("holat") == "Muddati o'tgan" and i.get("stir")}
+    if yaroq_expired_stirs:
+        mask = df[core.SRC["stir"]].map(core.clean).isin(yaroq_expired_stirs)
+        yaroq_warehouses = sorted({core.to_latin(core.clean(v)) for v in df.loc[mask, core.SRC["warehouse"]].tolist() if core.clean(v)})
+        yaroq_korxona_count = int(df.loc[mask, core.SRC["stir"]].map(core.clean).nunique())
+    else:
+        yaroq_warehouses = []
+        yaroq_korxona_count = 0
+
     return {
         "schema": 5,
         "id": report_id,
@@ -1839,6 +1849,8 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
         "own_all": own_all_data,
         "own_3m": own_3m_data,
         "released": release,
+        "yaroq_warehouses": yaroq_warehouses,
+        "yaroq_korxona_count": yaroq_korxona_count,
     }
 
 
@@ -2551,6 +2563,7 @@ body.logged-in main{
 .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:#f0f4f8;color:#3d5a7a;cursor:pointer;transition:.15s}.icon-btn:hover{background:#dde8f3;color:var(--blue)}.icon-btn.del-btn{background:#fff0f0;color:#b42318;border-color:#ffd7d7}.icon-btn.del-btn:hover{background:#ffd7d7}.dark .icon-btn{background:#1e2d40;color:#9fb0c6;border-color:#2f3f55}.dark .icon-btn.del-btn{background:#2a1a1a;color:#f87171;border-color:#7f1d1d}
 .wr-badge-fvv{display:inline-block;background:#ef4444;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px}
 .wr-badge-ssv{display:inline-block;background:#16a34a;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px}
+.wr-badge-yaroq{display:inline-block;background:#ea580c;color:#fff;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px}
 .currency-widget{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:4px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid rgba(42,110,184,.09);min-height:22px;background:rgba(248,251,255,.7)}
 .currency-widget .cur-item{display:inline-flex;gap:4px;align-items:center;padding:2px 7px;background:rgba(42,110,184,.07);border-radius:10px}
 .currency-widget .cur-item b{color:var(--blue);font-weight:700}
@@ -2986,14 +2999,18 @@ let WR_MAP=null,WR_DATA=null;
 function wrTypeColor(t){return {ochiq:'#1d72b8',yopiq:'#0f4c8a',dutyfree:'#d97706',erkin:'#7c3aed'}[t]||'#1d72b8'}
 function wrTypeName(t){return {ochiq:"Ochiq bojxona ombori",yopiq:"Yopiq bojxona ombori",dutyfree:"Boj olinmaydigan savdo",erkin:"Erkin ombor"}[t]||t}
 function wrRiskColor(r){return {red:'#dc2626',orange:'#d97706',green:'#16a34a'}[r]||'#16a34a'}
+function wrNorm(s){return (s||'').toLowerCase().replace(/\s+/g,' ').trim()}
+function isYaroqRisk(name){let yws=DATA&&DATA.yaroq_warehouses||[];let n=wrNorm(name);return yws.some(w=>wrNorm(w)===n)}
 function wrMarkerHtml(w){
-  let clr=wrTypeColor(w.type),rClr=wrRiskColor(w.risk);
+  let clr=wrTypeColor(w.type);
   let area=Math.max(w.area_open||0,w.area_closed||0);
   let sz=Math.round(Math.max(22,Math.min(42,22+Math.sqrt(area/10000)*20)));
-  let border=w.risk==='red'?'3px solid #dc2626':w.risk==='orange'?'3px solid #d97706':'2px solid rgba(255,255,255,.8)';
+  let yaroqRisk=isYaroqRisk(w.name);
+  let border=w.risk==='red'?'3px solid #dc2626':w.risk==='orange'?'3px solid #d97706':yaroqRisk?'3px solid #ea580c':'2px solid rgba(255,255,255,.8)';
   let badges='';
   if(w.fvv)badges+=`<div style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">🔥 FVV</div>`;
   if(w.ssv)badges+=`<div style="position:absolute;bottom:-6px;right:-6px;background:#16a34a;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">GSP</div>`;
+  if(yaroqRisk)badges+=`<div style="position:absolute;top:-6px;left:-6px;background:#ea580c;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">⚠ YAROQ</div>`;
   let icon={ochiq:'📦',yopiq:'🔒',dutyfree:'🛍',erkin:'⭐'}[w.type]||'📦';
   return `<div style="position:relative;width:${sz}px;height:${sz}px;transform:translate(-50%,-50%)">${badges}<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${clr};border:${border};display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz*0.44)}px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;box-sizing:border-box">${icon}</div></div>`
 }
@@ -3006,7 +3023,8 @@ function wrInsTable(wrs,fileDate){
     let dTxt=w.ins_days===null?'—':(w.ins_days<0?`${Math.abs(w.ins_days)} kun o'tgan!`:`${w.ins_days} kun qoldi`);
     let fvvBadge=w.fvv?`<span class="wr-badge-fvv">FVV</span>`:'';
     let ssvBadge=w.ssv?`<span class="wr-badge-ssv">GSP</span>`:'';
-    return `<tr><td>${esc(w.name)}${fvvBadge}${ssvBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
+    let yaroqBadge=isYaroqRisk(w.name)?`<span class="wr-badge-yaroq">⚠ YAROQ</span>`:'';
+    return `<tr${isYaroqRisk(w.name)?' style="background:#fff7ed"':''}><td>${esc(w.name)}${fvvBadge}${ssvBadge}${yaroqBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
   }).join('');
   return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta summasi</th><th>Muddat</th><th>Holat</th></tr></thead><tbody>${totalRow}${rows}</tbody></table>`;
 }
@@ -3094,7 +3112,8 @@ function showWrPopup(w,evt){
   }
   let div=document.createElement('div');
   div.className='wr-popup-card';
-  div.innerHTML=`<div class="wr-popup-head" style="background:${wrTypeColor(w.type)}"><b>${esc(w.name)}</b><span>${esc(wrTypeName(w.type))}</span></div><div class="wr-popup-body"><div class="wr-popup-row"><span>Litsenziya №:</span><b>${esc(w.lic_num||'—')}</b></div><div class="wr-popup-row"><span>Sug'urta muddati:</span><b>${esc(w.ins_exp||'—')}</b></div><div class="wr-popup-row"><span>Holat:</span><b>${insDays}</b></div>${bnrteRow}${fvvRow}${ssvRow}</div>`;
+  let yaroqRow=isYaroqRisk(w.name)?`<div class="wr-popup-sep"></div><div class="wr-popup-row" style="background:#fff7ed;padding:6px 10px;border-radius:5px;margin:4px 0"><span style="color:#ea580c;font-weight:700">⚠ Iste'mol muddati o'tgan tovarlar bor!</span></div>`:'';
+  div.innerHTML=`<div class="wr-popup-head" style="background:${wrTypeColor(w.type)}"><b>${esc(w.name)}</b><span>${esc(wrTypeName(w.type))}</span></div><div class="wr-popup-body"><div class="wr-popup-row"><span>Litsenziya №:</span><b>${esc(w.lic_num||'—')}</b></div><div class="wr-popup-row"><span>Sug'urta muddati:</span><b>${esc(w.ins_exp||'—')}</b></div><div class="wr-popup-row"><span>Holat:</span><b>${insDays}</b></div>${bnrteRow}${fvvRow}${ssvRow}${yaroqRow}</div>`;
   // Append to body with fixed positioning to avoid overflow:hidden clipping from map container
   document.body.appendChild(div);
   if(evt){
@@ -3123,13 +3142,14 @@ async function loadWarehouseRegistry(){
     omborRatingUpdateWR(wrs);
     let fd=j.file_date||'';
     let dateLabel=fd?` (${fd} holatiga)`:'';
-    let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length};
+    let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length,yaroq:wrs.filter(w=>isYaroqRisk(w.name)).length};
     let statHtml=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
       <span><b style="color:#1d72b8">${stats.total}</b> ombor</span>
       <span style="color:#dc2626"><b>${stats.red}</b> muddati o'tgan</span>
       <span style="color:#d97706"><b>${stats.orange}</b> diqqat talab</span>
       <span style="color:#16a34a"><b>${stats.ssv}</b> SSV</span>
       ${stats.fvv?`<span style="color:#ef4444"><b>${stats.fvv}</b> FVV</span>`:''}
+      ${stats.yaroq?`<span style="color:#ea580c"><b>${stats.yaroq}</b> ⚠ yaroqlilik riskli</span>`:''}
     </div>`;
     panel.innerHTML=`<h2>Omborlar reestri${dateLabel}</h2>
       ${statHtml}
