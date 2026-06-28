@@ -13,7 +13,117 @@ from pathlib import Path
 import pandas as pd
 
 
+import calendar
+
 TNVED_PATH = Path(os.environ.get("IM70_74_TNVED", r"D:\Эгамбердиев\Ижро хужжатлари\2026\6.Iyun\04.06.2026\Справичник ТН ВЕД 2025.xlsx"))
+
+# HS boblar: iste'mol muddati bo'lishi mumkin bo'lgan tovarlar (1-24 oziq-ovqat, 30 farmatsiya, 33 kosmetika)
+_SL_CHAPTERS: frozenset[str] = frozenset([
+    "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+    "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+    "21", "22", "23", "24",  # barcha oziq-ovqat/ichimlik/tamaki
+    "30",                     # farmatsevtika mahsulotlari
+    "33",                     # kosmetika, parfyumeriya
+    "34",                     # sovun, yuvish vositalari
+    "38",                     # kimyoviy preparatlar (ba'zilari)
+])
+
+# Regex: 7-band markeri yoki kalit so'zlardan keyin sana
+# "7. 01.01.2027", "7. 06.2026", "srok godnosti 01.01.2027", "goden do 06.2026", "годен до 01.2027"
+_SL_RE = re.compile(
+    r"""
+    (?:
+        (?<![0-9])7[.)]\s*
+        (?:srok\s*godnosti\s*|srок\s*godnosti\s*|срок\s*годн[^\s]{0,6}\s*|
+           goden\s*do\s*|годен\s*до\s*|yaroqlilik\s*(?:muddati\s*)?)?
+    |
+        (?:srok\s+godnosti|срок\s+годности|srok\s+gdn|
+           goden\s+do|годен\s+до|
+           yaroqlilik\s+muddati|yaroqliligi|
+           годен|годности)
+        \s*[:\-]?\s*
+    )
+    (?:
+        (\d{2})[./](\d{2})[./](\d{4})
+    |   (\d{2})[./](\d{4})
+    |   (\d{4})
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def hs_has_shelf_life(hs_code: str) -> bool:
+    """HS kodi iste'mol muddatiga ega tovar bobiga kirish-kirmasligini tekshiradi."""
+    code = digits(str(hs_code or ""))
+    return bool(code) and code[:2] in _SL_CHAPTERS
+
+
+def extract_shelf_life_date(text: str) -> pd.Timestamp | None:
+    """Tovar tavsifidagi matndan iste'mol muddatini ajratib oladi."""
+    if not text:
+        return None
+    m = _SL_RE.search(str(text))
+    if not m:
+        return None
+    g = m.groups()  # (dd, mm1, yyyy1, mm2, yyyy2, yyyy3)
+    try:
+        if g[2]:  # DD.MM.YYYY
+            return pd.Timestamp(int(g[2]), int(g[1]), int(g[0]))
+        if g[4]:  # MM.YYYY → oyning oxirgi kuni
+            y, mo = int(g[4]), int(g[3])
+            return pd.Timestamp(y, mo, calendar.monthrange(y, mo)[1])
+        if g[5]:  # YYYY → 31 dekabr
+            return pd.Timestamp(int(g[5]), 12, 31)
+    except Exception:
+        pass
+    return None
+
+
+def shelf_life_from_goods(df: pd.DataFrame, report_date: datetime) -> list[dict]:
+    """
+    Asos faylning 9-ustunidan (tovar tavsifi) iste'mol muddatini ajratib chiqaradi.
+    Faqat HS bob 1-24, 30, 33, 34 ga mansub iste'mol tovarlari tekshiriladi.
+    94-modda bo'yicha 180 kunlik qoida baholanadi.
+    """
+    ref = pd.Timestamp(report_date)
+    mask = df[SRC["hs"]].map(hs_has_shelf_life)
+    cd = df[mask].copy()
+    if cd.empty:
+        return []
+    cd["_sl_date"] = cd[SRC["goods"]].map(extract_shelf_life_date)
+    cd = cd[cd["_sl_date"].notna()].copy()
+    if cd.empty:
+        return []
+    cd["_sl_days"] = (cd["_sl_date"] - ref).dt.days.astype(int)
+
+    def _holat(days: int) -> str:
+        if days < 0:
+            return "Muddati o'tgan"
+        if days <= 180:
+            return "180 kun qoidasi (buzilish)"
+        if days <= 365:
+            return "Diqqat talab"
+        return "Normal"
+
+    rows = []
+    for _, r in cd.sort_values("_sl_days").iterrows():
+        days = int(r["_sl_days"])
+        rows.append({
+            "stir": clean(r[SRC["stir"]]),
+            "korxona": to_latin(clean(r[SRC["company"]])),
+            "hs": clean(r[SRC["hs"]]),
+            "tnved": to_latin(clean(r.get("_tnved_name", ""))),
+            "goods": clean(r[SRC["goods"]])[:300],
+            "yaroqlilik": r["_sl_date"].strftime("%Y-%m-%d"),
+            "qolgan_kun": days,
+            "holat": _holat(days),
+            "warehouse": to_latin(clean(r[SRC["warehouse"]])),
+            "regime": clean(r[SRC["regime"]]),
+            "vazn": float(r["_weight_tn"]),
+            "qiymat": float(r["_value_usd_k"]),
+        })
+    return rows
 
 
 SRC = {

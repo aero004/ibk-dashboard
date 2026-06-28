@@ -1809,15 +1809,28 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
     for row in core.expired_block_rows(df, report_date):
         expired_block.append({"key": {}, "name": core.to_latin(core.clean(row[0])), "korxona": core.clean(row[1]), "stir": core.clean(row[2]), "partiya": int(row[3] or 0), "qiymat": float(row[4] or 0), "vazn": float(row[5] or 0), "tolov": float(row[6] or 0), "reason": core.to_latin(core.clean(row[7]))})
 
+    # Shelf life: asos fayldan iste'mol muddatini ajratib olish
+    sl_rows = core.shelf_life_from_goods(df, report_date)
+    sl_risk_stirs = {r["stir"] for r in sl_rows if r["holat"] in ("Muddati o'tgan", "180 kun qoidasi (buzilish)")}
+    # Litsenziya raqami orqali ombor identifikatsiyasi (col 14 da tashqi ombor uchun litsenziya raqami)
+    sl_risk_lic_nums: set[str] = set()
+    for r in sl_rows:
+        if r["holat"] in ("Muddati o'tgan", "180 kun qoidasi (buzilish)") and r["warehouse"] and not is_own_warehouse_name(r["warehouse"]):
+            sl_risk_lic_nums.add(r["warehouse"])
+
+    # Yaroqlilik.json faylidan ham (yuklangan bo'lsa)
     yar_cache = load_yaroqlilik_cached()
     yaroq_expired_stirs = {core.clean(str(i.get("stir", ""))) for i in yar_cache.get("items", []) if i.get("holat") == "Muddati o'tgan" and i.get("stir")}
     if yaroq_expired_stirs:
-        mask = df[core.SRC["stir"]].map(core.clean).isin(yaroq_expired_stirs)
-        yaroq_warehouses = sorted({core.to_latin(core.clean(v)) for v in df.loc[mask, core.SRC["warehouse"]].tolist() if core.clean(v)})
-        yaroq_korxona_count = int(df.loc[mask, core.SRC["stir"]].map(core.clean).nunique())
-    else:
-        yaroq_warehouses = []
-        yaroq_korxona_count = 0
+        mask_stir = df[core.SRC["stir"]].map(core.clean).isin(yaroq_expired_stirs)
+        mask_ext = ~df[core.SRC["warehouse"]].map(is_own_warehouse_name)
+        for v in df.loc[mask_stir & mask_ext, core.SRC["warehouse"]].tolist():
+            lic = core.clean(v)
+            if lic:
+                sl_risk_lic_nums.add(lic)
+
+    yaroq_lic_nums = sorted(sl_risk_lic_nums)
+    yaroq_korxona_count = len(sl_risk_stirs | yaroq_expired_stirs)
 
     return {
         "schema": 5,
@@ -1849,7 +1862,8 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
         "own_all": own_all_data,
         "own_3m": own_3m_data,
         "released": release,
-        "yaroq_warehouses": yaroq_warehouses,
+        "shelf_life": sl_rows,
+        "yaroq_lic_nums": yaroq_lic_nums,
         "yaroq_korxona_count": yaroq_korxona_count,
     }
 
@@ -3000,12 +3014,18 @@ function wrTypeColor(t){return {ochiq:'#1d72b8',yopiq:'#0f4c8a',dutyfree:'#d9770
 function wrTypeName(t){return {ochiq:"Ochiq bojxona ombori",yopiq:"Yopiq bojxona ombori",dutyfree:"Boj olinmaydigan savdo",erkin:"Erkin ombor"}[t]||t}
 function wrRiskColor(r){return {red:'#dc2626',orange:'#d97706',green:'#16a34a'}[r]||'#16a34a'}
 function wrNorm(s){return (s||'').toLowerCase().replace(/\s+/g,' ').trim()}
-function isYaroqRisk(name){let yws=DATA&&DATA.yaroq_warehouses||[];let n=wrNorm(name);return yws.some(w=>wrNorm(w)===n)}
+function isYaroqRisk(lic_num){
+  if(!DATA)return false;
+  let lics=DATA.yaroq_lic_nums||[];
+  if(!lics.length)return false;
+  let n=wrNorm(lic_num);
+  return lics.some(l=>wrNorm(l)===n);
+}
 function wrMarkerHtml(w){
   let clr=wrTypeColor(w.type);
   let area=Math.max(w.area_open||0,w.area_closed||0);
   let sz=Math.round(Math.max(22,Math.min(42,22+Math.sqrt(area/10000)*20)));
-  let yaroqRisk=isYaroqRisk(w.name);
+  let yaroqRisk=isYaroqRisk(w.lic_num);
   let border=w.risk==='red'?'3px solid #dc2626':w.risk==='orange'?'3px solid #d97706':yaroqRisk?'3px solid #ea580c':'2px solid rgba(255,255,255,.8)';
   let badges='';
   if(w.fvv)badges+=`<div style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;border-radius:4px;padding:1px 4px;font-size:9px;font-weight:900;white-space:nowrap;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.3)">🔥 FVV</div>`;
@@ -3023,8 +3043,8 @@ function wrInsTable(wrs,fileDate){
     let dTxt=w.ins_days===null?'—':(w.ins_days<0?`${Math.abs(w.ins_days)} kun o'tgan!`:`${w.ins_days} kun qoldi`);
     let fvvBadge=w.fvv?`<span class="wr-badge-fvv">FVV</span>`:'';
     let ssvBadge=w.ssv?`<span class="wr-badge-ssv">GSP</span>`:'';
-    let yaroqBadge=isYaroqRisk(w.name)?`<span class="wr-badge-yaroq">⚠ YAROQ</span>`:'';
-    return `<tr${isYaroqRisk(w.name)?' style="background:#fff7ed"':''}><td>${esc(w.name)}${fvvBadge}${ssvBadge}${yaroqBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
+    let yaroqBadge=isYaroqRisk(w.lic_num)?`<span class="wr-badge-yaroq">⚠ YAROQ</span>`:'';
+    return `<tr${isYaroqRisk(w.lic_num)?' style="background:#fff7ed"':''}><td>${esc(w.name)}${fvvBadge}${ssvBadge}${yaroqBadge}</td><td>${esc(wrTypeName(w.type))}</td><td>${esc(w.lic_num||'—')}</td><td>${esc(w.director||'—')}</td><td>${esc(w.phone||'—')}</td><td class="num">${w.ins_sum?fmtN(w.ins_sum/1e6)+' mln':'—'}</td><td>${esc(w.ins_exp||'—')}</td><td class="${dCls}">${dTxt}</td></tr>`;
   }).join('');
   return `<table class="wr-ins-table"><thead><tr><th>Ombor nomi</th><th>Tur</th><th>Litsenziya №</th><th>Direktor</th><th>Telefon</th><th>Sug'urta summasi</th><th>Muddat</th><th>Holat</th></tr></thead><tbody>${totalRow}${rows}</tbody></table>`;
 }
@@ -3112,7 +3132,7 @@ function showWrPopup(w,evt){
   }
   let div=document.createElement('div');
   div.className='wr-popup-card';
-  let yaroqRow=isYaroqRisk(w.name)?`<div class="wr-popup-sep"></div><div class="wr-popup-row" style="background:#fff7ed;padding:6px 10px;border-radius:5px;margin:4px 0"><span style="color:#ea580c;font-weight:700">⚠ Iste'mol muddati o'tgan tovarlar bor!</span></div>`:'';
+  let yaroqRow=isYaroqRisk(w.lic_num)?`<div class="wr-popup-sep"></div><div class="wr-popup-row" style="background:#fff7ed;padding:6px 10px;border-radius:5px;margin:4px 0"><span style="color:#ea580c;font-weight:700">⚠ Iste'mol muddati o'tgan tovarlar bor!</span></div>`:'';
   div.innerHTML=`<div class="wr-popup-head" style="background:${wrTypeColor(w.type)}"><b>${esc(w.name)}</b><span>${esc(wrTypeName(w.type))}</span></div><div class="wr-popup-body"><div class="wr-popup-row"><span>Litsenziya №:</span><b>${esc(w.lic_num||'—')}</b></div><div class="wr-popup-row"><span>Sug'urta muddati:</span><b>${esc(w.ins_exp||'—')}</b></div><div class="wr-popup-row"><span>Holat:</span><b>${insDays}</b></div>${bnrteRow}${fvvRow}${ssvRow}${yaroqRow}</div>`;
   // Append to body with fixed positioning to avoid overflow:hidden clipping from map container
   document.body.appendChild(div);
@@ -3142,7 +3162,7 @@ async function loadWarehouseRegistry(){
     omborRatingUpdateWR(wrs);
     let fd=j.file_date||'';
     let dateLabel=fd?` (${fd} holatiga)`:'';
-    let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length,yaroq:wrs.filter(w=>isYaroqRisk(w.name)).length};
+    let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length,yaroq:wrs.filter(w=>isYaroqRisk(w.lic_num)).length};
     let statHtml=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
       <span><b style="color:#1d72b8">${stats.total}</b> ombor</span>
       <span style="color:#dc2626"><b>${stats.red}</b> muddati o'tgan</span>
@@ -3193,10 +3213,32 @@ if(TAB==="yaroqlilik"){
   loadYaroqlilik();
   let yd=YAROQLILIK_DATA||{items:[],loaded:false};
   let items=yd.items||[];
+  let slAll=DATA&&DATA.shelf_life?DATA.shelf_life:[];
+  let slHtml='';
+  if(slAll.length){
+    let slExpired=slAll.filter(r=>r.holat==="Muddati o'tgan");
+    let sl180=slAll.filter(r=>r.holat==="180 kun qoidasi (buzilish)");
+    let slWarn=slAll.filter(r=>r.holat==="Diqqat talab");
+    let slCols=[{k:"korxona",t:"Korxona",w:"200px"},{k:"stir",t:"STIR",w:"88px"},{k:"tnved",t:"Tovar turi",w:"200px"},{k:"yaroqlilik",t:"Muddati",w:"90px"},{k:"qolgan_kun",t:"Kun",n:1,f:v=>v<0?`<b style="color:#dc2626">${v}</b>`:`<b style="color:${v<=180?'#d97706':'#16a34a'}">${v}</b>`,w:"60px"},{k:"holat",t:"Holat",w:"150px"},{k:"warehouse",t:"Ombor lits. raqami",w:"130px"},{k:"regime",t:"Rejim",w:"62px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"100px"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN,w:"86px"}];
+    let slDispFilter=window._slFilter||'expired';
+    let slDisp=slDispFilter==='all'?slAll:slDispFilter==='180'?sl180:slDispFilter==='warn'?slWarn:slExpired;
+    slHtml=`<div class="panel wide"><h2>Asos fayldan avtomatik aniqlangan iste'mol muddatlari ${staleBadge()}</h2>
+    <div class=muted style="margin-bottom:8px">9-ustundagi tovar tavsifida "7." band yoki "goden do / срок годности / yaroqlilik" kalit so'zlari orqali aniqlandi. HS bob 1-24, 30, 33, 34 (oziq-ovqat, dori, kosmetika).</div>
+    <div class="kpis" style="margin-bottom:8px"><div class="kpi" style="border-color:rgba(200,40,40,.4)"><b style="font-size:20px;color:#c82828">${slExpired.length}</b><span>Muddati o'tgan</span></div><div class="kpi" style="border-color:rgba(220,140,0,.4)"><b style="font-size:20px;color:#d48c00">${sl180.length}</b><span>180 kun qoidasi (buzilish)</span></div><div class="kpi"><b style="font-size:20px;color:#d97706">${slWarn.length}</b><span>Diqqat talab (1 yil)</span></div><div class="kpi"><b style="font-size:20px">${slAll.length}</b><span>Jami aniqlangan</span></div></div>
+    <div class="filters compact-filters" style="margin-bottom:8px">
+      <button class="${slDispFilter==='expired'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="window._slFilter='expired';render()">Muddati o'tgan (${slExpired.length})</button>
+      <button class="${slDispFilter==='180'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="window._slFilter='180';render()">180 kun qoidasi (${sl180.length})</button>
+      <button class="${slDispFilter==='warn'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="window._slFilter='warn';render()">Diqqat talab (${slWarn.length})</button>
+      <button class="${slDispFilter==='all'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="window._slFilter='all';render()">Barchasi (${slAll.length})</button>
+    </div>
+    ${table(slCols,slDisp,"fixed-table")}
+    <div class=overview-note>94-modda: iste'mol muddatiga 180 kun qolganida bojxona omboridan chiqarilishi kerak. "180 kun qoidasi (buzilish)" qatorlari — darhol choralar ko'rish talab etiladi.</div>
+    </div>`;
+  }
   if(!yd.loaded){
     let foodRows=DATA?(DATA.food||[]).filter(r=>(+r.over_qiymat||0)>0||( +r.over_vazn||0)>0):[];
-    let foodHtml=foodRows.length?`<div class="panel wide" style="margin-top:12px"><h2>Oziq-ovqat: 3 oy+ saqlanayotganlar (asos fayldan) ${staleBadge()}</h2><div class=muted style="margin-bottom:8px">Iste'mol muddati xavf ostida bo'lishi mumkin bo'lgan tovarlar. Aniq tahlil uchun yaroqlilik faylini yuklang.</div>${table([{k:"name",t:"Tovar turi",w:"40%"},{k:"over_vazn",t:"3 oy+ vazn (tn)",n:1,f:fmtN},{k:"over_qiymat",t:"3 oy+ qiymat (ming $)",n:1,f:fmtN},{k:"vazn",t:"Jami vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN}],foodRows)}</div>`:'';
-    v.innerHTML=`<div class=stack><div class=panel><h2>Iste'mol muddati tahlili</h2><div class=muted>Batafsil tahlil uchun yaroqlilik Excel faylini yuklang. Hozircha asos fayldan oziq-ovqat ma'lumotlari ko'rsatilmoqda.</div><button onclick="GROUP='common';TAB='upload';render()">Yaroqlilik faylini yuklash</button></div>${foodHtml}</div>`;
+    let foodHtml=foodRows.length&&!slAll.length?`<div class="panel wide" style="margin-top:12px"><h2>Oziq-ovqat: 3 oy+ saqlanayotganlar (asos fayldan) ${staleBadge()}</h2><div class=muted style="margin-bottom:8px">Iste'mol muddati xavf ostida bo'lishi mumkin bo'lgan tovarlar. Aniq tahlil uchun yaroqlilik faylini yuklang.</div>${table([{k:"name",t:"Tovar turi",w:"40%"},{k:"over_vazn",t:"3 oy+ vazn (tn)",n:1,f:fmtN},{k:"over_qiymat",t:"3 oy+ qiymat (ming $)",n:1,f:fmtN},{k:"vazn",t:"Jami vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN}],foodRows)}</div>`:'';
+    v.innerHTML=`<div class=stack><div class=panel><h2>Iste'mol muddati tahlili</h2><div class=muted>Batafsil tahlil uchun yaroqlilik Excel faylini yuklang. Asos fayldan avtomatik aniqlash quyida ko'rsatildi.</div><button onclick="GROUP='common';TAB='upload';render()">Yaroqlilik faylini yuklash</button></div>${slHtml}${foodHtml}</div>`;
     return;
   }
   let expired=items.filter(r=>r.holat==="Muddati o'tgan");
@@ -3209,7 +3251,7 @@ if(TAB==="yaroqlilik"){
   let eqiymat=expired.reduce((s,r)=>s+(+r.qiymat||0),0);
   let tvazn=items.reduce((s,r)=>s+(+r.vazn||0),0);
   let tblRows=filtItems.map(r=>({decl:r.decl_raqami||'-',korxona:(r.korxona||'-').slice(0,50),stir:r.stir||'',hs:r.hs_kod||'',tovar:(r.tovar_nomi||'-').slice(0,80),expiry:r.yaroqlilik||'-',kun:r.otgan_kun?('+'+r.otgan_kun+' kun o\'tgan'):(r.qolgan_kun||0)+' kun qoldi',vazn:+r.vazn||0,qiymat:+r.qiymat||0}));
-  v.innerHTML=`<div class=stack><div class="panel wide"><h2>Iste'mol muddati tahlili · ${yd.report_date||''} <button class="btn light" onclick="GROUP='common';TAB='upload';render()">Yangi fayl yuklash</button></h2><div class="summary-grid" style="grid-template-columns:repeat(5,minmax(120px,1fr));margin-bottom:12px"><div class="summary-item" style="border-color:rgba(200,40,40,.4)"><b style="font-size:22px;color:#c82828">${expired.length}</b><span>Muddati o'tgan tovar</span></div><div class="summary-item" style="border-color:rgba(220,140,0,.4)"><b style="font-size:22px;color:#d48c00">${warn180.length}</b><span>180 kun ichida tugaydi</span></div><div class="summary-item"><b style="font-size:22px">${warn30.length}</b><span>1 oy ichida tugaydi</span></div><div class="summary-item"><b style="font-size:22px">${fmtN(eqiymat)}</b><span>O'tgan tovar qiymati (ming $)</span></div><div class="summary-item"><b style="font-size:22px">${fmtN(tvazn/1000)}</b><span>Umumiy vazn (tonna)</span></div></div><div class="filters compact-filters" style="margin-bottom:8px"><button class="${activeF==='expired'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='expired';render()">Muddati o'tgan (${expired.length})</button><button class="${activeF==='warn180'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='warn180';render()">180 kun ichida (${warn180.length})</button><button class="${activeF==='warn30'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='warn30';render()">1 oy ichida (${warn30.length})</button></div>${table([{k:"decl",t:"Deklaratsiya raqami",w:"170px"},{k:"korxona",t:"Yuk qabul qiluvchi",w:"200px"},{k:"stir",t:"STIR",w:"88px"},{k:"hs",t:"TIF TN kodi",w:"90px"},{k:"tovar",t:"Tovar nomi",w:"240px"},{k:"expiry",t:"Yaroqlilik muddati",w:"110px"},{k:"kun",t:"Muddat holati",w:"120px"},{k:"vazn",t:"Vazni (kg)",n:1,f:fmtN,w:"85px"},{k:"qiymat",t:"Qiymati (ming $)",n:1,f:fmtN,w:"100px"}],tblRows,"fixed-table")}<div class=overview-note>Hisob-kitob sanasi: ${yd.report_date||"noma'lum"}. Jami ${items.length} ta tovar pozitsiyasi tahlil qilindi.</div></div><div class=panel><h2>Muddati o'tgan tovarlar — korxonalar kesimida</h2>${table([{k:"korxona",t:"Korxona nomi",w:"280px"},{k:"stir",t:"STIR",w:"90px"},{k:"cnt",t:"Pozitsiyalar",n:1,f:fmtI,w:"85px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"110px"},{k:"vazn",t:"Vazn (kg)",n:1,f:fmtN,w:"95px"}],compRows)}</div></div>`;return}}
+  v.innerHTML=`<div class=stack><div class="panel wide"><h2>Iste'mol muddati tahlili · ${yd.report_date||''} <button class="btn light" onclick="GROUP='common';TAB='upload';render()">Yangi fayl yuklash</button></h2><div class="summary-grid" style="grid-template-columns:repeat(5,minmax(120px,1fr));margin-bottom:12px"><div class="summary-item" style="border-color:rgba(200,40,40,.4)"><b style="font-size:22px;color:#c82828">${expired.length}</b><span>Muddati o'tgan tovar</span></div><div class="summary-item" style="border-color:rgba(220,140,0,.4)"><b style="font-size:22px;color:#d48c00">${warn180.length}</b><span>180 kun ichida tugaydi</span></div><div class="summary-item"><b style="font-size:22px">${warn30.length}</b><span>1 oy ichida tugaydi</span></div><div class="summary-item"><b style="font-size:22px">${fmtN(eqiymat)}</b><span>O'tgan tovar qiymati (ming $)</span></div><div class="summary-item"><b style="font-size:22px">${fmtN(tvazn/1000)}</b><span>Umumiy vazn (tonna)</span></div></div><div class="filters compact-filters" style="margin-bottom:8px"><button class="${activeF==='expired'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='expired';render()">Muddati o'tgan (${expired.length})</button><button class="${activeF==='warn180'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='warn180';render()">180 kun ichida (${warn180.length})</button><button class="${activeF==='warn30'?'btn':'btn light'}" style="font-size:12px;padding:4px 12px" onclick="YAROQLILIK_FILTER='warn30';render()">1 oy ichida (${warn30.length})</button></div>${table([{k:"decl",t:"Deklaratsiya raqami",w:"170px"},{k:"korxona",t:"Yuk qabul qiluvchi",w:"200px"},{k:"stir",t:"STIR",w:"88px"},{k:"hs",t:"TIF TN kodi",w:"90px"},{k:"tovar",t:"Tovar nomi",w:"240px"},{k:"expiry",t:"Yaroqlilik muddati",w:"110px"},{k:"kun",t:"Muddat holati",w:"120px"},{k:"vazn",t:"Vazni (kg)",n:1,f:fmtN,w:"85px"},{k:"qiymat",t:"Qiymati (ming $)",n:1,f:fmtN,w:"100px"}],tblRows,"fixed-table")}<div class=overview-note>Hisob-kitob sanasi: ${yd.report_date||"noma'lum"}. Jami ${items.length} ta tovar pozitsiyasi tahlil qilindi.</div></div><div class=panel><h2>Muddati o'tgan tovarlar — korxonalar kesimida</h2>${table([{k:"korxona",t:"Korxona nomi",w:"280px"},{k:"stir",t:"STIR",w:"90px"},{k:"cnt",t:"Pozitsiyalar",n:1,f:fmtI,w:"85px"},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN,w:"110px"},{k:"vazn",t:"Vazn (kg)",n:1,f:fmtN,w:"95px"}],compRows)}</div>${slHtml}</div>`;return}}
 async function buildRelease(){let base=$("relBase").value, final=$("relFinal").value, j=await api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`);if(j.missing){$("releaseResult").innerHTML=`<div class=muted>Arxivda yo'q sana: ${j.missing.join(", ")}. Shu davr uchun asos fayl yuklash kerak.</div>`;return}let raw=(j.rows||[]).map(r=>Object.assign({type_text:r.release_type==="qisman"?"Qisman":"To'liq",korxona:r.korxona||r.company||""},r));let rows=numbered([Object.assign({korxona:"IBK bo'yicha Jami",stir:"",decl:"",item_no:"",regime:"",post:"",type_text:""},j.total||{})].concat(raw));let cols=[{k:"rn",t:"T/r",n:1,f:v=>v,w:"34px"},{k:"korxona",t:"Korxona nomi",w:"240px"},{k:"stir",t:"STIR",w:"82px"},{k:"decl",t:"Deklaratsiya",w:"135px"},{k:"item_no",t:"Tovar tartib raqami",w:"74px"},{k:"regime",t:"Rejim",w:"62px"},{k:"post",t:"Post",w:"145px"},{k:"base_partiya",t:`${base} holatiga partiya`,n:1,f:fmtI,w:"76px"},{k:"base_qiymat",t:`${base} holatiga qiymat (ming $)`,n:1,f:fmtN,w:"104px"},{k:"remain_partiya",t:`${final} holatiga qoldiq partiya`,n:1,f:fmtI,w:"80px"},{k:"remain_qiymat",t:`${final} holatiga qoldiq qiymat (ming $)`,n:1,f:fmtN,w:"104px"},{k:"released_partiya",t:"Yechilgan partiya",n:1,f:fmtI,w:"78px"},{k:"released_vazn",t:"Yechilgan vazn (tn)",n:1,f:fmtN,w:"96px"},{k:"released_qiymat",t:"Yechilgan qiymat (ming $)",n:1,f:fmtN,w:"105px"},{k:"released_pct",t:"Qiymatdagi ulushi (%)",n:1,f:fmtN,w:"88px"},{k:"type_text",t:"Holati",w:"82px"}];$("releaseResult").innerHTML=`<h2>${base} - ${final} <a class="btn light" href="/api/export?kind=release&base=${base}&final=${final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${base}. Yakuniy davr: ${final}. Qisman yechilgan qatorlar qiymat/vazn kamaygan, lekin partiya soni o'zgarmagan holatlarni bildiradi.</div>${table(cols,rows,"release-table fixed-table")}${miniChart(raw,"released_qiymat","korxona")}`}
 async function detail(key){if(!DATA||!key||Object.keys(key).length===0)return;if(key.view==="expired_inline"){let el=$("expiredInline");if(el)el.innerHTML=`<h2>Postlar va rejimlar kesimida</h2>${table([{k:"post",t:"Post",w:"22%"},{k:"jami_partiya",t:"Jami partiya",n:1,f:fmtI},{k:"jami_qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN},{k:"expired_partiya",t:"Muddati o'tgan partiya",n:1,f:fmtI},{k:"expired_qiymat",t:"Muddati o'tgan qiymat (ming $)",n:1,f:fmtN},{k:"ulush",t:"Partiyadagi ulushi (%)",n:1,f:fmtN},{k:"im70_partiya",t:"IM70 partiya",n:1,f:fmtI},{k:"im74_partiya",t:"IM74 partiya",n:1,f:fmtI},{k:"tr80_partiya",t:"TR80 partiya",n:1,f:fmtI}],expiredPostRegimeRows())}`;return}if(key.view==="regime_posts"){let rows=(DATA.regime_posts||{})[key.regime]||[];dlgTitle.textContent=`${key.regime} - postlar kesimida`;dlgBody.innerHTML=table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"To'lov (mln so'm)",n:1,f:fmtN}],basicTotal(rows,"IBK bo'yicha Jami","post"));dlg.showModal();return}let q=new URLSearchParams({report:DATA.id,filters:JSON.stringify(key)}), j=await api("/api/details?"+q);dlgTitle.textContent="Asos deklaratsiyalar";dlgBody.innerHTML=table([{k:"decl",t:"Deklaratsiya"},{k:"date",t:"Sana"},{k:"regime",t:"Rejim"},{k:"stir",t:"STIR"},{k:"company",t:"Korxona"},{k:"hs",t:"TIF TN"},{k:"goods",t:"Tovar"},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN}],j.rows);dlg.showModal()}
 function roleTitle(r){return ({admin:"Admin",rahbar:"Rahbar",inspektor:"Inspektor",foydalanuvchi:"Foydalanuvchi",user:"Foydalanuvchi"}[r]||r||"Foydalanuvchi")}function permTitle(p){return ({view:"Ko'rish",upload:"Fayl yuklash",export:"Excel/PDF/PNG",release:"Nazoratdan yechish",admin:"Admin",settings:"Sozlamalar"}[p]||p)}function miniChart(rows,k,label){rows=by(rows||[],k).slice(0,10);let max=rows.reduce((m,r)=>Math.max(m,+r[k]||0),0)||1;return `<div class="live-chart"><div class="sparkline">${rows.map((r,i)=>`<i title="${esc(r[label]||r.name||r.korxona||'')}: ${fmtN(r[k])}" style="height:${Math.max(8,(+r[k]||0)/max*100)}%;animation-delay:${i*.04}s"></i>`).join("")}</div></div>`}function expiredTotalExcelTable(){let cols=[{k:"post",t:"Post",w:"210px"},{k:"jami_partiya",t:"Jami partiya",n:1,f:fmtI,w:"82px"},{k:"jami_vazn",t:"Jami vazn (tn)",n:1,f:fmtN,w:"96px"},{k:"jami_qiymat",t:"Jami qiymat (ming $)",n:1,f:fmtN,w:"110px"},{k:"expired_partiya",t:"Muddati o'tgan partiya",n:1,f:fmtI,w:"92px"},{k:"expired_vazn",t:"Muddati o'tgan vazn (tn)",n:1,f:fmtN,w:"106px"},{k:"expired_qiymat",t:"Muddati o'tgan qiymat (ming $)",n:1,f:fmtN,w:"116px"},{k:"ulush",t:"Partiyadagi ulushi (%)",n:1,f:fmtN,w:"95px"},{k:"im70_partiya",t:"IM70 partiya",n:1,f:fmtI,w:"78px"},{k:"im74_partiya",t:"IM74 partiya",n:1,f:fmtI,w:"78px"},{k:"tr80_partiya",t:"TR80 partiya",n:1,f:fmtI,w:"78px"},{k:"note",t:"Izoh",w:"120px"}];let rows=expiredPostRegimeRows().map(r=>Object.assign({jami_vazn:r.jami_vazn||0,expired_vazn:r.expired_vazn||0,note:""},r));return table(cols,rows,"expired-total-table")}function adminPanel(){let tab=window._adminTab||'users';return `<div class=stack><div class=panel style="padding:10px 14px"><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="${tab==='users'?'btn':'btn light'}" onclick="window._adminTab='users';$('adminView').innerHTML=adminUsersHtml();bindUserForm();loadUsers()">Xodimlar</button><button class="${tab==='stat'?'btn':'btn light'}" onclick="window._adminTab='stat';$('adminView').innerHTML='<div class=muted>Yuklanmoqda...</div>';loadStatistika()">Statistika</button></div></div><div id=adminView>${tab==='users'?adminUsersHtml():'<div class=muted>Yuklanmoqda...</div>'}</div></div>`}
