@@ -302,15 +302,36 @@ def tnved_name(code, mapping: dict[str, str]) -> str:
     return "Boshqa tovarlar"
 
 
+_REGIME_MAP: dict[str, str] = {
+    "10": "EK10", "11": "EK11", "12": "EK12", "61": "EK61",
+    "40": "IM40", "41": "IM41", "42": "IM42", "51": "IM51",
+    "70": "IM70", "71": "IM71", "72": "IM72", "73": "IM73",
+    "74": "IM74", "75": "IM75", "76": "IM76",
+    "80": "TR80",
+}
+
+# Kodeks bo'yicha muddat belgilangan rejimlar
+_TIMED_REGIMES: frozenset[str] = frozenset({"IM70", "IM42", "IM74", "TR80"})
+
+
 def regime_code(value: str) -> str:
-    r = clean(value).upper()
-    if "80" in r or "TD80" in r or "TR80" in r or "ТР80" in r:
-        return "TR80"
-    if "74" in r:
-        return "IM74"
-    if "70" in r:
-        return "IM70"
-    return clean(value) or "Boshqa"
+    """4 xonali kod: birinchi 2 raqam — joriy rejim, keyingi 2 — avvalgi rejim.
+    Masalan: 7470 → joriy IM74 (avvalgi IM70). Faqat birinchi 2 raqam ishlatiladi."""
+    s = re.sub(r"[^0-9]", "", clean(str(value or "")))
+    if not s:
+        return clean(str(value)) or "Boshqa"
+    return _REGIME_MAP.get(s[:2], f"IM{s[:2]}")
+
+
+def prev_regime_code(value: str) -> str:
+    """4 xonali koddagi avvalgi rejim (3-4-raqam). 0000 yoki 2 raqam → avvalgi yo'q."""
+    s = re.sub(r"[^0-9]", "", clean(str(value or "")))
+    if len(s) < 4:
+        return ""
+    prev = s[2:4]
+    if prev in ("00", ""):
+        return ""
+    return _REGIME_MAP.get(prev, f"IM{prev}")
 
 
 def expiry_date(row) -> pd.Timestamp:
@@ -320,10 +341,12 @@ def expiry_date(row) -> pd.Timestamp:
     code = regime_code(row[SRC["regime"]])
     if code == "IM74":
         return d + pd.DateOffset(years=3)
+    if code == "IM42":
+        return d + pd.DateOffset(years=2)
     if code == "IM70":
-        return d + pd.DateOffset(months=2)
+        return d + pd.DateOffset(days=60)
     if code == "TR80":
-        return d + pd.DateOffset(days=61)
+        return d + pd.DateOffset(days=60)
     return pd.NaT
 
 
@@ -417,6 +440,9 @@ def combined_jami_rows(df: pd.DataFrame) -> list[list]:
         ("IM70", "Toshkent xalqaro aeroporti CHBP"),
         ("IM70", "Avia yuklar TIF"),
         ("IM70", "Elektron tijorat TIF"),
+        ("IM42", "Toshkent xalqaro aeroporti CHBP"),
+        ("IM42", "Avia yuklar TIF"),
+        ("IM42", "Elektron tijorat TIF"),
         ("IM74", "Toshkent xalqaro aeroporti CHBP"),
         ("IM74", "Avia yuklar TIF"),
         ("IM74", "Elektron tijorat TIF"),
@@ -558,7 +584,7 @@ def expired_summary_rows(df: pd.DataFrame, report_date: datetime) -> list[list]:
             int(expired["_partiya"].sum()), float(expired["_value_usd_k"].sum()),
             0 if part["_value_usd_k"].sum() == 0 else float(expired["_value_usd_k"].sum() / part["_value_usd_k"].sum()),
         ]
-        for code in ["IM70", "IM74", "TR80"]:
+        for code in ["IM70", "IM42", "IM74", "TR80"]:
             p = expired[expired["_regime_code"].eq(code)]
             row += [int(p["_partiya"].sum()), float(p["_value_usd_k"].sum())]
         rows.append(row)
@@ -593,7 +619,7 @@ def expired_block_rows(df: pd.DataFrame, report_date: datetime, regimes: set[str
         ("00102 - \"Avia yuklar\" TIF", "00102"),
         ("00107 - Elektron tijorat TIF", "00107"),
     ]
-    regime_order = ["IM70", "IM74", "TR80"]
+    regime_order = ["IM70", "IM42", "IM74", "TR80"]
     rows: list[list] = []
     idx = 1
 
@@ -661,7 +687,7 @@ def expired_detail_rows(df: pd.DataFrame, report_date: datetime, regimes: set[st
 
 def expired_7074_rows(df: pd.DataFrame, report_date: datetime) -> list[list]:
     d = with_expiry(df, report_date)
-    d = d[d["_expired"] & d["_regime_code"].isin({"IM70", "IM74"})].copy()
+    d = d[d["_expired"] & d["_regime_code"].isin({"IM70", "IM42", "IM74"})].copy()
     if d.empty:
         return []
     g = d.groupby([SRC["decl_no"], "_regime_code", SRC["stir"]], dropna=False).agg(
