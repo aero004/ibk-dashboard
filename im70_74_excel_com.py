@@ -455,6 +455,21 @@ def expired_summary_rows(df: pd.DataFrame, report_date: datetime) -> list[list]:
     return rows
 
 
+def expired_block_total_row(df: pd.DataFrame, report_date: datetime, regimes: set[str] | None = None) -> list:
+    """expired_block_rows uchun IBK bo'yicha Jami total qatorini qaytaradi."""
+    d = with_expiry(df, report_date)
+    d = d[d["_expired"]].copy()
+    if regimes:
+        d = d[d["_regime_code"].isin(regimes)].copy()
+    if d.empty:
+        return []
+    return [
+        "IBK bo'yicha Jami", "", "",
+        int(d["_partiya"].sum()), float(d["_value_usd_k"].sum()),
+        float(d["_weight_tn"].sum()), float(d["_pay_total_mln"].sum()), "",
+    ]
+
+
 def expired_block_rows(df: pd.DataFrame, report_date: datetime, regimes: set[str] | None = None) -> list[list]:
     d = with_expiry(df, report_date)
     d = d[d["_expired"]].copy()
@@ -992,6 +1007,34 @@ try {{
     $rng.HorizontalAlignment = -4108
     $rng.VerticalAlignment = -4108
   }}
+  function Apply-Block-Sheet-Format($sheet, $startRow, $jsonPath, $lastCol) {{
+    $ws = $wb.Worksheets.Item($sheet)
+    $data = Get-Content -LiteralPath $jsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $count = @($data).Count
+    if ($count -eq 0) {{ return }}
+    $fullRng = $ws.Range($ws.Cells($startRow, 1), $ws.Cells($startRow + $count - 1, $lastCol))
+    $fullRng.Font.Bold = $false
+    $fullRng.Font.Size = 9
+    $fullRng.Borders.LineStyle = 1
+    $fullRng.VerticalAlignment = -4108
+    $compIdx = 0
+    for ($i = 0; $i -lt $count; $i++) {{
+      $rowData = @($data[$i])
+      $rowNum = $startRow + $i
+      $rng = $ws.Range($ws.Cells($rowNum, 1), $ws.Cells($rowNum, $lastCol))
+      $col2 = if ($rowData.Count -gt 1) {{ [string]$rowData[1] }} else {{ '' }}
+      if ($col2 -eq '') {{
+        $rng.Font.Bold = $true
+        $rng.Interior.Color = 16247257
+        $rng.HorizontalAlignment = -4108
+      }} else {{
+        $compIdx++
+        $rng.Font.Bold = $false
+        if ($compIdx % 2 -eq 0) {{ $rng.Interior.Color = 16446960 }} else {{ $rng.Interior.Color = 16777215 }}
+        $rng.HorizontalAlignment = -4108
+      }}
+    }}
+  }}
   Clear-Tail 'Корхоналар кесимида' 6 {ps_quote(files["company"])} 8
   Clear-Tail 'Омборлар кесимида' 6 {ps_quote(files["warehouse"])} 6
   Clear-Tail 'Ўз омбор жами' 5 {ps_quote(files["own_all"])} 9
@@ -1004,7 +1047,7 @@ try {{
   Apply-Data-Range-Format 'Ўз омбор жами' 5 {ps_quote(files["own_all"])} 9
   Apply-Data-Range-Format 'Ўз омбор 3 ой+' 5 {ps_quote(files["own_3m"])} 9
   Apply-Data-Range-Format 'Жами муддати ўтган' 8 {ps_quote(files["expired_summary"])} 12
-  Apply-Data-Range-Format 'muddati o`tgan ' 6 {ps_quote(files["expired_detail"])} 8
+  Apply-Block-Sheet-Format 'muddati o`tgan ' 6 {ps_quote(files["expired_detail"])} 8
   Apply-Data-Range-Format 'Озиқ овқат' 5 {ps_quote(files["food"])} 8
   Clear-Tail 'Ўз омбор жами' 5 {ps_quote(files["own_all"])} 9
   Clear-Tail 'Ўз омбор 3 ой+' 5 {ps_quote(files["own_3m"])} 9
@@ -1340,8 +1383,8 @@ def build(source: Path, template: Path, output: Path, report_date: datetime, dep
             "own_3m": own_warehouse_rows(df, report_date, True),
             "sklad_company": company_regime_rows(df),
             "expired_summary": expired_summary_rows(df, report_date),
-            "expired_detail": expired_block_rows(df, report_date),
-            "expired80": expired_block_rows(df, report_date, {"TR80"}),
+            "expired_detail": ([t] + expired_block_rows(df, report_date) if (t := expired_block_total_row(df, report_date)) else expired_block_rows(df, report_date)),
+            "expired80": ([t80] + expired_block_rows(df, report_date, {"TR80"}) if (t80 := expired_block_total_row(df, report_date, {"TR80"})) else expired_block_rows(df, report_date, {"TR80"})),
             "expired7074": expired_7074_rows(df, report_date),
             "food": food_rows(df),
             "goods": goods_rows(df),
