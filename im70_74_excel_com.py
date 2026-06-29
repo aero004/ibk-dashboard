@@ -174,14 +174,22 @@ def post_code(value: str) -> str:
 
 
 def regime_group(value: str) -> str:
-    r = clean(value).upper()
-    if "70" in r:
+    code = regime_code(value)
+    if code == "IM70":
         return "Вақтинча сақлаш"
-    if "74" in r:
+    if code == "IM74":
         return "Божхона омбори"
-    if "80" in r:
+    if code == "TR80":
         return "Транзит"
-    return clean(value) or "Бошқа"
+    if code == "IM42":
+        return "Vaqtincha olib kirish"
+    if code == "EK12":
+        return "Vaqtincha olib chiqish"
+    if code == "IM51":
+        return "Ichki qayta ishlash"
+    if code == "EK61":
+        return "Tashqi qayta ishlash"
+    return code or "Boshqa"
 
 
 def _pick_best_table(tables: list) -> pd.DataFrame:
@@ -311,7 +319,7 @@ _REGIME_MAP: dict[str, str] = {
 }
 
 # Kodeks bo'yicha muddat belgilangan rejimlar
-_TIMED_REGIMES: frozenset[str] = frozenset({"IM70", "IM42", "EK12", "IM74", "TR80"})
+_TIMED_REGIMES: frozenset[str] = frozenset({"IM70", "IM42", "EK12", "IM51", "EK61", "IM74", "TR80"})
 
 
 def regime_code(value: str) -> str:
@@ -341,7 +349,7 @@ def expiry_date(row) -> pd.Timestamp:
     code = regime_code(row[SRC["regime"]])
     if code == "IM74":
         return d + pd.DateOffset(years=3)
-    if code in ("IM42", "EK12"):
+    if code in ("IM42", "EK12", "IM51", "EK61"):
         return d + pd.DateOffset(years=2)
     if code == "IM70":
         return d + pd.DateOffset(days=60)
@@ -584,7 +592,7 @@ def expired_summary_rows(df: pd.DataFrame, report_date: datetime) -> list[list]:
             int(expired["_partiya"].sum()), float(expired["_value_usd_k"].sum()),
             0 if part["_value_usd_k"].sum() == 0 else float(expired["_value_usd_k"].sum() / part["_value_usd_k"].sum()),
         ]
-        for code in ["IM70", "IM42", "IM74", "TR80"]:
+        for code in ["IM70", "IM42", "EK12", "IM51", "EK61", "IM74", "TR80"]:
             p = expired[expired["_regime_code"].eq(code)]
             row += [int(p["_partiya"].sum()), float(p["_value_usd_k"].sum())]
         rows.append(row)
@@ -619,7 +627,7 @@ def expired_block_rows(df: pd.DataFrame, report_date: datetime, regimes: set[str
         ("00102 - \"Avia yuklar\" TIF", "00102"),
         ("00107 - Elektron tijorat TIF", "00107"),
     ]
-    regime_order = ["IM70", "IM42", "IM74", "TR80"]
+    regime_order = ["IM70", "IM42", "EK12", "IM51", "EK61", "IM74", "TR80"]
     rows: list[list] = []
     idx = 1
 
@@ -687,7 +695,7 @@ def expired_detail_rows(df: pd.DataFrame, report_date: datetime, regimes: set[st
 
 def expired_7074_rows(df: pd.DataFrame, report_date: datetime) -> list[list]:
     d = with_expiry(df, report_date)
-    d = d[d["_expired"] & d["_regime_code"].isin({"IM70", "IM42", "IM74"})].copy()
+    d = d[d["_expired"] & d["_regime_code"].isin({"IM70", "IM42", "EK12", "IM51", "EK61", "IM74"})].copy()
     if d.empty:
         return []
     g = d.groupby([SRC["decl_no"], "_regime_code", SRC["stir"]], dropna=False).agg(
