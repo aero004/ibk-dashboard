@@ -311,7 +311,7 @@ _REGIME_MAP: dict[str, str] = {
 }
 
 # Kodeks bo'yicha muddat belgilangan rejimlar
-_TIMED_REGIMES: frozenset[str] = frozenset({"IM70", "IM42", "IM74", "TR80"})
+_TIMED_REGIMES: frozenset[str] = frozenset({"IM70", "IM42", "EK12", "IM74", "TR80"})
 
 
 def regime_code(value: str) -> str:
@@ -341,7 +341,7 @@ def expiry_date(row) -> pd.Timestamp:
     code = regime_code(row[SRC["regime"]])
     if code == "IM74":
         return d + pd.DateOffset(years=3)
-    if code == "IM42":
+    if code in ("IM42", "EK12"):
         return d + pd.DateOffset(years=2)
     if code == "IM70":
         return d + pd.DateOffset(days=60)
