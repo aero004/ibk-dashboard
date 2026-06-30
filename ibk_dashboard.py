@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import gzip
 import shutil
 import sys
 import threading
@@ -1009,6 +1010,11 @@ def save_json(path: Path, data):
 
 def hash_password(password: str, salt: str) -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+
+def _decompress_chunks(dest: Path, compressed: bool) -> None:
+    if compressed:
+        dest.write_bytes(gzip.decompress(dest.read_bytes()))
 
 
 def safe_name(name: str) -> str:
@@ -4187,7 +4193,7 @@ async function refreshCurrentReport(btn){
   setBusy(btn,true,"Yangilanmoqda");$("status").textContent="Ma'lumotlar yangilanmoqda...";
   try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
 }
-async function chunkedUpload(file,onProgress){
+async function chunkedUpload(file,onProgress,signal){
   _uploadActive=true;
   if(DIRECT_UPLOAD_URL===null){
     try{
@@ -4198,16 +4204,32 @@ async function chunkedUpload(file,onProgress){
   }
   const base=DIRECT_UPLOAD_URL||'';
   const isLAN=!!DIRECT_UPLOAD_URL;
+  let uploadSrc=file,compressed=false;
+  if(!isLAN&&window.CompressionStream){
+    try{
+      if(onProgress)onProgress(-0.01);
+      const cs=new CompressionStream('gzip');
+      const w=cs.writable.getWriter();
+      w.write(await file.arrayBuffer());
+      w.close();
+      const bufs=[];
+      const r=cs.readable.getReader();
+      while(true){const{done,value}=await r.read();if(done)break;bufs.push(value);}
+      uploadSrc=new Blob(bufs,{type:'application/octet-stream'});
+      compressed=true;
+    }catch{uploadSrc=file;compressed=false;}
+  }
   const CHUNK=isLAN?1024*1024:4*1024*1024;
-  const total=Math.max(1,Math.ceil(file.size/CHUNK));
+  const total=Math.max(1,Math.ceil(uploadSrc.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   const PARALLEL=isLAN?4:2;
   const MAX_RETRY=6;
   let done=0;
   async function uploadOne(i){
-    const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
+    const blob=uploadSrc.slice(i*CHUNK,(i+1)*CHUNK);
     let lastErr,gw=0;
     for(let attempt=0;attempt<MAX_RETRY;attempt++){
+      if(signal?.aborted)throw new DOMException('Bekor qilindi','AbortError');
       if(attempt>0){
         const d=gw>0?Math.min(12000*gw,30000):1500*attempt;
         await new Promise(r=>setTimeout(r,d));
@@ -4216,8 +4238,8 @@ async function chunkedUpload(file,onProgress){
         const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
           'X-Token':TOKEN,'X-Upload-Id':uid,'X-Chunk-Index':String(i),
           'X-Total-Chunks':String(total),'X-Filename':encodeURIComponent(file.name),
-          'Content-Type':'application/octet-stream'
-        },body:blob});
+          'X-Compressed':compressed?'1':'0','Content-Type':'application/octet-stream'
+        },body:blob,signal});
         if(!r.ok){
           const j=await r.json().catch(()=>({}));
           lastErr=new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);
@@ -4227,13 +4249,13 @@ async function chunkedUpload(file,onProgress){
         }
         done++;if(onProgress)onProgress(done/total);
         return;
-      }catch(e){lastErr=e;gw++;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
+      }catch(e){if(e.name==='AbortError')throw e;lastErr=e;gw++;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
     }
     throw lastErr;
   }
   try{
     for(let i=0;i<total;i+=PARALLEL)await Promise.all(Array.from({length:Math.min(PARALLEL,total-i)},(_,k)=>uploadOne(i+k)));
-    return {upload_id:uid,filename:file.name,total_chunks:total,direct:isLAN};
+    return {upload_id:uid,filename:file.name,total_chunks:total,direct:isLAN,compressed};
   }finally{_uploadActive=false;}
 }
 function detectFileType(name){
@@ -4260,14 +4282,17 @@ const FILE_TYPE_LABELS={
   avtotaqsimot:'🚗 Avtotaqsimot'
 };
 let _unifiedFiles=[];
-function handleUnifiedDrop(files){
-  _unifiedFiles=[...files];
+let _uploadAbortCtrl=null;
+function removeUnifiedFile(i){
+  _unifiedFiles.splice(i,1);
+  renderUnifiedList();
+}
+function renderUnifiedList(){
   const list=$('unifiedList');
   const btn=$('unifiedBtn');
-  if(!list||!_unifiedFiles.length){if(list)list.innerHTML='';if(btn)btn.style.display='none';return}
+  if(!list||!_unifiedFiles.length){if(list)list.innerHTML='';if(btn)btn.style.display='none';return;}
   list.innerHTML='<div style="margin:6px 0;font-size:13px;color:#6b7280;font-weight:600">Aniqlangan fayllar:</div>'+_unifiedFiles.map((f,i)=>{
-    const t=detectFileType(f.name);
-    const lbl=FILE_TYPE_LABELS[t]||t;
+    const t=f._type||detectFileType(f.name);
     const sz=(f.size/1024/1024).toFixed(1)+' MB';
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;margin-bottom:5px">
       <select onchange="_unifiedFiles[${i}]._type=this.value" style="font-size:12px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px">
@@ -4275,12 +4300,19 @@ function handleUnifiedDrop(files){
       </select>
       <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.name)}">${esc(f.name)}</span>
       <span style="font-size:11px;color:#94a3b8;flex-shrink:0">${sz}</span>
+      <button onclick="removeUnifiedFile(${i})" title="O'chirish" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">✕</button>
     </div>`;
   }).join('');
   if(btn){btn.style.display='';btn.textContent=`🚀 Yuklash (${_unifiedFiles.length} ta fayl)`;}
 }
+function handleUnifiedDrop(files){
+  _unifiedFiles=[...files];
+  renderUnifiedList();
+}
 async function runUnifiedUpload(btn){
   if(!_unifiedFiles.length)return;
+  _uploadAbortCtrl=new AbortController();
+  const signal=_uploadAbortCtrl.signal;
   const prog=$('unifiedProgress');
   setBusy(btn,true,'Yuklanmoqda');
   const types=_unifiedFiles.map((f,i)=>f._type||detectFileType(f.name));
@@ -4303,36 +4335,36 @@ async function runUnifiedUpload(btn){
     showUploadProgress(`${i+1}/${_unifiedFiles.length}: ${f.name}`,Math.round(i/_unifiedFiles.length*100));
     try{
       if(t==='ombor'){
-        const info=await chunkedUpload(f,p=>showUploadProgress(`Omborlar: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Omborlar: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)),signal);
         const j=await api('/api/chunk_finalize_wr',{method:'POST',body:JSON.stringify(info)});
         if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">Omborlar reestri tahlil qilinmoqda...</div>';pollWr(j.job_id,null,null);}
         results.push(`✓ Omborlar: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='avia'){
-        const info=await chunkedUpload(f,p=>showUploadProgress(`AVIA: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const info=await chunkedUpload(f,p=>showUploadProgress(`AVIA: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)),signal);
         const j=await api('/api/chunk_finalize_avia',{method:'POST',body:JSON.stringify(info)});
         if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">AVIA AWB tahlil qilinmoqda...</div>';pollAvia(j.job_id,null,null);}
         results.push(`✓ AVIA: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='vaqtincha'){
-        const info=await chunkedUpload(f,p=>showUploadProgress(`Vaqtincha: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Vaqtincha: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)),signal);
         const j=await api('/api/chunk_finalize_vaqtincha',{method:'POST',body:JSON.stringify(info)});
         if(j.job_id){if(prog)prog.innerHTML+='<div style="font-size:12px;color:#1d72b8">Vaqtincha deklaratsiyalar tahlil qilinmoqda...</div>';pollVaqtincha(j.job_id);}
         results.push(`✓ Vaqtincha: yuklandi (tahlil davom etmoqda)`);
       }else if(t==='depozit'&&DATA){
-        const info=await chunkedUpload(f,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)),signal);
         const j=await api('/api/chunk_finalize_deposit',{method:'POST',body:JSON.stringify({...info,report_id:DATA.id})});
         if(j.job_id)poll(j.job_id);
         results.push(`✓ Depozit: yuklandi`);
       }else if(t==='bnrte'){
         const depIdx=types.findIndex((x,xi)=>x==='depozit'&&xi!==i);
-        let depInfo={upload_id:'',filename:''};
+        let depInfo={upload_id:'',filename:'',compressed:false};
         if(depIdx>=0){
           const df=_unifiedFiles[depIdx];
-          const di=await chunkedUpload(df,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+.5+p*.5)/_unifiedFiles.length*100)));
-          depInfo={upload_id:di.upload_id,filename:di.filename};
+          const di=await chunkedUpload(df,p=>showUploadProgress(`Depozit: ${Math.round(p*100)}%`,Math.round((i+.5+p*.5)/_unifiedFiles.length*100)),signal);
+          depInfo={upload_id:di.upload_id,filename:di.filename,compressed:di.compressed};
           types[depIdx]='_done';
         }
-        const info=await chunkedUpload(f,p=>showUploadProgress(`BNRTE asos: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
-        const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:depInfo.upload_id,deposit_filename:depInfo.filename})});
+        const info=await chunkedUpload(f,p=>showUploadProgress(`BNRTE asos: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)),signal);
+        const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:depInfo.upload_id,deposit_filename:depInfo.filename,dep_compressed:depInfo.compressed})});
         if(j.job_id)poll(j.job_id);
         results.push(`✓ BNRTE: hisoblash boshlandi`);
       }else if(['korik_holatlar','korik_vaqt','bko_postlar','bko_xodimlar','bko_rasmiy','avtotaqsimot'].includes(t)){
@@ -5867,6 +5899,8 @@ class Handler(BaseHTTPRequestHandler):
             total    = int(body.get("total_chunks", 1))
             dep_uid  = body.get("deposit_upload_id", "").strip()
             dep_name = unquote(body.get("deposit_filename", "").strip())
+            compressed = bool(body.get("compressed", False))
+            dep_compressed = bool(body.get("dep_compressed", False))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
@@ -5889,6 +5923,7 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
+            _decompress_chunks(source, compressed)
             deposit = None
             if dep_uid and dep_name:
                 dcd = CHUNK_DIR / dep_uid
@@ -5899,6 +5934,7 @@ class Handler(BaseHTTPRequestHandler):
                         for ch in dchunks:
                             fh.write(ch.read_bytes())
                     shutil.rmtree(dcd, ignore_errors=True)
+                    _decompress_chunks(deposit, dep_compressed)
             JOBS[job_id] = {"status": "navbatda", "data": None}
             threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
             self.json({"job_id": job_id}, cors=True)
@@ -5910,6 +5946,7 @@ class Handler(BaseHTTPRequestHandler):
             uid      = body.get("upload_id", "").strip()
             filename = unquote(body.get("filename", "").strip())
             total    = int(body.get("total_chunks", 1))
+            compressed = bool(body.get("compressed", False))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
@@ -5923,6 +5960,7 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
+            _decompress_chunks(dest, compressed)
             job_id = "wr_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
             def _load_wr(jid=job_id, dp=dest):
@@ -5943,6 +5981,7 @@ class Handler(BaseHTTPRequestHandler):
             uid      = body.get("upload_id", "").strip()
             filename = unquote(body.get("filename", "").strip())
             total    = int(body.get("total_chunks", 1))
+            compressed = bool(body.get("compressed", False))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
@@ -5956,6 +5995,7 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
+            _decompress_chunks(dest, compressed)
             job_id = "avia_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
             def _load_avia(jid=job_id, dp=dest):
@@ -5976,6 +6016,7 @@ class Handler(BaseHTTPRequestHandler):
             uid      = body.get("upload_id", "").strip()
             filename = unquote(body.get("filename", "").strip())
             total    = int(body.get("total_chunks", 1))
+            compressed = bool(body.get("compressed", False))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
@@ -5989,6 +6030,7 @@ class Handler(BaseHTTPRequestHandler):
                 for ch in chunks:
                     fh.write(ch.read_bytes())
             shutil.rmtree(cd, ignore_errors=True)
+            _decompress_chunks(dest, compressed)
             job_id = "vaqtincha_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
             def _load_vaqtincha(jid=job_id, dp=dest, fn=filename):
