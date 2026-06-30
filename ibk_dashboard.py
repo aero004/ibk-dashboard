@@ -4160,13 +4160,16 @@ async function chunkedUpload(file,onProgress){
   const base=DIRECT_UPLOAD_URL||'';
   const isLAN=!!DIRECT_UPLOAD_URL;
   const PARALLEL=isLAN?4:3;
-  const MAX_RETRY=3;
+  const MAX_RETRY=6;
   let done=0;
   async function uploadOne(i){
     const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
-    let lastErr;
+    let lastErr,gw=0;
     for(let attempt=0;attempt<MAX_RETRY;attempt++){
-      if(attempt>0)await new Promise(r=>setTimeout(r,1500*attempt));
+      if(attempt>0){
+        const d=gw>0?Math.min(12000*gw,30000):1500*attempt;
+        await new Promise(r=>setTimeout(r,d));
+      }
       try{
         const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
           'X-Token':TOKEN,'X-Upload-Id':uid,'X-Chunk-Index':String(i),
@@ -4177,11 +4180,12 @@ async function chunkedUpload(file,onProgress){
           const j=await r.json().catch(()=>({}));
           lastErr=new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);
           if(r.status===401||r.status===403)throw lastErr;
+          if(r.status>=500)gw++;
           continue;
         }
         done++;if(onProgress)onProgress(done/total);
         return;
-      }catch(e){lastErr=e;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
+      }catch(e){lastErr=e;gw++;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
     }
     throw lastErr;
   }
@@ -4460,7 +4464,9 @@ const bindUploadFull=bindUpload;bindUpload=function(){
         showUploadProgress(`${i+1}/${files.length}: ${f.name} yuklanyapti...`,Math.round(i/files.length*90));
         try{
           const info=await chunkedUpload(f,p=>showUploadProgress(`${i+1}/${files.length}: ${f.name} — ${Math.round(p*100)}%`,Math.round((i+p)/files.length*90)));
-          const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify(info)});
+          let j,fErr;
+          for(let fa=0;fa<4;fa++){if(fa>0)await new Promise(r=>setTimeout(r,12000));try{j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify(info)});fErr=null;break;}catch(e){fErr=e;if(String(e.message).includes('login'))throw e;}}
+          if(fErr)throw fErr;
           if(j.error)skipped.push(f.name+': '+j.error); else done++;
         }catch(err){skipped.push(f.name+': '+err.message)}
       }
