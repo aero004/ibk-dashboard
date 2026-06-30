@@ -943,27 +943,45 @@ ROLE_LABELS = {
 }
 
 
+def _default_admin_record():
+    return {
+        "salt": "ibk",
+        "password": hash_password("admin123", "ibk"),
+        "role": "admin",
+        "enabled": True,
+        "full_name": "Administrator",
+        "position": "Admin",
+        "phone": "",
+        "lang": "uz",
+        "post_code": "",
+        "role_label": "Admin",
+        "perms": ADMIN_PERMS,
+    }
+
+
 def ensure_dirs():
-    for path in [DATA_DIR, UPLOAD_DIR, REPORT_DIR, ASSET_DIR, TOLOV_OUTPUT_DIR, SOURCES_DIR]:
+    for path in [DATA_DIR, UPLOAD_DIR, REPORT_DIR, CHUNK_DIR, ASSET_DIR, TOLOV_OUTPUT_DIR, SOURCES_DIR]:
         path.mkdir(parents=True, exist_ok=True)
-    if not USER_PATH.exists():
-        save_json(USER_PATH, {
-            "admin": {
-                "salt": "ibk",
-                "password": hash_password("admin123", "ibk"),
-                "role": "admin",
-                "enabled": True,
-                "full_name": "Administrator",
-                "position": "Admin",
-                "phone": "",
-                "lang": "uz",
-                "post_code": "",
-                "role_label": "Admin",
-                "perms": ADMIN_PERMS,
-            }
-        })
+
+    # Load users.json — detect corruption (truncated file from power loss)
+    _raw_users = None
+    if USER_PATH.exists():
+        try:
+            _raw_users = json.loads(USER_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            _raw_users = None  # corrupted
+
+    if not isinstance(_raw_users, dict) or not _raw_users:
+        # Missing, corrupted, or empty — create fresh admin account
+        if USER_PATH.exists() and _raw_users is None:
+            # Backup the corrupted file so it isn't silently lost
+            try:
+                USER_PATH.with_suffix(".bak").write_bytes(USER_PATH.read_bytes())
+            except Exception:
+                pass
+        save_json(USER_PATH, {"admin": _default_admin_record()})
     else:
-        users = load_json(USER_PATH, {})
+        users = _raw_users
         changed = False
         for rec in users.values():
             if "enabled" not in rec:
@@ -1006,7 +1024,9 @@ def load_json(path: Path, default):
 
 def save_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)  # atomic rename — prevents partial writes on power loss
 
 
 def hash_password(password: str, salt: str) -> str:
@@ -4383,7 +4403,7 @@ async function chunkedUpload(file,onProgress){
   _uploadActive=true;
   if(DIRECT_UPLOAD_URL===null){
     try{
-      const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN}}).then(r=>r.json());
+      const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN},signal:AbortSignal.timeout(5000)}).then(r=>r.json());
       const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(2000)});
       DIRECT_UPLOAD_URL=t.ok?j.lan_url:'';
     }catch{DIRECT_UPLOAD_URL='';}
@@ -4412,14 +4432,16 @@ async function chunkedUpload(file,onProgress){
         },body:blob});
         if(!r.ok){
           const j=await r.json().catch(()=>({}));
-          lastErr=new Error(j.error||`Chunk ${i+1}/${total} xato: HTTP ${r.status}`);
-          if(r.status===401||r.status===403)throw lastErr;
+          const msg=j.error||`HTTP ${r.status}`;
+          if(r.status===401)throw new Error(`Sessiya muddati tugagan — qayta kiring (${msg})`);
+          if(r.status===403)throw new Error(`Ruxsat yo'q — admin huquqi kerak (${msg})`);
+          lastErr=new Error(`Chunk ${i+1}/${total} xato: ${msg}`);
           if(r.status>=500)gw++;
           continue;
         }
         done++;if(onProgress)onProgress(done/total);
         return;
-      }catch(e){lastErr=e;gw++;if(e.message&&(e.message.includes('401')||e.message.includes('403')))throw e;}
+      }catch(e){lastErr=e;if(e.message&&(e.message.includes('Sessiya')||e.message.includes('Ruxsat')))throw e;gw++;}
     }
     throw lastErr;
   }
@@ -4560,6 +4582,26 @@ async function runUnifiedUpload(btn){
   if(prog)prog.innerHTML=`<div style="font-size:13px;margin-top:4px">${results.map(r=>`<div>${r}</div>`).join('')}</div>`;
   setBusy(btn,false);btn.textContent=`🚀 Yuklash (${_unifiedFiles.length} ta fayl)`;
 }
+async function checkUploadConn(btn){
+  const el=$('uploadConnStatus');
+  setBusy(btn,true,'Tekshirilmoqda');
+  if(el)el.textContent='…';
+  try{
+    const j=await fetch('/api/upload_check',{headers:{'X-Token':TOKEN},signal:AbortSignal.timeout(6000)}).then(r=>r.json()).catch(e=>({ok:false,error:e.message}));
+    if(j.code==='auth'||!j.user){
+      if(el)el.innerHTML='<span style="color:#dc2626">✗ Sessiya tugagan — qayta kiring</span>';
+    }else if(!j.has_upload){
+      if(el)el.innerHTML=`<span style="color:#dc2626">✗ "${j.user}" foydalanuvchisida yuklash vakolati yo'q (rol: ${j.role||'?'})</span>`;
+    }else{
+      const chunkOk=j.chunk_dir_ok?'✓':'✗ chunk_dir yo'q!';
+      const mode=DIRECT_UPLOAD_URL?`LAN: ${DIRECT_UPLOAD_URL}`:'Cloudflare orqali';
+      if(el)el.innerHTML=`<span style="color:#16a34a">✓ ${j.user} · yuklash ruxsati bor · ${chunkOk} · ${mode}</span>`;
+    }
+  }catch(e){
+    if(el)el.innerHTML=`<span style="color:#dc2626">✗ Server javob bermadi: ${esc(e.message)}</span>`;
+  }
+  setBusy(btn,false);
+}
 async function ucUploadBnrte(btn){
   let src=$('ucBnrteSource'),dep=$('ucBnrteDeposit'),st=$('ucBnrteStatus');
   if(!src?.files?.length){if(st)st.textContent='Asos fayl tanlang';return}
@@ -4695,7 +4737,7 @@ uploadPanel=function(){
   let aviaDbSt=AVIA_STATS?`<span class="uc-badge ok">💲 ${fmtN(AVIA_STATS.jami_qiymat_k)} ming $</span>`:'';
   let yarSt=YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded?`<span class="uc-badge ok">⚠ ${YAROQLILIK_DATA.expired_count||0} muddati o'tgan</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   return `<div class=stack>
-<div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Fayllarni birdan tanlang — tizim nomiga qarab o'zi ajratib oladi. Yoki quyida har birini alohida yuklang.</p><div id=uploadStatus></div></div>
+<div class=panel><h2>📂 Ma'lumotlar boshqaruvi</h2><p class=muted>Fayllarni birdan tanlang — tizim nomiga qarab o'zi ajratib oladi. Yoki quyida har birini alohida yuklang.</p><div id=uploadStatus></div><div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn light" style="font-size:12px;padding:4px 12px" onclick="checkUploadConn(this)">🔍 Ulanishni tekshirish</button><span id="uploadConnStatus" style="font-size:12px;color:#557086"></span></div></div>
 <div class="panel uc-card" style="border-left-color:#7c3aed"><div class=uc-header><h2>🗂 Barcha fayllarni birdan yuklash</h2></div>
 <div style="margin:10px 0 8px"><label for="unifiedFileInput" style="display:flex;flex-direction:column;align-items:center;gap:8px;border:2px dashed #c4b5fd;border-radius:10px;padding:22px 16px;cursor:pointer;background:#faf5ff;color:#5b21b6;font-weight:600;font-size:14px;transition:background .2s" id="unifiedDropZone" ondragover="event.preventDefault();this.style.background='#ede9fe'" ondragleave="this.style.background='#faf5ff'" ondrop="event.preventDefault();this.style.background='#faf5ff';handleUnifiedDrop(event.dataTransfer.files)">📁 Fayllarni shu yerga tashlang yoki bosib tanlang<span style="font-size:12px;font-weight:400;color:#7c3aed">BNRTE asos, depozit, omborlar reestri, AVIA AWB — barchasi birdan</span></label><input type=file id="unifiedFileInput" multiple accept=".xls,.xlsx,.html,.htm" style="display:none" onchange="handleUnifiedDrop(this.files)"></div>
 <div id="unifiedList" style="margin-top:4px"></div>
@@ -5536,6 +5578,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/server_info":
             self.json({"lan_url": f"http://{LAN_IP}:{PORT}", "port": PORT}, cors=True)
+            return
+        if parsed.path == "/api/upload_check":
+            user = self.user()
+            if not user:
+                self.json({"ok": False, "error": "login kerak", "code": "auth"})
+                return
+            rec = load_json(USER_PATH, {}).get(user, {})
+            has_upload = rec.get("role") == "admin" or "upload" in rec.get("perms", [])
+            self.json({"ok": has_upload, "user": user, "role": rec.get("role"), "perms": rec.get("perms", []), "has_upload": has_upload, "chunk_dir": str(CHUNK_DIR), "chunk_dir_ok": CHUNK_DIR.exists()})
             return
         if parsed.path == "/api/admin/restart":
             if not self.require_admin():
