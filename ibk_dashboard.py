@@ -4207,15 +4207,12 @@ async function chunkedUpload(file,onProgress,signal){
   let uploadSrc=file,compressed=false;
   if(!isLAN&&window.CompressionStream){
     try{
-      if(onProgress)onProgress(-0.01);
       const cs=new CompressionStream('gzip');
       const w=cs.writable.getWriter();
-      w.write(await file.arrayBuffer());
-      w.close();
-      const bufs=[];
-      const r=cs.readable.getReader();
-      while(true){const{done,value}=await r.read();if(done)break;bufs.push(value);}
-      uploadSrc=new Blob(bufs,{type:'application/octet-stream'});
+      await w.write(await file.arrayBuffer());
+      await w.close();
+      const ab=await new Response(cs.readable).arrayBuffer();
+      uploadSrc=new Blob([ab],{type:'application/octet-stream'});
       compressed=true;
     }catch{uploadSrc=file;compressed=false;}
   }
