@@ -984,6 +984,12 @@ def ensure_dirs():
         save_json(SESSION_PATH, {})
     if not INDEX_PATH.exists():
         save_json(INDEX_PATH, {"reports": []})
+    else:
+        arc = load_json(INDEX_PATH, {"reports": []})
+        valid = [r for r in arc.get("reports", []) if r.get("dir") and Path(r["dir"]).exists()]
+        if len(valid) != len(arc.get("reports", [])):
+            arc["reports"] = valid
+            save_json(INDEX_PATH, arc)
 
 
 def load_json(path: Path, default):
