@@ -21,7 +21,22 @@ from urllib.request import Request, urlopen
 
 import socket
 
-import pandas as pd
+class _LazyPandas:
+    """pandas ni background thread'da yuklaydi — HTTP server darhol ishga tushadi."""
+    def __init__(self):
+        self._mod = None
+        self._ready = threading.Event()
+        threading.Thread(target=self._load, daemon=True, name="pandas-loader").start()
+    def _load(self):
+        import pandas as _m
+        self._mod = _m
+        self._ready.set()
+    def __getattr__(self, name):
+        self._ready.wait()
+        return getattr(self._mod, name)
+
+pd = _LazyPandas()
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
 
@@ -1080,6 +1095,16 @@ def clean_archive_records(reports: list[dict]) -> list[dict]:
     return sorted(best.values(), key=date_key, reverse=True)
 
 
+def _file_date_from_name(name: str) -> str:
+    m = re.search(r'\b(\d{2})\.(\d{2})\.(\d{4})\b', name)
+    if m:
+        return f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+    m = re.search(r'\b(\d{4})\.(\d{2})\.(\d{2})\b', name)
+    if m:
+        return f"{m.group(3)}.{m.group(2)}.{m.group(1)}"
+    return datetime.now().strftime("%d.%m.%Y")
+
+
 def add_file_to_archive(file_type: str, filename: str, data: dict, excel_bytes: bytes | None = None) -> dict:
     """Save uploaded file data to files archive in archive.json, return the record."""
     fid = datetime.now().strftime("%Y%m%d_") + str(int(time.time() * 1000))
@@ -1097,7 +1122,7 @@ def add_file_to_archive(file_type: str, filename: str, data: dict, excel_bytes: 
         "type": file_type,
         "label": FILE_TYPE_LABELS.get(file_type, file_type),
         "filename": filename,
-        "date": datetime.now().strftime("%d.%m.%Y"),
+        "date": _file_date_from_name(filename),
         "json_path": str(json_path),
         "excel_path": excel_path,
     }
@@ -3986,15 +4011,26 @@ function compactArchivePanel(){
 function compactFilesArchivePanel(isAdmin){
   if(!FILES_ARCHIVE.length)return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>Hali hech qanday fayl yuklanmagan.</div></div>`;
   const TYPE_ICONS={"warehouses":"🏭","avia_awb":"✈️","yaroqlilik":"📋","vaqtincha":"⏱️","tolov":"💰","bko_postlar":"📑","bko_xodimlar":"📑","bko_rasmiy":"📑","korik_holatlar":"🔍","korik_vaqt":"⏱️","avtotaqsimot":"🚗"};
-  let body=FILES_ARCHIVE.map(r=>{
-    let isCurrent=r.is_current||FILES_CURRENT[r.type]===r.id;
-    let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
-    let icon=TYPE_ICONS[r.type]||"📄";
-    let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteFileEntry('${esc(r.id)}','${esc(r.filename)}')" title="O'chirish">🗑</button>${!isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentFile('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:""
-    let viewBtn=`<button class="light" style="font-size:12px" onclick="showFileData('${esc(r.id)}','${esc(r.type)}','${esc(r.label||r.type)}')" title="Ko'rish">👁 Ko'rish</button>`;
-    return `<tr><td class=num>${esc(r.date)}${badge}</td><td class=text>${icon} <b>${esc(r.label||r.type)}</b></td><td class=text title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${viewBtn}${adminBtns}</div></td></tr>`;
-  }).join("");
-  return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>${FILES_ARCHIVE.length} ta fayl. Joriy — sahifa ochilganda yuklanadigan ma'lumot.</div><table class="fixed-table compact-archive"><colgroup><col style="width:110px"><col style="width:160px"><col><col style="width:160px"></colgroup><thead><tr><th>Sana</th><th>Tur</th><th>Fayl nomi</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`;
+  const groups={};
+  for(const r of FILES_ARCHIVE){const d=r.date||'—';if(!groups[d])groups[d]=[];groups[d].push(r);}
+  const dates=Object.keys(groups).sort((a,b)=>{
+    const pa=a.split('.').reverse().join(''), pb=b.split('.').reverse().join('');
+    return pb.localeCompare(pa);
+  });
+  let body='';
+  for(const date of dates){
+    const grp=groups[date];
+    body+=`<tr style="background:rgba(0,0,0,.04)"><td colspan=4 style="padding:6px 10px;font-weight:700;font-size:13px;color:#374151">📅 ${esc(date)} <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:4px">${grp.length} ta fayl</span></td></tr>`;
+    for(const r of grp){
+      let isCurrent=r.is_current||FILES_CURRENT[r.type]===r.id;
+      let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
+      let icon=TYPE_ICONS[r.type]||"📄";
+      let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteFileEntry('${esc(r.id)}','${esc(r.filename)}')" title="O'chirish">🗑</button>${!isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentFile('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:""
+      let viewBtn=`<button class="light" style="font-size:12px" onclick="showFileData('${esc(r.id)}','${esc(r.type)}','${esc(r.label||r.type)}')" title="Ko'rish">👁 Ko'rish</button>`;
+      body+=`<tr><td class=num style="padding-left:20px">${icon} <b>${esc(r.label||r.type)}</b>${badge}</td><td class=text colspan=2 title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${viewBtn}${adminBtns}</div></td></tr>`;
+    }
+  }
+  return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>${FILES_ARCHIVE.length} ta fayl, ${dates.length} ta sana.</div><table class="fixed-table compact-archive"><colgroup><col style="width:200px"><col><col style="width:1px"><col style="width:170px"></colgroup><tbody>${body}</tbody></table></div>`;
 }
 async function deleteArchiveEntry(id,date){
   if(!confirm(`"${date}" arxiv yozuvini o'chirasizmi?`))return;
