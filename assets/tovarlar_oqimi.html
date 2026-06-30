@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>O'zbekistonga tovarlar oqimi</title>
+<title>IBK Dashboard — Tovarlar oqimi</title>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <style>
@@ -29,6 +29,8 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
   </div>
   <div id="legendPanel" class="gp" style="bottom:26px;left:26px;padding:15px 16px;width:286px;display:flex;flex-direction:column;gap:6px"></div>
   <div id="statPanel" class="gp" style="bottom:26px;right:26px;padding:16px 20px;min-width:232px"></div>
+  <div id="datePanel" class="gp" style="top:130px;right:26px;padding:12px 14px;min-width:180px"></div>
+  <div id="zoomPanel" style="position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:20"></div>
   <div id="tip"></div>
 </div>
 
@@ -128,6 +130,10 @@ const S = {
   flows: [],
   origins: [],
   dateLabel: '',
+  available: [],
+  selectedDate: '',
+  mapZoom: 1,
+  mapPan: [0, 0],
   aviaTotal: 0,
   temirTotal: 0,
   avtoTotal: 0,
@@ -145,7 +151,8 @@ function proj() {
   if (S.view === 'globe') {
     return d3.geoOrthographic().scale(m * 0.46).translate([W / 2, H / 2]).rotate(S.rotate).clipAngle(90);
   }
-  return d3.geoMercator().fitExtent([[18, 18], [W - 18, H - 18]], region);
+  const base = d3.geoMercator().fitExtent([[18, 18], [W - 18, H - 18]], region);
+  return d3.geoMercator().scale(base.scale() * S.mapZoom).translate([base.translate()[0] + S.mapPan[0], base.translate()[1] + S.mapPan[1]]);
 }
 
 // ── Build flows ─────────────────────────────────────────────────────────────
@@ -410,26 +417,42 @@ function bindCanvas() {
   cv.style.cursor = 'grab';
   const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   cv.addEventListener('pointerdown', e => {
-    if (S.view !== 'globe') return;
-    S.drag = { x: e.clientX, y: e.clientY, r: [...S.rotate] };
+    if (S.view === 'globe') {
+      S.drag = { x: e.clientX, y: e.clientY, r: [...S.rotate], mode: 'globe' };
+    } else {
+      S.drag = { x: e.clientX, y: e.clientY, p: [...S.mapPan], mode: 'map' };
+    }
     try { cv.setPointerCapture(e.pointerId); } catch {}
     cv.style.cursor = 'grabbing'; hideTip();
   });
   cv.addEventListener('pointermove', e => {
     if (S.drag) {
       const dx = e.clientX - S.drag.x, dy = e.clientY - S.drag.y;
-      S.rotate = [S.drag.r[0] + dx * 0.32, Math.max(-82, Math.min(82, S.drag.r[1] - dy * 0.32))];
+      if (S.drag.mode === 'globe') {
+        S.rotate = [S.drag.r[0] + dx * 0.32, Math.max(-82, Math.min(82, S.drag.r[1] - dy * 0.32))];
+      } else {
+        S.mapPan = [S.drag.p[0] + dx, S.drag.p[1] + dy];
+        draw();
+      }
     } else { hitTest(...pos(e)); }
   });
   const up = () => {
     if (S.drag) {
-      S.baseRot = [...S.rotate]; S.phase = 0; S.drag = null;
+      if (S.drag.mode === 'globe') { S.baseRot = [...S.rotate]; S.phase = 0; }
+      S.drag = null;
       cv.style.cursor = 'grab';
     }
   };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
   cv.addEventListener('pointerleave', hideTip);
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (S.view === 'globe') return;
+    const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+    S.mapZoom = Math.max(0.6, Math.min(10, S.mapZoom * factor));
+    draw();
+  }, { passive: false });
 }
 
 // ── Panels ─────────────────────────────────────────────────────────────────
@@ -443,7 +466,7 @@ function renderPanels() {
   const accent = dark ? '#3b82f6' : '#2563eb';
 
   // Apply glass to panel containers
-  for (const id of ['titlePanel','legendPanel','statPanel']) {
+  for (const id of ['titlePanel','legendPanel','statPanel','datePanel']) {
     const el = document.getElementById(id);
     if (!el) continue;
     Object.assign(el.style, { background: glass, border, boxShadow: shadow, color: txt });
@@ -457,9 +480,9 @@ function renderPanels() {
   // Title panel
   const dateStr = S.dateLabel || '—';
   document.getElementById('titlePanel').innerHTML = `
-    <div style="font-size:10px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:5px">IBK · Toshkent-Aero</div>
-    <div style="font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;color:${txt};white-space:nowrap">Tovarlar oqimi · Davlatlar kesimida</div>
-    <div style="font-size:11px;color:${sub};margin-top:5px;line-height:1.4">Yil boshidan ${dateStr} holatiga · ming $</div>`;
+    <div style="font-size:10px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:5px">IBK Dashboard · Toshkent-Aero</div>
+    <div style="font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;color:${txt};white-space:nowrap">IBKga tovarlar oqimi</div>
+    <div style="font-size:11px;color:${sub};margin-top:5px;line-height:1.4">${dateStr} holati · ming $</div>`;
 
   // Seg buttons helper
   const segBase = `appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap`;
@@ -471,6 +494,34 @@ function renderPanels() {
   document.getElementById('themeSeg').innerHTML = `
     <button style="${seg(S.theme==='dark')};font-size:15px;padding:6px 13px" onclick="setTheme('dark')">🌙</button>
     <button style="${seg(S.theme==='light')};font-size:15px;padding:6px 13px" onclick="setTheme('light')">☀</button>`;
+
+  // Date selector panel
+  const dp = document.getElementById('datePanel');
+  if (dp) {
+    if (S.available && S.available.length > 1) {
+      const opts = S.available.map(d => `<option value="${d}"${d===S.selectedDate?' selected':''}>${d}</option>`).join('');
+      dp.style.display = '';
+      dp.innerHTML = `<div style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${sub};margin-bottom:6px">ARXIV SANASI</div>
+        <select onchange="loadDataForDate(this.value)" style="width:100%;border:none;border-radius:8px;padding:6px 8px;font-size:12.5px;font-weight:600;background:${dark?'rgba(255,255,255,0.07)':'rgba(20,40,80,0.06)'};color:${txt};cursor:pointer;outline:none">${opts}</select>`;
+    } else {
+      dp.style.display = 'none';
+    }
+  }
+
+  // Zoom buttons (map view only)
+  const zp = document.getElementById('zoomPanel');
+  if (zp) {
+    if (S.view === 'map') {
+      const zbtn = `appearance:none;border:none;cursor:pointer;width:34px;height:34px;border-radius:8px;font-size:18px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;background:${glass};color:${txt};border:${border};box-shadow:${shadow};transition:all .15s`;
+      zp.style.display = 'flex';
+      zp.innerHTML = `
+        <button style="${zbtn}" onclick="mapZoom(1.3)" title="Zoom in">+</button>
+        <button style="${zbtn}" onclick="mapZoom(1/1.3)" title="Zoom out">−</button>
+        <button style="${zbtn};font-size:12px;width:auto;padding:0 10px" onclick="mapReset()" title="Tasvirni tiklash">↺</button>`;
+    } else {
+      zp.style.display = 'none';
+    }
+  }
 
   // Transport legend
   const legBase = `display:flex;align-items:center;gap:10px;width:100%;appearance:none;cursor:pointer;padding:9px 11px;border-radius:11px;font-size:13.5px;font-weight:600;transition:all .15s;text-align:left`;
@@ -535,53 +586,66 @@ function toggleTransport(key) {
 }
 
 // ── Data loading ───────────────────────────────────────────────────────────
+let _trData = {};
+
+function mapZoom(factor) {
+  S.mapZoom = Math.max(0.6, Math.min(10, S.mapZoom * factor));
+  draw();
+}
+function mapReset() {
+  S.mapZoom = 1; S.mapPan = [0, 0]; draw();
+}
+
+function _processCountries(countries) {
+  let aviaSum = 0, temirSum = 0, avtoSum = 0;
+  S.origins = [];
+  for (const c of countries) {
+    const coord = getCoord(c.name);
+    if (!coord) continue;
+    const totalMln = (c.qiymat || 0) / 1e6;
+    if (totalMln < 0.001) continue;
+    const tr = _trData[c.name] || {};
+    const trW = tr.transports || {};
+    const aviaW = trW['Avia'] || 0;
+    const temirW = trW["Temir yo'l"] || 0;
+    const totalW = aviaW + temirW;
+    let avia = 0, temir = 0;
+    if (totalW > 0) {
+      avia = totalMln * (aviaW / totalW);
+      temir = totalMln * (temirW / totalW);
+    } else if (tr.dominant === "Temir yo'l") {
+      temir = totalMln;
+    } else {
+      avia = totalMln;
+    }
+    aviaSum += avia; temirSum += temir;
+    S.origins.push({ name: c.name, coord, Avia: avia, "Temir yo'l": temir, Avto: 0 });
+  }
+  S.aviaTotal = aviaSum; S.temirTotal = temirSum; S.avtoTotal = avtoSum;
+  buildFlows();
+}
+
+async function loadDataForDate(date) {
+  S.selectedDate = date;
+  try {
+    const flowData = await fetch(`/api/country_flow?token=${TOKEN}&date=${encodeURIComponent(date)}`).then(r => r.json()).catch(() => ({ countries: [], date: '' }));
+    S.dateLabel = flowData.date || date;
+    _processCountries(flowData.countries || []);
+  } catch (e) { console.error('loadDataForDate:', e); }
+  renderPanels();
+}
+
 async function loadData() {
   try {
     const [flowData, trData] = await Promise.all([
-      fetch(`/api/country_flow?token=${TOKEN}`).then(r => r.json()).catch(() => ({ countries: [], date: '' })),
+      fetch(`/api/country_flow?token=${TOKEN}`).then(r => r.json()).catch(() => ({ countries: [], date: '', available: [] })),
       fetch(`/api/country_transport?token=${TOKEN}`).then(r => r.json()).catch(() => ({})),
     ]);
-
+    _trData = trData;
     S.dateLabel = flowData.date || '';
-    const countries = flowData.countries || [];
-
-    let aviaSum = 0, temirSum = 0, avtoSum = 0;
-    S.origins = [];
-
-    for (const c of countries) {
-      const coord = getCoord(c.name);
-      if (!coord) continue;
-
-      const totalMln = (c.qiymat || 0) / 1e6;
-      if (totalMln < 0.001) continue;
-
-      const tr = trData[c.name] || {};
-      const trW = tr.transports || {};
-      const aviaW = trW['Avia'] || 0;
-      const temirW = trW["Temir yo'l"] || 0;
-      const totalW = aviaW + temirW;
-
-      let avia = 0, temir = 0;
-      if (totalW > 0) {
-        avia = totalMln * (aviaW / totalW);
-        temir = totalMln * (temirW / totalW);
-      } else if (tr.dominant === "Temir yo'l") {
-        temir = totalMln;
-      } else {
-        avia = totalMln;
-      }
-
-      aviaSum += avia;
-      temirSum += temir;
-
-      S.origins.push({ name: c.name, coord, Avia: avia, "Temir yo'l": temir, Avto: 0 });
-    }
-
-    S.aviaTotal = aviaSum;
-    S.temirTotal = temirSum;
-    S.avtoTotal = avtoSum;
-
-    buildFlows();
+    S.available = flowData.available || [];
+    S.selectedDate = flowData.date || '';
+    _processCountries(flowData.countries || []);
   } catch (e) {
     console.error('loadData:', e);
   }
