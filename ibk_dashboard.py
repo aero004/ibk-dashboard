@@ -1048,6 +1048,57 @@ def _extract_if_archive(path: Path, tmp_dir: Path) -> Path:
     return path
 
 
+
+def _detect_file_type_py(name: str) -> str:
+    n = re.sub(r"\s+", "", name.lower())
+    if re.search(r"reestri|omborlar", n): return "ombor"
+    if re.search(r"depozit|deposit", n): return "depozit"
+    if re.search(r"qabul|awb|avia", n): return "avia"
+    if re.search(r"yaroqlilik", n): return "yaroqlilik"
+    if re.search(r"vaqtincha|im42|ek12", n): return "vaqtincha"
+    if re.search(r"tolov|payment", n): return "tolov"
+    if re.search(r"avtotaqsimot", n): return "avtotaqsimot"
+    return "bnrte"
+
+
+def _extract_all_from_archive(path: Path, tmp_dir: Path) -> list:
+    ext = path.suffix.lower()
+    extracted = []
+    if ext == ".zip":
+        with zipfile.ZipFile(path) as zf:
+            names = [n for n in zf.namelist()
+                     if Path(n).suffix.lower() in _VALID_INNER
+                     and not n.startswith("__MACOSX")]
+            for n in names:
+                zf.extract(n, tmp_dir)
+                p = tmp_dir / n
+                flat = tmp_dir / Path(n).name
+                if p != flat and p.exists():
+                    flat.write_bytes(p.read_bytes())
+                    p.unlink(missing_ok=True)
+                extracted.append(flat)
+        path.unlink(missing_ok=True)
+        return extracted
+    if ext == ".rar":
+        try:
+            import rarfile
+            with rarfile.RarFile(path) as rf:
+                names = [n for n in rf.namelist()
+                         if Path(n).suffix.lower() in _VALID_INNER]
+                for n in names:
+                    rf.extract(n, tmp_dir)
+                    p = tmp_dir / n
+                    flat = tmp_dir / Path(n).name
+                    if p != flat and p.exists():
+                        flat.write_bytes(p.read_bytes())
+                        p.unlink(missing_ok=True)
+                    extracted.append(flat)
+            path.unlink(missing_ok=True)
+            return extracted
+        except ImportError:
+            raise ValueError("RAR qo'llab-quvvatlanmaydi: 'pip install rarfile' va unrar.exe kerak")
+    return []
+
 def _zip_to_sources(src: Path, report_date: datetime) -> None:
     try:
         zip_name = f"{report_date.strftime('%Y.%m.%d')}_{src.stem}.zip"
@@ -4317,6 +4368,7 @@ async function chunkedUpload(file,onProgress){
   }finally{_uploadActive=false;}
 }
 function detectFileType(name){
+  if(/\.(zip|rar)$/i.test(name))return '_archive';
   const n=name.toLowerCase().replace(/\s+/g,'');
   if(/reestri|omborlar/.test(n))return 'ombor';
   if(/depozit|deposit/.test(n))return 'depozit';
@@ -4337,7 +4389,7 @@ const FILE_TYPE_LABELS={
   avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',vaqtincha:'🔄 Vaqtincha IM42/EK12',tolov:'💰 To\'lovlar',
   korik_holatlar:"🔍 Ko'riklar va holatlar",korik_vaqt:"⏱️ Ko'rik sarflangan vaqt",
   bko_postlar:'📑 BKO postlar',bko_xodimlar:'📑 BKO xodimlar',bko_rasmiy:'📑 BKO rasmiylashtirilgan',
-  avtotaqsimot:'🚗 Avtotaqsimot'
+  avtotaqsimot:'🚗 Avtotaqsimot',_archive:'📦 ZIP/RAR Arxiv'
 };
 let _unifiedFiles=[];
 function removeUnifiedFile(i){_unifiedFiles.splice(i,1);handleUnifiedDrop(_unifiedFiles);}
@@ -4350,6 +4402,7 @@ function handleUnifiedDrop(files){
     const t=detectFileType(f.name);
     const lbl=FILE_TYPE_LABELS[t]||t;
     const sz=(f.size/1024/1024).toFixed(1)+' MB';
+    if(t==='_archive'){return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:7px;margin-bottom:5px"><span style="font-size:13px;font-weight:600;color:#92400e">📦 ${esc(f.name)}</span><span style="font-size:12px;color:#78350f">${sz} — tarkibi server tomonidan aniqlanadi</span><button onclick="removeUnifiedFile(${i})" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:16px;color:#6b7280;padding:0 4px">✕</button></div>`;}
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;margin-bottom:5px">
       <select onchange="_unifiedFiles[${i}]._type=this.value" style="font-size:12px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px">
         ${['bnrte','depozit','ombor','avia','yaroqlilik','vaqtincha','tolov','korik_holatlar','korik_vaqt','bko_postlar','bko_xodimlar','bko_rasmiy','avtotaqsimot'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
@@ -4423,6 +4476,21 @@ async function runUnifiedUpload(btn){
         const j=await api(EP[t],{method:'POST',body:fd});
         if(j.ok){results.push(`✓ ${FILE_TYPE_LABELS[t]}: saqlandi${j.rows!=null?' ('+j.rows+' qator)':''}`);await loadFilesArchive();}
         else results.push(`✗ ${esc(f.name)}: ${j.error||'Xatolik'}`);
+      }else if(t==='_archive'){
+        const info=await chunkedUpload(f,p=>showUploadProgress(`Arxiv: ${Math.round(p*100)}%`,Math.round((i+p)/_unifiedFiles.length*100)));
+        const j=await api('/api/chunk_finalize_archive',{method:'POST',body:JSON.stringify(info)});
+        if(j.results){
+          for(const r of j.results){
+            if(r.job_id){
+              if(r.type==='bnrte')poll(r.job_id);
+              else if(r.type==='ombor')pollWr(r.job_id,null,null);
+              else if(r.type==='avia')pollAvia(r.job_id,null,null);
+              else if(r.type==='vaqtincha')pollVaqtincha(r.job_id);
+            }
+          }
+          const cnt=j.results.filter(r=>r.job_id).length;
+          results.push(`✓ Arxiv: ${cnt} ta fayl qayta ishlanmoqda (${j.results.length} jami)`);
+        }else{results.push(`✗ Arxiv: ${j.error||'Xatolik'}`);}
       }else if(t!=='_done'){
         results.push(`⏭ ${f.name}: o'tkazib yuborildi`);
       }
@@ -5151,7 +5219,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/chunk_finalize_vaqtincha", "/api/server_info"):
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/chunk_finalize_vaqtincha", "/api/chunk_finalize_archive", "/api/server_info"):
             allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
             if allowed:
@@ -6105,6 +6173,95 @@ class Handler(BaseHTTPRequestHandler):
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_vaqtincha, daemon=True).start()
             self.json({"job_id": job_id, "type": "vaqtincha"}, cors=True)
+            return
+
+        if parsed.path == "/api/chunk_finalize_archive":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            job_id = "arc_" + str(int(time.time() * 1000))
+            tmp = UPLOAD_DIR / job_id
+            tmp.mkdir(parents=True, exist_ok=True)
+            arc_path = tmp / safe_name(filename)
+            with open(arc_path, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            try:
+                all_files = _extract_all_from_archive(arc_path, tmp)
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            if not all_files:
+                self.json({"error": "Arxivda mos fayl topilmadi (.xlsx/.xls/.html)"}, HTTPStatus.BAD_REQUEST)
+                return
+            results = []
+            for f in all_files:
+                ftype = _detect_file_type_py(f.name)
+                if ftype == "bnrte":
+                    try:
+                        report_date = report_date_from_name(f.name)
+                    except Exception:
+                        results.append({"file": f.name, "type": "bnrte", "error": "Sanani nomdan topib bolmadi"})
+                        continue
+                    jid = report_date.strftime("%Y%m%d_") + str(int(time.time() * 1000))
+                    JOBS[jid] = {"status": "navbatda", "data": None}
+                    _zip_to_sources(f, report_date)
+                    threading.Thread(target=run_job, args=(jid, f, None, report_date), daemon=True).start()
+                    results.append({"file": f.name, "type": "bnrte", "job_id": jid})
+                elif ftype == "ombor":
+                    jid = "wr_" + str(int(time.time() * 1000))
+                    JOBS[jid] = {"status": "Qayta ishlanmoqda"}
+                    def _wr(jj=jid, dp=f):
+                        j = ensure_job(jj)
+                        try:
+                            result = load_warehouse_registry(dp)
+                            j.update({"status": "tayyor", "wr_data": result})
+                        except Exception as exc:
+                            j["status"] = "xatolik"; j["error"] = str(exc)
+                    threading.Thread(target=_wr, daemon=True).start()
+                    results.append({"file": f.name, "type": "ombor", "job_id": jid})
+                elif ftype == "avia":
+                    jid = "avia_" + str(int(time.time() * 1000))
+                    JOBS[jid] = {"status": "Qayta ishlanmoqda"}
+                    def _av(jj=jid, dp=f):
+                        j = ensure_job(jj)
+                        try:
+                            result = load_avia_awb(dp)
+                            j.update({"status": "tayyor", "avia_data": result})
+                        except Exception as exc:
+                            j["status"] = "xatolik"; j["error"] = str(exc)
+                    threading.Thread(target=_av, daemon=True).start()
+                    results.append({"file": f.name, "type": "avia", "job_id": jid})
+                elif ftype == "vaqtincha":
+                    jid = "vaqtincha_" + str(int(time.time() * 1000))
+                    JOBS[jid] = {"status": "Qayta ishlanmoqda"}
+                    fname = f.name
+                    def _vt(jj=jid, dp=f, fn=fname):
+                        j = ensure_job(jj)
+                        try:
+                            raw = dp.read_bytes()
+                            result = parse_vaqtincha_xls(raw)
+                            save_vaqtincha(result)
+                            j.update({"status": "tayyor", "vaqtincha_data": result})
+                        except Exception as exc:
+                            j["status"] = "xatolik"; j["error"] = str(exc)
+                    threading.Thread(target=_vt, daemon=True).start()
+                    results.append({"file": f.name, "type": "vaqtincha", "job_id": jid})
+                else:
+                    results.append({"file": f.name, "type": ftype, "skipped": True})
+            self.json({"results": results}, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_deposit":
             if not self.require_perm("upload"):
