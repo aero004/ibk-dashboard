@@ -85,6 +85,9 @@ FILE_TYPE_LABELS = {
     "yaroqlilik": "Yaroqlilik",
     "vaqtincha": "IM42/EK12",
     "tolov": "To'lovlar",
+    "bko": "BKO",
+    "korik": "Ko'riklar",
+    "qayta_ishlash": "Qayta ishlash",
 }
 
 JOBS: dict[str, dict] = {}
@@ -4093,6 +4096,17 @@ async function ucRecalcTolov(btn){
     if($('ucTolovStatus'))$('ucTolovStatus').textContent=`Yangilandi: ${PAYMENTS.length} tur`;render();}
   catch(e){}finally{setBusy(btn,false)}
 }
+async function ucUploadGeneric(btn,inputId,statusId,apiPath,label){
+  let src=$(inputId),st=$(statusId);
+  if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
+  setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
+  let fd=new FormData();fd.append('file',src.files[0]);
+  try{
+    let j=await api(apiPath,{method:'POST',body:fd});
+    if(st)st.textContent=j.ok?`✓ ${label} arxivga saqlandi`:`Xatolik: ${esc(j.error||'')}`;
+    await loadFilesArchive();
+  }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
+}
 async function ucUploadWarehouse(btn){
   let src=$('ucWrFile'),st=$('ucWrStatus');
   if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
@@ -4168,6 +4182,9 @@ uploadPanel=function(){
 <div class="panel uc-card"><div class=uc-header><h2>🏢 Omborlar reestri</h2>${wrSt}</div><div class=uc-body><div class=uc-field><label>Reestri fayli (omborlarReestri*.xlsx)</label><input type=file id="ucWrFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadWarehouse(this)">Yuklash</button><button class="btn light" onclick="ucRecalcWarehouse(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucWrStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#0ea5e9"><div class=uc-header><h2>✈ AVIA AWB</h2><div style="display:flex;gap:6px;flex-wrap:wrap">${aviaSt} ${aviaDbSt}</div></div><div class=uc-note>AWB Excel (Yuklarni qabul qilish.xlsx) → AWB ro'yxati, joylar, vazn. Qiymat (ming $) BNRTE asos faylidan olinadi — yangilash uchun BNRTE → Qayta hisoblash.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>AWB Excel (Yuklarni qabul qilish*.xlsx)</label><input type=file id="ucAviaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadAvia(this)">Yuklash</button><button class="btn light" onclick="ucRecalcAvia(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucAviaStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#e8560a"><div class=uc-header><h2>⚠ Iste'mol muddati tahlili</h2>${yarSt}</div><div class=uc-note>yaroqlilik_muddati_tahlili.xlsx yoki yaroqlilik_1_oy_ichida.xlsx — muddati o'tgan va yaqinda tugaydigan tovarlar.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>Yaroqlilik Excel fayli</label><input type=file id="ucYarFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadYaroqlilik(this)">Yuklash</button></div></div><div class=muted id="ucYarStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card" style="border-left-color:#059669"><div class=uc-header><h2>📑 BKO</h2></div><div class=uc-body><div class=uc-field><label>BKO Excel fayli (xlsx)</label><input type=file id="ucBkoFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucBkoFile','ucBkoStatus','/api/upload_bko','BKO')">Yuklash</button></div></div><div class=muted id="ucBkoStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card" style="border-left-color:#d97706"><div class=uc-header><h2>🔍 Ko'riklar</h2></div><div class=uc-body><div class=uc-field><label>Ko'riklar Excel fayli (xlsx)</label><input type=file id="ucKorikFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucKorikFile','ucKorikStatus','/api/upload_korik','Ko\\'riklar')">Yuklash</button></div></div><div class=muted id="ucKorikStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card" style="border-left-color:#7c3aed"><div class=uc-header><h2>♻ Qayta ishlash</h2></div><div class=uc-body><div class=uc-field><label>Qayta ishlash Excel fayli (xlsx)</label><input type=file id="ucQaytaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucQaytaFile','ucQaytaStatus','/api/upload_qayta','Qayta ishlash')">Yuklash</button></div></div><div class=muted id="ucQaytaStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>📚 Yillik arxivni birdan yuklash</h2></div><div class=uc-note>Bir vaqtning o'zida bir nechta asos fayl tanlanadi. Fayllar navbatga qo'shiladi va server mustaqil qayta hisoblab chiqadi — admin kutib o'tirmasligi kerak. Fayl sanasi nom ichidan avtomatik aniqlanadi.</div><form id="bulkUpload"><div class=uc-body><div class=uc-field><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div><div class=uc-btns><button>Hammasini yuklash</button></div></div></form><div id=bulkResult class=muted style="margin-top:8px">Fayllar tanlanmagan.</div></div>
 </div>`;
 }
@@ -5870,6 +5887,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(result)
             except Exception as exc:
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if parsed.path in ("/api/upload_bko", "/api/upload_korik", "/api/upload_qayta"):
+            if not self.require_perm("upload"):
+                return
+            type_map = {"/api/upload_bko": "bko", "/api/upload_korik": "korik", "/api/upload_qayta": "qayta_ishlash"}
+            ftype = type_map[parsed.path]
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            if "file" not in form or not form["file"].get("filename"):
+                self.json({"error": "Excel fayl kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                add_file_to_archive(ftype, form["file"]["filename"], {}, form["file"]["content"])
+                self.json({"ok": True, "type": ftype})
+            except Exception as exc:
+                self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
         if parsed.path == "/api/archive/delete":
             if not self.require_admin():
