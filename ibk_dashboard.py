@@ -4204,14 +4204,7 @@ async function chunkedUpload(file,onProgress,signal){
   }
   const base=DIRECT_UPLOAD_URL||'';
   const isLAN=!!DIRECT_UPLOAD_URL;
-  let uploadSrc=file,compressed=false;
-  if(!isLAN&&window.CompressionStream){
-    try{
-      const ab=await new Response(file.stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
-      uploadSrc=new Blob([ab],{type:'application/octet-stream'});
-      compressed=true;
-    }catch{uploadSrc=file;compressed=false;}
-  }
+  const uploadSrc=file,compressed=false;
   const CHUNK=isLAN?1024*1024:4*1024*1024;
   const total=Math.max(1,Math.ceil(uploadSrc.size/CHUNK));
   const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
