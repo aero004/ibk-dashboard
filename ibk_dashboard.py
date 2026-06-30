@@ -3991,7 +3991,8 @@ function compactFilesArchivePanel(isAdmin){
     let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
     let icon=TYPE_ICONS[r.type]||"📄";
     let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteFileEntry('${esc(r.id)}','${esc(r.filename)}')" title="O'chirish">🗑</button>${!isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentFile('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:""
-    return `<tr><td class=num>${esc(r.date)}${badge}</td><td class=text>${icon} <b>${esc(r.label||r.type)}</b></td><td class=text title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${adminBtns}</div></td></tr>`;
+    let viewBtn=`<button class="light" style="font-size:12px" onclick="showFileData('${esc(r.id)}','${esc(r.type)}','${esc(r.label||r.type)}')" title="Ko'rish">👁 Ko'rish</button>`;
+    return `<tr><td class=num>${esc(r.date)}${badge}</td><td class=text>${icon} <b>${esc(r.label||r.type)}</b></td><td class=text title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${viewBtn}${adminBtns}</div></td></tr>`;
   }).join("");
   return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>${FILES_ARCHIVE.length} ta fayl. Joriy — sahifa ochilganda yuklanadigan ma'lumot.</div><table class="fixed-table compact-archive"><colgroup><col style="width:110px"><col style="width:160px"><col><col style="width:160px"></colgroup><thead><tr><th>Sana</th><th>Tur</th><th>Fayl nomi</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -4025,6 +4026,58 @@ async function setCurrentFile(id){
     await loadFilesArchive();
     render();
   }catch(e){alert("Xatolik: "+e.message)}
+}
+async function showFileData(id,type,label){
+  try{
+    dlgTitle.textContent=label||type;
+    dlgBody.innerHTML='<div class=muted>Yuklanmoqda...</div>';
+    dlg.showModal();
+    const data=await api('/api/files_archive/data/'+id);
+    dlgBody.innerHTML=renderFileData(type,data);
+  }catch(e){dlgBody.innerHTML='<div class=muted>Xatolik: '+esc(String(e.message||e))+'</div>'}
+}
+function renderFileData(type,d){
+  if(type==='korik_holatlar')return _renderKorikHolatlar(d);
+  if(type==='korik_vaqt')return _renderKorikVaqt(d);
+  if(type==='bko_postlar'||type==='bko_xodimlar')return _renderBkoTabular(d,type);
+  if(type==='bko_rasmiy')return _renderBkoRasmiy(d);
+  if(type==='avtotaqsimot')return _renderAvtotaqsimot(d);
+  return '<div class=muted>Bu tur uchun ko\'rish mavjud emas</div>';
+}
+function _kpiRow(items){return `<div class="summary-grid" style="margin-bottom:12px">${items.map(k=>`<div class="summary-item"><b style="font-size:20px">${k.v}</b><span>${k.t}</span></div>`).join('')}</div>`}
+function _renderKorikHolatlar(d){
+  const rows=(d.rows||[]).map(r=>Object.assign({key:{},tafovut_bqb:r.tafovut+'/'+r.bqb},r));
+  const cols=[{k:'t_r',t:'T/R',n:1,f:fmtI,w:'38px'},{k:'xodim',t:'Xodim F.I.Sh',w:'220px'},{k:'post_nom',t:'Post nomi',w:'180px'},{k:'bkd',t:'BKD',n:1,f:fmtI,w:'60px'},{k:'kirish',t:'Kirish',n:1,f:fmtI,w:'58px'},{k:'chiqish',t:'Chiqish',n:1,f:fmtI,w:'58px'},{k:'tranzit',t:'Tranzit',n:1,f:fmtI,w:'58px'},{k:'tafovut_bqb',t:'Tafovut/BQB',w:'88px'}];
+  return _kpiRow([{t:'Jami BKD',v:fmtI(d.total_bkd||0)},{t:'Kirish',v:fmtI(d.total_kirish||0)},{t:'Chiqish',v:fmtI(d.total_chiqish||0)},{t:'Tranzit',v:fmtI(d.total_tranzit||0)},{t:'Tafovut',v:fmtI(d.total_tafovut||0)},{t:'BQB',v:fmtI(d.total_bqb||0)}])+table(cols,rows,'fixed-table');
+}
+function _renderKorikVaqt(d){
+  const insp={};
+  for(const r of d.rows||[]){
+    if(!insp[r.inspektor])insp[r.inspektor]={key:{},inspektor:r.inspektor,cnt:0,tot:0,mn:Infinity,mx:0};
+    const m=insp[r.inspektor];m.cnt++;m.tot+=r.sarflangan_vaqt||0;
+    if((r.sarflangan_vaqt||0)<m.mn)m.mn=r.sarflangan_vaqt||0;
+    if((r.sarflangan_vaqt||0)>m.mx)m.mx=r.sarflangan_vaqt||0;
+  }
+  const sRows=Object.values(insp).map(m=>Object.assign({avg:m.cnt?Math.round(m.tot/m.cnt):0},m)).sort((a,b)=>b.cnt-a.cnt);
+  const cols=[{k:'inspektor',t:'Inspektor F.I.Sh',w:'240px'},{k:'cnt',t:"Ko'riklar",n:1,f:fmtI,w:'80px'},{k:'avg',t:"O'rt. vaqt (daqiqa)",n:1,f:fmtI,w:'110px'},{k:'mn',t:'Min',n:1,f:fmtI,w:'60px'},{k:'mx',t:'Maks',n:1,f:fmtI,w:'60px'},{k:'tot',t:'Jami daqiqa',n:1,f:fmtI,w:'90px'}];
+  return _kpiRow([{t:"Jami ko'riklar",v:fmtI(d.total||0)},{t:'Inspektorlar',v:fmtI(sRows.length)}])+table(cols,sRows,'fixed-table');
+}
+function _renderBkoTabular(d,type){
+  const entityLbl=type==='bko_xodimlar'?'Xodim':'Post';
+  const cols=[{k:'t_r',t:'№',n:1,f:fmtI,w:'38px'},{k:'nom',t:entityLbl,w:'240px'},{k:'bko_soni',t:'BKO soni',n:1,f:fmtI,w:'80px'},{k:'summa',t:"Summa (so'm)",n:1,f:v=>fmtN(v),w:'170px'}];
+  const rows=(d.rows||[]).map(r=>Object.assign({key:{}},r));
+  const mlrd=(d.total_summa||0)/1e9;
+  return _kpiRow([{t:'Jami BKO',v:fmtI(d.total_bko||0)},{t:"Jami summa",v:mlrd.toFixed(2)+' mlrd so\'m'}])+table(cols,rows,'fixed-table');
+}
+function _renderBkoRasmiy(d){
+  const cols=[{k:'bko_raqami',t:'BKO raqami',w:'190px'},{k:'toluvchi_nom',t:"To'lovchi",w:'200px'},{k:'tovar_nomi',t:'Tovar nomi',w:'200px'},{k:'tovar_xususiyati',t:'Holati',w:'70px'},{k:'jami_summa',t:"Summa (so'm)",n:1,f:v=>fmtN(v),w:'130px'},{k:'xodim',t:'Xodim',w:'160px'},{k:'vaqti',t:'Vaqti',w:'130px'}];
+  const rows=(d.rows||[]).map(r=>Object.assign({key:{}},r));
+  return _kpiRow([{t:'Jami yozuvlar',v:fmtI(d.total||0)},{t:'Jami summa',v:fmtN((d.total_summa||0)/1e6)+' mln'}])+table(cols,rows,'fixed-table');
+}
+function _renderAvtotaqsimot(d){
+  const cols=[{k:'bkd_raqami',t:'BKD raqami',w:'200px'},{k:'taqsimlangan_xodim',t:'Taqsimlangan xodim',w:'200px'},{k:'taqsimlangan_vaqt',t:'Taqsimlash vaqti',w:'140px'},{k:'boshlangan_vaqt',t:'Boshlangan',w:'130px'},{k:'rasmiylashtirilgan_vaqt',t:'Rasmiylashtirilgan',w:'140px'},{k:'rasmiylashtirgan_xodim',t:'Rasmiylashtirgan xodim',w:'200px'}];
+  const rows=(d.rows||[]).map(r=>Object.assign({key:{}},r));
+  return _kpiRow([{t:'Jami taqsimot',v:fmtI(d.total||0)}])+table(cols,rows,'fixed-table');
 }
 const renderArchiveCompact=render;render=function(){
   renderArchiveCompact();
