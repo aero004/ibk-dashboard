@@ -3808,8 +3808,9 @@ function latinToUzCyr(s){
 function translateUzcPage(){
   if(LANG!=='uzc')return;
   _trWalk({"BNRTE":"БНРТЭ"});
+  const _CODE_RE=/\b[A-Z]{2,6}[0-9]{0,2}\b/g;
   function shouldConvert(t){if(!t.trim())return false;if(/^[\d\s.,:\-\/\.]+$/.test(t))return false;if(/^[A-Z0-9_\-]{1,8}$/.test(t.trim()))return false;if(/\.[a-z]{2,5}$/.test(t.trim()))return false;return /[a-zA-Z]{2,}/.test(t);}
-  function walk(el){if(!el)return;for(const n of [...el.childNodes]){if(n.nodeType===3){if(shouldConvert(n.textContent))n.textContent=latinToUzCyr(n.textContent);}else if(n.nodeType===1&&!['SCRIPT','STYLE','INPUT','TEXTAREA','SELECT'].includes(n.tagName)&&n.getAttribute('translate')!=='no')walk(n);}}
+  function walk(el){if(!el)return;for(const n of [...el.childNodes]){if(n.nodeType===3){if(shouldConvert(n.textContent)){const codes=[];let t=n.textContent.replace(_CODE_RE,m=>{codes.push(m);return '\uE000'+(codes.length-1)+'\uE001';});t=latinToUzCyr(t);n.textContent=codes.length?t.replace(/\uE000(\d+)\uE001/g,(_,i)=>codes[+i]):t;}}else if(n.nodeType===1&&!['SCRIPT','STYLE','INPUT','TEXTAREA','SELECT'].includes(n.tagName)&&n.getAttribute('translate')!=='no')walk(n);}}
   walk($('app'));
 }
 function translateRuPage(){
