@@ -608,18 +608,22 @@ function _processCountries(countries) {
     const trW = tr.transports || {};
     const aviaW = trW['Avia'] || 0;
     const temirW = trW["Temir yo'l"] || 0;
-    const totalW = aviaW + temirW;
-    let avia = 0, temir = 0;
+    const avtoW = trW['Avto'] || 0;
+    const totalW = aviaW + temirW + avtoW;
+    let avia = 0, temir = 0, avto = 0;
     if (totalW > 0) {
       avia = totalMln * (aviaW / totalW);
       temir = totalMln * (temirW / totalW);
+      avto = totalMln * (avtoW / totalW);
     } else if (tr.dominant === "Temir yo'l") {
       temir = totalMln;
+    } else if (tr.dominant === 'Avto') {
+      avto = totalMln;
     } else {
       avia = totalMln;
     }
-    aviaSum += avia; temirSum += temir;
-    S.origins.push({ name: c.name, coord, Avia: avia, "Temir yo'l": temir, Avto: 0 });
+    aviaSum += avia; temirSum += temir; avtoSum += avto;
+    S.origins.push({ name: c.name, coord, Avia: avia, "Temir yo'l": temir, Avto: avto });
   }
   S.aviaTotal = aviaSum; S.temirTotal = temirSum; S.avtoTotal = avtoSum;
   buildFlows();

@@ -377,36 +377,28 @@ class IBKStore:
         return {"periods": periods, "transports": transports}
 
     def country_transport_summary(self) -> dict[str, Any]:
-        """Har bir davlat uchun dominant transport turi (post ustunidan olinadi)."""
+        """Har bir davlat uchun transport turi breakdown (active_items.transport ustunidan)."""
         with self.connect() as conn:
             df = pd.read_sql_query(
                 """
-                SELECT a.country, a.post,
-                       SUM(a.weight) as weight
+                SELECT a.country, a.transport,
+                       SUM(a.weight) as weight, SUM(a.value) as value
                 FROM active_items a
-                WHERE a.country IS NOT NULL AND a.country != ''
-                  AND a.post    IS NOT NULL AND a.post    != ''
-                GROUP BY a.country, a.post
+                WHERE a.country   IS NOT NULL AND a.country   != ''
+                  AND a.transport IS NOT NULL AND a.transport != ''
+                GROUP BY a.country, a.transport
                 """,
                 conn,
             )
         if df.empty:
             return {}
 
-        def _post_transport(post: str) -> str:
-            p = str(post).lower()
-            if "temir" in p or "railroad" in p:
-                return "Temir yo'l"
-            # Toshkent-AERO aeroport bojxonasi: barcha postlar havo transporti
-            return "Avia"
-
-        df["transport"] = df["post"].apply(_post_transport)
         result: dict[str, Any] = {}
         for country, group in df.groupby("country"):
             transports: dict[str, float] = {}
             for _, row in group.iterrows():
-                t = row["transport"]
-                transports[t] = transports.get(t, 0.0) + float(row["weight"])
+                t = str(row["transport"])
+                transports[t] = transports.get(t, 0.0) + float(row["weight"] or 0)
             dominant = max(transports, key=lambda k: transports[k])
             result[str(country)] = {"dominant": dominant, "transports": transports}
         return result
