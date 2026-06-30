@@ -4207,11 +4207,7 @@ async function chunkedUpload(file,onProgress,signal){
   let uploadSrc=file,compressed=false;
   if(!isLAN&&window.CompressionStream){
     try{
-      const cs=new CompressionStream('gzip');
-      const w=cs.writable.getWriter();
-      await w.write(await file.arrayBuffer());
-      await w.close();
-      const ab=await new Response(cs.readable).arrayBuffer();
+      const ab=await new Response(file.stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
       uploadSrc=new Blob([ab],{type:'application/octet-stream'});
       compressed=true;
     }catch{uploadSrc=file;compressed=false;}
