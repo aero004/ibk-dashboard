@@ -602,8 +602,8 @@ function _processCountries(countries) {
   for (const c of countries) {
     const coord = getCoord(c.name);
     if (!coord) continue;
-    const totalMln = (c.qiymat || 0) / 1e6;
-    if (totalMln < 0.001) continue;
+    const totalMln = (c.qiymat || 0) / 1000;  // ming$ → mln$
+    if (totalMln < 0.01) continue;
     const tr = _trData[c.name] || {};
     const trW = tr.transports || {};
     const aviaW = trW['Avia'] || 0;
