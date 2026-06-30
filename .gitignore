@@ -2,9 +2,14 @@
 __pycache__/
 *.pyc
 
-# Katta ma'lumot fayllari
+# Ma'lumotlar (serverda lokal saqlanadi, git orqali o'chirilmasin)
 data/reports/
+data/uploads/
 data/*.xlsx
+data/archive.json
+data/files_archive.json
+data/sessions.json
+data/ibk_dashboard.sqlite3
 
 # Vaqtinchalik
 artifacts_json/
