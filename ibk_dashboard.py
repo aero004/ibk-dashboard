@@ -4183,9 +4183,6 @@ async function refreshCurrentReport(btn){
 }
 async function chunkedUpload(file,onProgress){
   _uploadActive=true;
-  const CHUNK=1024*1024;
-  const total=Math.max(1,Math.ceil(file.size/CHUNK));
-  const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   if(DIRECT_UPLOAD_URL===null){
     try{
       const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN}}).then(r=>r.json());
@@ -4195,7 +4192,10 @@ async function chunkedUpload(file,onProgress){
   }
   const base=DIRECT_UPLOAD_URL||'';
   const isLAN=!!DIRECT_UPLOAD_URL;
-  const PARALLEL=isLAN?4:3;
+  const CHUNK=isLAN?1024*1024:4*1024*1024;
+  const total=Math.max(1,Math.ceil(file.size/CHUNK));
+  const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const PARALLEL=isLAN?4:2;
   const MAX_RETRY=6;
   let done=0;
   async function uploadOne(i){
