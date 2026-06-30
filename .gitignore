@@ -10,6 +10,9 @@ data/archive.json
 data/files_archive.json
 data/sessions.json
 data/ibk_dashboard.sqlite3
+data/manbalar/
+data/chunks/
+data/users.json
 
 # Vaqtinchalik
 artifacts_json/
