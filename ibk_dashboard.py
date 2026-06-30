@@ -14,7 +14,7 @@ import traceback
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import Request, urlopen
@@ -85,9 +85,12 @@ FILE_TYPE_LABELS = {
     "yaroqlilik": "Yaroqlilik",
     "vaqtincha": "IM42/EK12",
     "tolov": "To'lovlar",
-    "bko": "BKO",
-    "korik": "Ko'riklar",
-    "qayta_ishlash": "Qayta ishlash",
+    "bko_postlar": "BKO — postlar kesimida",
+    "bko_xodimlar": "BKO — xodimlar kesimida",
+    "bko_rasmiy": "BKO — rasmiylashtirilgan",
+    "korik_holatlar": "Ko'riklar va holatlar",
+    "korik_vaqt": "Ko'rik — sarflangan vaqt",
+    "avtotaqsimot": "Avtotaqsimot",
 }
 
 JOBS: dict[str, dict] = {}
@@ -1107,6 +1110,200 @@ def add_file_to_archive(file_type: str, filename: str, data: dict, excel_bytes: 
     archive["files"] = files
     save_json(INDEX_PATH, archive)
     return record
+
+
+BKO_PAYMENT_CODES = ["10", "20", "27", "29", "30", "40", "41", "44", "45", "46", "50", "51", "52", "53", "54"]
+
+
+def _safe_int(v) -> int:
+    try:
+        return int(float(str(v)))
+    except Exception:
+        return 0
+
+
+def _safe_float(v) -> float:
+    try:
+        return float(str(v).replace(" ", "").replace("\xa0", ""))
+    except Exception:
+        return 0.0
+
+
+def _safe_str(v) -> str:
+    if v is None or (isinstance(v, float) and v != v):
+        return ""
+    return str(v).strip()
+
+
+def _row_valid(a) -> bool:
+    try:
+        return int(float(str(a))) > 0
+    except Exception:
+        return False
+
+
+def parse_korik_holatlar(file_bytes: bytes) -> dict:
+    df = pd.read_excel(BytesIO(file_bytes), header=0, engine="openpyxl")
+    rows = []
+    for _, row in df.iterrows():
+        if not _row_valid(row.iloc[0]):
+            continue
+        j_val = _safe_str(row.iloc[9])
+        parts = j_val.replace("\\", "/").split("/")
+        try:
+            tafovut = int(parts[0])
+        except Exception:
+            tafovut = 0
+        try:
+            bqb = int(parts[1])
+        except Exception:
+            bqb = 0
+        rows.append({
+            "t_r": _safe_int(row.iloc[0]),
+            "hudud": _safe_str(row.iloc[1]),
+            "post_kod": _safe_str(row.iloc[2]),
+            "post_nom": _safe_str(row.iloc[3]),
+            "xodim": _safe_str(row.iloc[4]),
+            "bkd": _safe_int(row.iloc[5]),
+            "kirish": _safe_int(row.iloc[6]),
+            "chiqish": _safe_int(row.iloc[7]),
+            "tranzit": _safe_int(row.iloc[8]),
+            "tafovut": tafovut,
+            "bqb": bqb,
+        })
+    return {
+        "rows": rows,
+        "total_bkd": sum(r["bkd"] for r in rows),
+        "total_kirish": sum(r["kirish"] for r in rows),
+        "total_chiqish": sum(r["chiqish"] for r in rows),
+        "total_tranzit": sum(r["tranzit"] for r in rows),
+        "total_tafovut": sum(r["tafovut"] for r in rows),
+        "total_bqb": sum(r["bqb"] for r in rows),
+    }
+
+
+def parse_korik_vaqt(file_bytes: bytes) -> dict:
+    df = pd.read_excel(BytesIO(file_bytes), header=0, engine="openpyxl")
+    rows = []
+    for _, row in df.iterrows():
+        if not _row_valid(row.iloc[0]):
+            continue
+        rows.append({
+            "t_r": _safe_int(row.iloc[0]),
+            "post_kod": _safe_str(row.iloc[1]),
+            "bkd_raqami": _safe_str(row.iloc[2]),
+            "byud_raqami": _safe_str(row.iloc[3]),
+            "rejim": _safe_str(row.iloc[4]),
+            "ombor": _safe_str(row.iloc[5]),
+            "stir": _safe_str(row.iloc[6]),
+            "ishtirokchi": _safe_str(row.iloc[7]),
+            "inspektor": _safe_str(row.iloc[8]),
+            "inspektor_soni": _safe_int(row.iloc[9]),
+            "boshlangan_sana": _safe_str(row.iloc[10]),
+            "boshlangan_vaqt": _safe_str(row.iloc[11]),
+            "tugagan_sana": _safe_str(row.iloc[12]),
+            "tugagan_vaqt": _safe_str(row.iloc[13]),
+            "sarflangan_vaqt": _safe_int(row.iloc[14]),
+        })
+    return {"rows": rows, "total": len(rows)}
+
+
+def parse_bko_tabular(file_bytes: bytes) -> dict:
+    df = pd.read_excel(BytesIO(file_bytes), header=1, engine="openpyxl")
+    rows = []
+    for _, row in df.iterrows():
+        if not _row_valid(row.iloc[0]):
+            continue
+        payments = {}
+        for idx, code in enumerate(BKO_PAYMENT_CODES):
+            col_i = 4 + idx
+            payments[code] = _safe_float(row.iloc[col_i]) if col_i < len(row) else 0.0
+        rows.append({
+            "t_r": _safe_int(row.iloc[0]),
+            "nom": _safe_str(row.iloc[1]),
+            "bko_soni": _safe_int(row.iloc[2]),
+            "summa": _safe_float(row.iloc[3]),
+            "payments": payments,
+        })
+    return {
+        "rows": rows,
+        "total_bko": sum(r["bko_soni"] for r in rows),
+        "total_summa": sum(r["summa"] for r in rows),
+    }
+
+
+def parse_bko_rasmiy(file_bytes: bytes) -> dict:
+    df = pd.read_excel(BytesIO(file_bytes), header=1, engine="openpyxl")
+    rows = []
+    for _, row in df.iterrows():
+        if not _row_valid(row.iloc[0]):
+            continue
+
+        def s(i: int) -> str:
+            return _safe_str(row.iloc[i]) if i < len(row) else ""
+
+        def f(i: int) -> float:
+            return _safe_float(row.iloc[i]) if i < len(row) else 0.0
+
+        rows.append({
+            "t_r": _safe_int(row.iloc[0]),
+            "bko_raqami": s(1),
+            "stir": s(2),
+            "shaxs_toifasi": s(3),
+            "toluvchi_nom": s(4),
+            "bko_shakli": s(5),
+            "bko_turi": s(6),
+            "tovar_nomi": s(9),
+            "kelib_chiqish": s(11),
+            "valyuta_kod": s(12),
+            "qiymat_usd": f(16),
+            "brutto": f(17),
+            "miqdori": f(19),
+            "tovar_xususiyati": s(21),
+            "jami_summa": f(67),
+            "vaqti": s(68),
+            "xodim": s(69),
+        })
+    return {
+        "rows": rows,
+        "total": len(rows),
+        "total_summa": sum(r["jami_summa"] for r in rows),
+    }
+
+
+def parse_avtotaqsimot(file_bytes: bytes) -> dict:
+    def _from_df(df: "pd.DataFrame") -> dict:
+        rows = []
+        for _, row in df.iterrows():
+            if not _row_valid(row.iloc[0]):
+                continue
+
+            def s(i: int) -> str:
+                return _safe_str(row.iloc[i]) if i < len(row) else ""
+
+            rows.append({
+                "t_r": _safe_int(row.iloc[0]),
+                "hudud": s(1),
+                "post": s(2),
+                "bkd_raqami": s(3),
+                "byud_raqami": s(4),
+                "taqsimlangan_vaqt": s(5),
+                "taqsimlangan_xodim": s(6),
+                "boshlangan_vaqt": s(7),
+                "rasmiylashtirilgan_vaqt": s(8),
+                "rasmiylashtirgan_xodim": s(9),
+            })
+        return {"rows": rows, "total": len(rows)}
+
+    if file_bytes[:3].lstrip()[:1] in (b"<", b"\xef"):
+        for enc in ("utf-8", "cp1251", "windows-1252"):
+            try:
+                tables = pd.read_html(StringIO(file_bytes.decode(enc, errors="replace")))
+                if tables:
+                    return _from_df(tables[0])
+            except Exception:
+                pass
+    return _from_df(pd.read_excel(BytesIO(file_bytes), engine="openpyxl"))
 
 
 def digits(value) -> str:
@@ -3788,7 +3985,7 @@ function compactArchivePanel(){
 }
 function compactFilesArchivePanel(isAdmin){
   if(!FILES_ARCHIVE.length)return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>Hali hech qanday fayl yuklanmagan.</div></div>`;
-  const TYPE_ICONS={"warehouses":"🏭","avia_awb":"✈️","yaroqlilik":"📋","vaqtincha":"⏱️","tolov":"💰"};
+  const TYPE_ICONS={"warehouses":"🏭","avia_awb":"✈️","yaroqlilik":"📋","vaqtincha":"⏱️","tolov":"💰","bko_postlar":"📑","bko_xodimlar":"📑","bko_rasmiy":"📑","korik_holatlar":"🔍","korik_vaqt":"⏱️","avtotaqsimot":"🚗"};
   let body=FILES_ARCHIVE.map(r=>{
     let isCurrent=r.is_current||FILES_CURRENT[r.type]===r.id;
     let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
@@ -4103,7 +4300,7 @@ async function ucUploadGeneric(btn,inputId,statusId,apiPath,label){
   let fd=new FormData();fd.append('file',src.files[0]);
   try{
     let j=await api(apiPath,{method:'POST',body:fd});
-    if(st)st.textContent=j.ok?`✓ ${label} arxivga saqlandi`:`Xatolik: ${esc(j.error||'')}`;
+    if(st)st.textContent=j.ok?`✓ ${label} arxivga saqlandi${j.rows!=null?' ('+j.rows+' qator)':''}`:`Xatolik: ${esc(j.error||'')}`;
     await loadFilesArchive();
   }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
 }
@@ -4182,9 +4379,9 @@ uploadPanel=function(){
 <div class="panel uc-card"><div class=uc-header><h2>🏢 Omborlar reestri</h2>${wrSt}</div><div class=uc-body><div class=uc-field><label>Reestri fayli (omborlarReestri*.xlsx)</label><input type=file id="ucWrFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadWarehouse(this)">Yuklash</button><button class="btn light" onclick="ucRecalcWarehouse(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucWrStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#0ea5e9"><div class=uc-header><h2>✈ AVIA AWB</h2><div style="display:flex;gap:6px;flex-wrap:wrap">${aviaSt} ${aviaDbSt}</div></div><div class=uc-note>AWB Excel (Yuklarni qabul qilish.xlsx) → AWB ro'yxati, joylar, vazn. Qiymat (ming $) BNRTE asos faylidan olinadi — yangilash uchun BNRTE → Qayta hisoblash.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>AWB Excel (Yuklarni qabul qilish*.xlsx)</label><input type=file id="ucAviaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadAvia(this)">Yuklash</button><button class="btn light" onclick="ucRecalcAvia(this)">🔄 Qayta hisoblash</button></div></div><div class=muted id="ucAviaStatus" style="margin-top:8px"></div></div>
 <div class="panel uc-card" style="border-left-color:#e8560a"><div class=uc-header><h2>⚠ Iste'mol muddati tahlili</h2>${yarSt}</div><div class=uc-note>yaroqlilik_muddati_tahlili.xlsx yoki yaroqlilik_1_oy_ichida.xlsx — muddati o'tgan va yaqinda tugaydigan tovarlar.</div><div class=uc-body style="margin-top:12px"><div class=uc-field><label>Yaroqlilik Excel fayli</label><input type=file id="ucYarFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadYaroqlilik(this)">Yuklash</button></div></div><div class=muted id="ucYarStatus" style="margin-top:8px"></div></div>
-<div class="panel uc-card" style="border-left-color:#059669"><div class=uc-header><h2>📑 BKO</h2></div><div class=uc-body><div class=uc-field><label>BKO Excel fayli (xlsx)</label><input type=file id="ucBkoFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucBkoFile','ucBkoStatus','/api/upload_bko','BKO')">Yuklash</button></div></div><div class=muted id="ucBkoStatus" style="margin-top:8px"></div></div>
-<div class="panel uc-card" style="border-left-color:#d97706"><div class=uc-header><h2>🔍 Ko'riklar</h2></div><div class=uc-body><div class=uc-field><label>Ko'riklar Excel fayli (xlsx)</label><input type=file id="ucKorikFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucKorikFile','ucKorikStatus','/api/upload_korik','Ko\\'riklar')">Yuklash</button></div></div><div class=muted id="ucKorikStatus" style="margin-top:8px"></div></div>
-<div class="panel uc-card" style="border-left-color:#7c3aed"><div class=uc-header><h2>♻ Qayta ishlash</h2></div><div class=uc-body><div class=uc-field><label>Qayta ishlash Excel fayli (xlsx)</label><input type=file id="ucQaytaFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucQaytaFile','ucQaytaStatus','/api/upload_qayta','Qayta ishlash')">Yuklash</button></div></div><div class=muted id="ucQaytaStatus" style="margin-top:8px"></div></div>
+<div class="panel uc-card" style="border-left-color:#059669"><div class=uc-header><h2>📑 BKO</h2></div><div class=uc-body><div class=uc-field><label>BKO — postlar kesimida</label><input type=file id="ucBkoPostFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucBkoPostFile','ucBkoPostSt','/api/upload_bko_postlar','BKO postlar')">Yuklash</button></div><div class=muted id="ucBkoPostSt" style="margin-top:4px"></div><div class=uc-field style="margin-top:10px"><label>BKO — xodimlar kesimida</label><input type=file id="ucBkoXodFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucBkoXodFile','ucBkoXodSt','/api/upload_bko_xodimlar','BKO xodimlar')">Yuklash</button></div><div class=muted id="ucBkoXodSt" style="margin-top:4px"></div><div class=uc-field style="margin-top:10px"><label>BKO — rasmiylashtirilgan</label><input type=file id="ucBkoRasmFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucBkoRasmFile','ucBkoRasmSt','/api/upload_bko_rasmiy','BKO rasmiylashtirilgan')">Yuklash</button></div><div class=muted id="ucBkoRasmSt" style="margin-top:4px"></div></div></div>
+<div class="panel uc-card" style="border-left-color:#d97706"><div class=uc-header><h2>🔍 Ko'riklar</h2></div><div class=uc-body><div class=uc-field><label>Ko'riklar va holatlar</label><input type=file id="ucKorikHolFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucKorikHolFile','ucKorikHolSt','/api/upload_korik_holatlar','Ko\\'riklar va holatlar')">Yuklash</button></div><div class=muted id="ucKorikHolSt" style="margin-top:4px"></div><div class=uc-field style="margin-top:10px"><label>Ko'rik — sarflangan vaqt</label><input type=file id="ucKorikVaqtFile" accept=".xlsx,.xls"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucKorikVaqtFile','ucKorikVaqtSt','/api/upload_korik_vaqt','Ko\\'rik sarflangan vaqt')">Yuklash</button></div><div class=muted id="ucKorikVaqtSt" style="margin-top:4px"></div></div></div>
+<div class="panel uc-card" style="border-left-color:#7c3aed"><div class=uc-header><h2>🚗 Avtotaqsimot</h2></div><div class=uc-body><div class=uc-field><label>Avtotaqsimot fayli (xls/htm)</label><input type=file id="ucAvtoFile" accept=".xlsx,.xls,.htm,.html"></div><div class=uc-btns><button onclick="ucUploadGeneric(this,'ucAvtoFile','ucAvtoSt','/api/upload_avtotaqsimot','Avtotaqsimot')">Yuklash</button></div><div class=muted id="ucAvtoSt" style="margin-top:8px"></div></div></div>
 <div class="panel uc-card"><div class=uc-header><h2>📚 Yillik arxivni birdan yuklash</h2></div><div class=uc-note>Bir vaqtning o'zida bir nechta asos fayl tanlanadi. Fayllar navbatga qo'shiladi va server mustaqil qayta hisoblab chiqadi — admin kutib o'tirmasligi kerak. Fayl sanasi nom ichidan avtomatik aniqlanadi.</div><form id="bulkUpload"><div class=uc-body><div class=uc-field><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div><div class=uc-btns><button>Hammasini yuklash</button></div></div></form><div id=bulkResult class=muted style="margin-top:8px">Fayllar tanlanmagan.</div></div>
 </div>`;
 }
@@ -5888,19 +6085,28 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
-        if parsed.path in ("/api/upload_bko", "/api/upload_korik", "/api/upload_qayta"):
+        _FILE_UPLOAD_MAP = {
+            "/api/upload_bko_postlar": ("bko_postlar", parse_bko_tabular),
+            "/api/upload_bko_xodimlar": ("bko_xodimlar", parse_bko_tabular),
+            "/api/upload_bko_rasmiy": ("bko_rasmiy", parse_bko_rasmiy),
+            "/api/upload_korik_holatlar": ("korik_holatlar", parse_korik_holatlar),
+            "/api/upload_korik_vaqt": ("korik_vaqt", parse_korik_vaqt),
+            "/api/upload_avtotaqsimot": ("avtotaqsimot", parse_avtotaqsimot),
+        }
+        if parsed.path in _FILE_UPLOAD_MAP:
             if not self.require_perm("upload"):
                 return
-            type_map = {"/api/upload_bko": "bko", "/api/upload_korik": "korik", "/api/upload_qayta": "qayta_ishlash"}
-            ftype = type_map[parsed.path]
+            ftype, parser = _FILE_UPLOAD_MAP[parsed.path]
             length = int(self.headers.get("Content-Length", "0") or "0")
             form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
             if "file" not in form or not form["file"].get("filename"):
                 self.json({"error": "Excel fayl kerak"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
-                add_file_to_archive(ftype, form["file"]["filename"], {}, form["file"]["content"])
-                self.json({"ok": True, "type": ftype})
+                content = form["file"]["content"]
+                data = parser(content)
+                add_file_to_archive(ftype, form["file"]["filename"], data, content)
+                self.json({"ok": True, "type": ftype, "rows": len(data.get("rows", []))})
             except Exception as exc:
                 self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
