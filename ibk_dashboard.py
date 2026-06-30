@@ -4593,7 +4593,7 @@ async function checkUploadConn(btn){
     }else if(!j.has_upload){
       if(el)el.innerHTML=`<span style="color:#dc2626">✗ "${j.user}" foydalanuvchisida yuklash vakolati yo'q (rol: ${j.role||'?'})</span>`;
     }else{
-      const chunkOk=j.chunk_dir_ok?'✓':'✗ chunk_dir yo'q!';
+      const chunkOk=j.chunk_dir_ok?'✓':"✗ chunk_dir yo'q!";
       const mode=DIRECT_UPLOAD_URL?`LAN: ${DIRECT_UPLOAD_URL}`:'Cloudflare orqali';
       if(el)el.innerHTML=`<span style="color:#16a34a">✓ ${j.user} · yuklash ruxsati bor · ${chunkOk} · ${mode}</span>`;
     }
