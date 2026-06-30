@@ -3580,7 +3580,7 @@ async function uploadWrRegistry(){
   }catch(e){if(st)st.textContent='Xatolik: '+String(e)}
 }
 
-function render(){if(_uploadActive&&!confirm("Fayl yuklanmoqda! Boshqa tabga o'tsangiz yuklash to'xtab qoladi. Davom etasizmi?"))return;logTabView(TAB);if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","avia","yaroqlilik","vaqtincha"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin","archive"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA&&DATA.meta?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim",tr("regimes")],["korxona",tr("companies")],["ombor",tr("warehouses")],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat",tr("deadlines")],["yaroqlilik",tr("validity")],["vaqtincha",tr("vaqtincha")],["avia","✈ AVIA AWB"]], payTabs=[["payments",tr("pay_overview")],["pay_lists",tr("pay_lists")],["pay_analysis",tr("pay_analysis")]], commonTabs=[["upload",tr("upload")],["archive",tr("archive")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=ARTIFACT_POLL_ID?`<button class="light" disabled style="opacity:.7">⏳ Tayyorlanmoqda...</button>`:`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(!ARTIFACT_POLL_ID&&f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view();setTimeout(()=>captureTabSnap(TAB),400);}
+function render(){logTabView(TAB);if(TAB.startsWith("pay"))GROUP="payments";if(["umumiy","rejim","korxona","ombor","expired","released","goods","food","muddat","avia","yaroqlilik","vaqtincha"].includes(TAB))GROUP="bnrte";if(["upload","profile","settings","admin","archive"].includes(TAB))GROUP="common";if(TAB==="home")GROUP="home";$("dash").classList.remove("hidden");$("meta").textContent=DATA&&DATA.meta?DATA.meta.date+" holatiga":"Tizimga xush kelibsiz";$("kpis").innerHTML=(DATA&&GROUP!=="home")?renderKpis():"";let bnrte=[["umumiy",tr("general")],["rejim",tr("regimes")],["korxona",tr("companies")],["ombor",tr("warehouses")],["expired",tr("expired")],["released",tr("released")],["goods",tr("goods")],["food",tr("food")],["muddat",tr("deadlines")],["yaroqlilik",tr("validity")],["vaqtincha",tr("vaqtincha")],["avia","✈ AVIA AWB"]], payTabs=[["payments",tr("pay_overview")],["pay_lists",tr("pay_lists")],["pay_analysis",tr("pay_analysis")]], commonTabs=[["upload",tr("upload")],["archive",tr("archive")],["profile",tr("profile")],["settings",tr("settings")],["admin",tr("admin")]];let bnrteHtml=GROUP==="bnrte"?`<div class="subtabs">${bnrte.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='bnrte';render()">${t[1]}</button>`).join("")}</div>`:"";let payHtml=GROUP==="payments"?`<div class="subtabs">${payTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='payments';render()">${t[1]}</button>`).join("")}</div>`:"";let commonHtml=GROUP==="common"?`<div class="subtabs">${commonTabs.map(t=>`<button class="tab sub ${TAB===t[0]?'active':''}" onclick="TAB='${t[0]}';GROUP='common';render()">${t[1]}</button>`).join("")}</div>`:"";$("tabs").innerHTML=`<button class="module-parent ${GROUP==='bnrte'?'active':''}" onclick="openGroup('bnrte','umumiy')">BNRTE</button>${bnrteHtml}<button class="module-parent pay ${GROUP==='payments'?'active':''}" onclick="openGroup('payments','payments')">To'lovlar</button>${payHtml}<button class="module-parent ${GROUP==='common'?'active':''}" onclick="openGroup('common','upload')">Boshqaruv</button>${commonHtml}`;let f=DATA&&DATA.files||{};let fileParts=[];if(f.excel)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.excel}?token=${TOKEN}">Jamlanma Excel</a>`);if(f.pdf)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pdf}?token=${TOKEN}">PDF</a>`);if((f.pngs||[]).length)fileParts.push(`<a class=btn href="/download/${DATA.id}/${f.pngs[0]}?token=${TOKEN}">PNG</a>`);let prepBtn=ARTIFACT_POLL_ID?`<button class="light" disabled style="opacity:.7">⏳ Tayyorlanmoqda...</button>`:`<button class="light" onclick="prepareArtifacts()">Excel/PNG/PDF tayyorlash</button>`;let fileBtns=fileParts.length?fileParts.join(" ")+" "+prepBtn:prepBtn;if(!ARTIFACT_POLL_ID&&f.status&&f.status!=="tayyor")fileBtns+=` <span class="muted">${esc(f.status)}</span>`;$("status").textContent=f.error?"Excel/PNG/PDF tayyorlashda xatolik bor. Qayta tayyorlash tugmasini bosing yoki logni tekshiramiz.":"";$("actions").innerHTML=DATA?`${fileBtns} <button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`:`<button class="light" onclick="TAB='settings';render()">${tr("settings")}</button> <button class="logout-btn" onclick="logout()">${tr("logout")}</button>`;view();setTimeout(()=>captureTabSnap(TAB),400);}
 function view(){let v=$("view");if(TAB==="home"){v.innerHTML=landingPanel();return}if(TAB==="archive"){let seen=new Set(), rows=ARCHIVE.filter(r=>{let k=r.date+"|"+(r.source||"").split(/[\\/]/).pop();if(seen.has(k))return false;seen.add(k);return true});v.innerHTML=`<div class=panel><h2>Arxiv</h2><div class=cards>${rows.map(r=>`<button class="archive-card" onclick="loadReport('${r.id}')"><b>${r.date}</b><span>Asos: ${esc((r.source||'').split(/[\\/]/).pop())}</span><span>Depozit: ${esc((r.deposit||'Depozitsiz').split(/[\\/]/).pop()||'Depozitsiz')}</span></button>`).join("")}</div></div>`;return}if(TAB==="upload"){v.innerHTML=uploadPanel();bindUpload();return}if(TAB==="profile"){v.innerHTML=`<div class=stack><div class=panel><h2>Profil</h2><b style="font-size:18px">${esc(ME.full_name||ME.user)}</b><p class=muted>${esc(ME.position||ME.role)}</p><p>Vakolatlar: ${(ME.perms||[]).map(p=>permTitle(p)).join(", ")||'—'}</p></div><div class=panel><h2>Parolni o'zgartirish</h2><form id="changePwForm" class=admin-form style="max-width:340px"><label>Joriy parol</label><div class="pass-wrap"><input id="cpOld" type=password placeholder="Joriy parol"><button class="eye-btn" type="button" onclick="let p=$('cpOld');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol</label><div class="pass-wrap"><input id="cpNew" type=password placeholder="Kamida 6 ta belgi"><button class="eye-btn" type="button" onclick="let p=$('cpNew');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><label>Yangi parol (takror)</label><div class="pass-wrap"><input id="cpNew2" type=password placeholder="Yangi parolni takrorlang"><button class="eye-btn" type="button" onclick="let p=$('cpNew2');p.type=p.type==='password'?'text':'password'">&#128065;</button></div><button onclick="selfChangePassword(event)">Saqlash</button><span id="cpMsg" class=muted style="margin-left:10px"></span></form></div></div>`;return}if(TAB==="settings"){v.innerHTML=`<div class=stack><div class=panel><h2>Sozlamalar</h2><div class=settings><label>Til</label><select onchange="setLang(this.value)"><option value=uz ${LANG==='uz'?'selected':''}>O'zbek lotin</option><option value=uzc ${LANG==='uzc'?'selected':''}>O'zbek kirill</option><option value=ru ${LANG==='ru'?'selected':''}>Rus tili</option></select><button onclick="document.body.classList.toggle('dark')">${tr("dark")}</button></div></div>${layoutEditorPanel()}</div>`;setTimeout(leBindDrag,0);return}if(TAB==="admin"){v.innerHTML=adminPanel();let at=window._adminTab||'users';if(at==='users'){bindUserForm();loadUsers();}else{loadStatistika();}return}if(!DATA){v.innerHTML=landingPanel();return}
 if(TAB==="umumiy"){let topC=by(DATA.top_value||[],"qiymat").slice(0,30);v.innerHTML=wlayout('umumiy',{exec:()=>`<div>${executiveSummary()}</div>`,post:()=>`<div class=panel><h2>70-74-80: postlar kesimida ${staleBadge()}</h2>${table([{k:"post",t:"Post",w:"42%"},{k:"partiya",t:"Partiya",n:1,f:fmtI},{k:"vazn",t:"Vazn (tn)",n:1,f:fmtN},{k:"qiymat",t:"Qiymat (ming $)",n:1,f:fmtN},{k:"tolov",t:"Kutilayotgan to'lov (mln so'm)",n:1,f:fmtN}],basicTotal(DATA.all_post_summary||[],"IBK bo'yicha Jami","post"),"fixed-table")}<div class=overview-note>Post qatorlari ustiga bosilganda asos deklaratsiyalar ochiladi.</div></div>`,expired_sum:()=>`<div class="panel wide"><h2>Jami muddati o'tgan: postlar va rejimlar kesimida</h2>${expiredTotalExcelTable()}</div>`,top_bars:()=>`<div class="panel wide"><h2>Qiymat bo'yicha TOP 30 korxona</h2>${bars(topC,"korxona","qiymat",fmtN)}</div>`,flow:()=>{let countries=countryRows();let countriesLatin=countries.map(r=>Object.assign({},r,{name:countryLatinName(r.name)}));return `<div class="panel wide"><h2>Davlatlar bo'yicha yo'nalishlar</h2>${countryFlowMap(countries)}<div class="chart-under-globe">${bars(countriesLatin,"name","qiymat",fmtN)}</div></div>${transportPanel()}${flightsPanelShell()}`}});return}
 if(TAB==="avia"){v.innerHTML=aviaPanel();loadAviaAwb();return}
@@ -4401,51 +4401,51 @@ async function refreshCurrentReport(btn){
 }
 async function chunkedUpload(file,onProgress){
   _uploadActive=true;
-  if(DIRECT_UPLOAD_URL===null){
-    try{
-      const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN},signal:AbortSignal.timeout(5000)}).then(r=>r.json());
-      const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(2000)});
-      DIRECT_UPLOAD_URL=t.ok?j.lan_url:'';
-    }catch{DIRECT_UPLOAD_URL='';}
-  }
-  const base=DIRECT_UPLOAD_URL||'';
-  const isLAN=!!DIRECT_UPLOAD_URL;
-  const CHUNK=isLAN?1024*1024:4*1024*1024;
-  const total=Math.max(1,Math.ceil(file.size/CHUNK));
-  const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  const PARALLEL=isLAN?4:2;
-  const MAX_RETRY=6;
-  let done=0;
-  async function uploadOne(i){
-    const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
-    let lastErr,gw=0;
-    for(let attempt=0;attempt<MAX_RETRY;attempt++){
-      if(attempt>0){
-        const d=gw>0?Math.min(12000*gw,30000):1500*attempt;
-        await new Promise(r=>setTimeout(r,d));
-      }
-      try{
-        const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
-          'X-Token':TOKEN,'X-Upload-Id':uid,'X-Chunk-Index':String(i),
-          'X-Total-Chunks':String(total),'X-Filename':encodeURIComponent(file.name),
-          'Content-Type':'application/octet-stream'
-        },body:blob});
-        if(!r.ok){
-          const j=await r.json().catch(()=>({}));
-          const msg=j.error||`HTTP ${r.status}`;
-          if(r.status===401)throw new Error(`Sessiya muddati tugagan — qayta kiring (${msg})`);
-          if(r.status===403)throw new Error(`Ruxsat yo'q — admin huquqi kerak (${msg})`);
-          lastErr=new Error(`Chunk ${i+1}/${total} xato: ${msg}`);
-          if(r.status>=500)gw++;
-          continue;
-        }
-        done++;if(onProgress)onProgress(done/total);
-        return;
-      }catch(e){lastErr=e;if(e.message&&(e.message.includes('Sessiya')||e.message.includes('Ruxsat')))throw e;gw++;}
-    }
-    throw lastErr;
-  }
   try{
+    if(DIRECT_UPLOAD_URL===null){
+      try{
+        const j=await fetch('/api/server_info',{headers:{'X-Token':TOKEN},signal:AbortSignal.timeout(5000)}).then(r=>r.json());
+        const t=await fetch(j.lan_url+'/api/server_info',{signal:AbortSignal.timeout(2000)});
+        DIRECT_UPLOAD_URL=t.ok?j.lan_url:'';
+      }catch{DIRECT_UPLOAD_URL='';}
+    }
+    const base=DIRECT_UPLOAD_URL||'';
+    const isLAN=!!DIRECT_UPLOAD_URL;
+    const CHUNK=isLAN?1024*1024:4*1024*1024;
+    const total=Math.max(1,Math.ceil(file.size/CHUNK));
+    const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const PARALLEL=isLAN?4:2;
+    const MAX_RETRY=6;
+    let done=0;
+    async function uploadOne(i){
+      const blob=file.slice(i*CHUNK,(i+1)*CHUNK);
+      let lastErr,gw=0;
+      for(let attempt=0;attempt<MAX_RETRY;attempt++){
+        if(attempt>0){
+          const d=gw>0?Math.min(12000*gw,30000):1500*attempt;
+          await new Promise(r=>setTimeout(r,d));
+        }
+        try{
+          const r=await fetch(base+'/api/chunk_upload',{method:'POST',headers:{
+            'X-Token':TOKEN,'X-Upload-Id':uid,'X-Chunk-Index':String(i),
+            'X-Total-Chunks':String(total),'X-Filename':encodeURIComponent(file.name),
+            'Content-Type':'application/octet-stream'
+          },body:blob});
+          if(!r.ok){
+            const j=await r.json().catch(()=>({}));
+            const msg=j.error||`HTTP ${r.status}`;
+            if(r.status===401)throw new Error(`Sessiya muddati tugagan — qayta kiring (${msg})`);
+            if(r.status===403)throw new Error(`Ruxsat yo'q — admin huquqi kerak (${msg})`);
+            lastErr=new Error(`Chunk ${i+1}/${total} xato: ${msg}`);
+            if(r.status>=500)gw++;
+            continue;
+          }
+          done++;if(onProgress)onProgress(done/total);
+          return;
+        }catch(e){lastErr=e;if(e.message&&(e.message.includes('Sessiya')||e.message.includes('Ruxsat')))throw e;gw++;}
+      }
+      throw lastErr;
+    }
     for(let i=0;i<total;i+=PARALLEL)await Promise.all(Array.from({length:Math.min(PARALLEL,total-i)},(_,k)=>uploadOne(i+k)));
     return {upload_id:uid,filename:file.name,total_chunks:total,direct:isLAN};
   }finally{_uploadActive=false;}
