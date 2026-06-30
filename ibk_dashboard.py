@@ -79,6 +79,13 @@ TOLOV_FILES = {
     "11. 79.xlsx": "79-kod to'lovi",
     "12. im42.xlsx": "IM42 bo'yicha ro'yxat",
 }
+FILE_TYPE_LABELS = {
+    "warehouses": "Omborlar reestri",
+    "avia_awb": "Avia AWB",
+    "yaroqlilik": "Yaroqlilik",
+    "vaqtincha": "IM42/EK12",
+    "tolov": "To'lovlar",
+}
 
 JOBS: dict[str, dict] = {}
 SESSIONS: dict[str, dict] = {}
@@ -1065,6 +1072,38 @@ def clean_archive_records(reports: list[dict]) -> list[dict]:
         except Exception:
             return datetime.min
     return sorted(best.values(), key=date_key, reverse=True)
+
+
+def add_file_to_archive(file_type: str, filename: str, data: dict, excel_bytes: bytes | None = None) -> dict:
+    """Save uploaded file data to files archive in archive.json, return the record."""
+    fid = datetime.now().strftime("%Y%m%d_") + str(int(time.time() * 1000))
+    type_dir = UPLOAD_DIR / "fa" / file_type
+    type_dir.mkdir(parents=True, exist_ok=True)
+    json_path = type_dir / f"{fid}.json"
+    json_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    excel_path = ""
+    if excel_bytes is not None:
+        ep = type_dir / f"{fid}_{safe_name(filename)}"
+        ep.write_bytes(excel_bytes)
+        excel_path = str(ep)
+    record: dict = {
+        "id": fid,
+        "type": file_type,
+        "label": FILE_TYPE_LABELS.get(file_type, file_type),
+        "filename": filename,
+        "date": datetime.now().strftime("%d.%m.%Y"),
+        "json_path": str(json_path),
+        "excel_path": excel_path,
+    }
+    archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+    if not isinstance(archive, dict):
+        archive = {"reports": [], "files": [], "current_files": {}}
+    files = archive.get("files") or []
+    files.append(record)
+    files.sort(key=lambda r: r.get("id", ""), reverse=True)
+    archive["files"] = files
+    save_json(INDEX_PATH, archive)
+    return record
 
 
 def digits(value) -> str:
@@ -2591,7 +2630,7 @@ tr.expired-row td{background:rgba(220,38,38,.04)!important}
 <section id="app" class="hidden"><div id="status" class="muted"></div><div id="currencyWidget" class="currency-widget"></div><div id="dash" class="hidden"><div class="kpis" id="kpis"></div><div class="workspace"><aside class="tabs" id="tabs"></aside><section id="view"></section></div></div></section>
 <dialog id="dlg"><div class="head"><b id="dlgTitle">Asos</b><button class="light" onclick="dlg.close()">Yopish</button></div><div class="body" id="dlgBody"></div></dialog>
 <script>
-let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null, AVIA_STATS=null, YAROQLILIK_DATA=null, YAROQLILIK_FILTER='expired', VAQTINCHA_DATA=null, VAQTINCHA_FILTER='all', VAQTINCHA_REGIME='all', VAQTINCHA_SEARCH='';
+let TOKEN=localStorage.ibk_token||"", DATA=null, TAB="home", GROUP="home", ARCHIVE=[], PAYMENTS=[], ME=null, LANG=localStorage.ibk_lang||"uz", COMPANY_TRENDS={periods:[],companies:[]}, GOODS_TRENDS={periods:[],goods:[]}, AVIA_DATA=null, AVIA_STATS=null, YAROQLILIK_DATA=null, YAROQLILIK_FILTER='expired', VAQTINCHA_DATA=null, VAQTINCHA_FILTER='all', VAQTINCHA_REGIME='all', VAQTINCHA_SEARCH='', FILES_ARCHIVE=[], FILES_CURRENT={};
 const I18N={
   uz:{archive:"Arxiv",upload:"Fayl yuklash",general:"Umumiy",companies:"Korxonalar",expired:"Muddati o'tgan",released:"Nazoratdan yechish",goods:"Tovarlar",food:"Oziq-ovqat",profile:"Profil",settings:"Sozlamalar",admin:"Admin",dark:"Tungi rejim",logout:"Chiqish",regimes:"Rejimlar",warehouses:"Omborlar",deadlines:"Muddatlar",validity:"Yaroqlilik",pay_overview:"Umumiy",pay_lists:"Hosil bo'lgan jadvallar",pay_analysis:"Tahlil",vaqtincha:"Vaqtincha IM42/EK12"},
   uzc:{archive:"Архив",upload:"Файл юклаш",general:"Умумий",companies:"Корхоналар",expired:"Муддати ўтган",released:"Назоратдан ечиш",goods:"Товарлар",food:"Озиқ-овқат",profile:"Профил",settings:"Созламалар",admin:"Админ",dark:"Тунги режим",logout:"Чиқиш",regimes:"Режимлар",warehouses:"Омборлар",deadlines:"Муддатлар",validity:"Яроқлилик",pay_overview:"Умумий",pay_lists:"Ҳосил бўлган жадваллар",pay_analysis:"Таҳлил",vaqtincha:"Вақтинча ИМ42/ЭК12"},
@@ -2649,7 +2688,7 @@ function leBindDrag(){let el=$('leList');if(!el)return;el.querySelectorAll('[dat
 function leEye(btn){let row=btn.closest('[data-le]');let h=!btn.classList.contains('hidden-eye');btn.classList.toggle('hidden-eye',h);btn.textContent=h?'🙈':'👁';row.classList.toggle('le-hidden',h);}
 async function leSave(tab){let el=$('leList');if(!el)return;let items=[...el.querySelectorAll('[data-le]')].map(r=>({id:r.dataset.le,hidden:r.classList.contains('le-hidden')}));await saveTabLayout(tab,items);let s=$('leSt');if(s){s.textContent='✓ Saqlandi';setTimeout(()=>{if(s)s.textContent='';},2000);}}
 async function leReset(tab){if(UI_CONFIG&&UI_CONFIG.tab_layouts)delete UI_CONFIG.tab_layouts[tab];try{await api('/api/ui_config',{method:'POST',body:JSON.stringify(UI_CONFIG||{})});}catch(e){}let p=$('lePanel');if(p){p.outerHTML=layoutEditorPanel();leBindDrag();}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadPayments();loadAviaStats();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();loadAviaStats();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 async function pollAvia(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollAvia(id,st,btn),1800);return}AVIA_DATA=j.avia_data||{};if(st)st.textContent=`✓ Tayyor: ${fmtI(AVIA_DATA.unique_awb||0)} AWB yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();if(TAB==='avia')loadAviaAwb();}catch(e){setTimeout(()=>pollAvia(id,st,btn),3000)}}
 async function pollWr(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollWr(id,st,btn),1800);return}if(j.wr_data?.warehouses)WR_DATA=j.wr_data.warehouses;if(st)st.textContent=`✓ Tayyor: ${(WR_DATA||[]).length} ombor yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();}catch(e){setTimeout(()=>pollWr(id,st,btn),3000)}}
@@ -3741,7 +3780,20 @@ function compactArchivePanel(){
     return `<tr><td class=num>${esc(r.date)}${badge}${loadedBadge}</td><td class=text title="${esc(source)}">${esc(source)}</td><td class=text title="${esc(deposit)}">${esc(deposit)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center"><button class="light" onclick="loadReport('${esc(r.id)}')">Ochish</button>${adminBtns}</div></td></tr>`;
   }).join("");
   let html=`<table class="fixed-table compact-archive"><colgroup><col style="width:130px"><col style="width:320px"><col style="width:130px"><col></colgroup><thead><tr><th>Sana</th><th>Asos fayl</th><th>Depozit</th><th></th></tr></thead><tbody>${body}</tbody></table>`;
-  return `<div class=panel><h2>Arxiv</h2><div class=muted>${rows.length} ta sana. "Joriy" — dashar ochilganda yuklanadigan hisobot. Admin o'chira yoki joriy qilib belgilashi mumkin.</div>${html}</div>`;
+  let filesHtml=compactFilesArchivePanel(isAdmin);
+  return `<div class=panel><h2>Arxiv — BNRTE hisobotlari</h2><div class=muted>${rows.length} ta sana. "Joriy" — dastur ochilganda yuklanadigan hisobot. Admin o'chira yoki joriy qilib belgilashi mumkin.</div>${html}</div>${filesHtml}`;
+}
+function compactFilesArchivePanel(isAdmin){
+  if(!FILES_ARCHIVE.length)return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>Hali hech qanday fayl yuklanmagan.</div></div>`;
+  const TYPE_ICONS={"warehouses":"🏭","avia_awb":"✈️","yaroqlilik":"📋","vaqtincha":"⏱️","tolov":"💰"};
+  let body=FILES_ARCHIVE.map(r=>{
+    let isCurrent=r.is_current||FILES_CURRENT[r.type]===r.id;
+    let badge=isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
+    let icon=TYPE_ICONS[r.type]||"📄";
+    let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteFileEntry('${esc(r.id)}','${esc(r.filename)}')" title="O'chirish">🗑</button>${!isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentFile('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:""
+    return `<tr><td class=num>${esc(r.date)}${badge}</td><td class=text>${icon} <b>${esc(r.label||r.type)}</b></td><td class=text title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${adminBtns}</div></td></tr>`;
+  }).join("");
+  return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>${FILES_ARCHIVE.length} ta fayl. Joriy — sahifa ochilganda yuklanadigan ma'lumot.</div><table class="fixed-table compact-archive"><colgroup><col style="width:110px"><col style="width:160px"><col><col style="width:160px"></colgroup><thead><tr><th>Sana</th><th>Tur</th><th>Fayl nomi</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 async function deleteArchiveEntry(id,date){
   if(!confirm(`"${date}" arxiv yozuvini o'chirasizmi?`))return;
@@ -3756,6 +3808,21 @@ async function setCurrentArchive(id){
   try{
     await api("/api/archive/set_current",{method:"POST",body:JSON.stringify({id})});
     await loadArchive();
+    render();
+  }catch(e){alert("Xatolik: "+e.message)}
+}
+async function deleteFileEntry(id,filename){
+  if(!confirm(`"${filename}" faylini arxivdan o'chirasizmi?`))return;
+  try{
+    await api("/api/files_archive/delete",{method:"POST",body:JSON.stringify({id})});
+    await loadFilesArchive();
+    render();
+  }catch(e){alert("Xatolik: "+e.message)}
+}
+async function setCurrentFile(id){
+  try{
+    await api("/api/files_archive/set_current",{method:"POST",body:JSON.stringify({id})});
+    await loadFilesArchive();
     render();
   }catch(e){alert("Xatolik: "+e.message)}
 }
@@ -5399,6 +5466,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
+            try:
+                add_file_to_archive("tolov", form["source"]["filename"], {"payments": rows}, form["source"]["content"])
+            except Exception:
+                pass
             self.json({"ok": True, "payments": rows})
             return
         if parsed.path == "/api/chunk_upload":
@@ -5579,12 +5650,17 @@ class Handler(BaseHTTPRequestHandler):
             shutil.rmtree(cd, ignore_errors=True)
             job_id = "vaqtincha_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "Qayta ishlanmoqda"}
-            def _load_vaqtincha(jid=job_id, dp=dest):
+            def _load_vaqtincha(jid=job_id, dp=dest, fn=filename):
                 j = ensure_job(jid)
                 try:
                     j["status"] = "Vaqtincha deklaratsiyalar tahlil qilinmoqda"
-                    result = parse_vaqtincha_xls(dp.read_bytes())
+                    raw = dp.read_bytes()
+                    result = parse_vaqtincha_xls(raw)
                     save_vaqtincha(result)
+                    try:
+                        add_file_to_archive("vaqtincha", fn, result, raw)
+                    except Exception:
+                        pass
                     j.update({"status": "tayyor", "vaqtincha_data": result})
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
@@ -5740,6 +5816,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
+            try:
+                add_file_to_archive("warehouses", form["file"]["filename"], result, form["file"]["content"])
+            except Exception:
+                pass
             self.json(result)
             return
         if parsed.path == "/api/upload_avia_awb":
@@ -5757,6 +5837,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
+            try:
+                add_file_to_archive("avia_awb", form["file"]["filename"], result, form["file"]["content"])
+            except Exception:
+                pass
             self.json(result)
             return
         if parsed.path == "/api/upload_yaroqlilik":
@@ -5768,8 +5852,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"error": "Excel fayl kerak"}, HTTPStatus.BAD_REQUEST)
                 return
             try:
-                result = parse_yaroqlilik_excel(form["file"]["content"])
+                content = form["file"]["content"]
+                result = parse_yaroqlilik_excel(content)
                 save_yaroqlilik(result)
+                try:
+                    add_file_to_archive("yaroqlilik", form["file"]["filename"], result, content)
+                except Exception:
+                    pass
                 self.json(result)
             except Exception as exc:
                 self.json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -5805,6 +5894,81 @@ class Handler(BaseHTTPRequestHandler):
             archive["current_id"] = rid
             save_json(INDEX_PATH, archive)
             self.json({"ok": True})
+            return
+        if parsed.path == "/api/files_archive":
+            if not self.require_user():
+                return
+            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+            files = archive.get("files") or []
+            current = archive.get("current_files") or {}
+            for f in files:
+                f["is_current"] = current.get(f.get("type", "")) == f.get("id")
+            self.json({"files": files, "current_files": current})
+            return
+        if parsed.path == "/api/files_archive/delete":
+            if not self.require_admin():
+                return
+            data = self.body_json()
+            fid = data.get("id", "")
+            if not fid:
+                self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+            if not isinstance(archive, dict):
+                archive = {"reports": [], "files": [], "current_files": {}}
+            rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
+            archive["files"] = [f for f in (archive.get("files") or []) if f.get("id") != fid]
+            curr = archive.get("current_files") or {}
+            for t, cid in list(curr.items()):
+                if cid == fid:
+                    del curr[t]
+            archive["current_files"] = curr
+            save_json(INDEX_PATH, archive)
+            if rec:
+                for pk in ("json_path", "excel_path"):
+                    p = rec.get(pk, "")
+                    if p:
+                        try:
+                            Path(p).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+            self.json({"ok": True})
+            return
+        if parsed.path == "/api/files_archive/set_current":
+            if not self.require_admin():
+                return
+            data = self.body_json()
+            fid = data.get("id", "")
+            if not fid:
+                self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+            if not isinstance(archive, dict):
+                archive = {"reports": [], "files": [], "current_files": {}}
+            rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
+            if not rec:
+                self.json({"error": "Fayl topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            curr = archive.get("current_files") or {}
+            curr[rec["type"]] = fid
+            archive["current_files"] = curr
+            save_json(INDEX_PATH, archive)
+            self.json({"ok": True})
+            return
+        if parsed.path.startswith("/api/files_archive/data/"):
+            if not self.require_user():
+                return
+            fid = parsed.path.split("/")[-1]
+            archive = load_json(INDEX_PATH, {"files": []})
+            rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
+            if not rec:
+                self.json({"error": "Topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            jp = rec.get("json_path", "")
+            if jp and Path(jp).exists():
+                self.json(json.loads(Path(jp).read_text(encoding="utf-8")))
+            else:
+                self.json({"error": "Ma'lumot fayli topilmadi"}, HTTPStatus.NOT_FOUND)
             return
         if parsed.path == "/api/reports":
             if not self.require_perm("upload"):
