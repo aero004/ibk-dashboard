@@ -4,7 +4,7 @@ param(
     [string]$RepoDir      = "C:\servers\ibk-dashboard",
     [string]$ScriptName   = "ibk_dashboard.py",
     [string]$CFExe        = "C:\cloudflared.exe",
-    [string]$CFConfig     = "C:\ProgramData\Cloudflare\config.yml",
+    [string]$CFConfig     = "C:\Users\Admin\.cloudflared\config.yml",
     [int]   $IntervalSec  = 60
 )
 
