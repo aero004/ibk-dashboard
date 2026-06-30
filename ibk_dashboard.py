@@ -68,6 +68,7 @@ DATA_DIR = APP_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 REPORT_DIR = DATA_DIR / "reports"
 CHUNK_DIR  = DATA_DIR / "chunks"
+SOURCES_DIR = DATA_DIR / "manbalar"
 ASSET_DIR = APP_DIR / "assets"
 USER_PATH = DATA_DIR / "users.json"
 SESSION_PATH = DATA_DIR / "sessions.json"
@@ -942,7 +943,7 @@ ROLE_LABELS = {
 
 
 def ensure_dirs():
-    for path in [DATA_DIR, UPLOAD_DIR, REPORT_DIR, ASSET_DIR, TOLOV_OUTPUT_DIR]:
+    for path in [DATA_DIR, UPLOAD_DIR, REPORT_DIR, ASSET_DIR, TOLOV_OUTPUT_DIR, SOURCES_DIR]:
         path.mkdir(parents=True, exist_ok=True)
     if not USER_PATH.exists():
         save_json(USER_PATH, {
@@ -2487,6 +2488,7 @@ def run_job(job_id: str, source: Path, deposit: Path | None, report_date: dateti
         report_dir.mkdir(parents=True, exist_ok=True)
         stored_source = report_dir / source.name
         shutil.copy2(source, stored_source)
+        shutil.copy2(source, SOURCES_DIR / f"{report_date.strftime('%Y.%m.%d')}_{source.name}")
         stored_deposit = None
         if deposit:
             stored_deposit = report_dir / deposit.name
