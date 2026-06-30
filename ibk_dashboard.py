@@ -4202,9 +4202,21 @@ function detectFileType(name){
   if(/yaroqlilik/.test(n))return 'yaroqlilik';
   if(/vaqtincha|im42|ek12/i.test(n))return 'vaqtincha';
   if(/tolov|payment/.test(n))return 'tolov';
+  if(/avtotaqsimot/.test(n))return 'avtotaqsimot';
+  if(/sarflangan/.test(n)||((/ko.rik/.test(n)||/korik/.test(n))&&/vaqt/.test(n)))return 'korik_vaqt';
+  if(/holatlar/.test(n)||((/ko.rik/.test(n)||/korik/.test(n))&&/holat/.test(n)))return 'korik_holatlar';
+  if(/xodimlarkesimida|xodimlar.*kesimida/.test(n))return 'bko_xodimlar';
+  if(/postlarkesimida|postlar.*kesimida/.test(n))return 'bko_postlar';
+  if(/расмийлаштирилган|rasmiylashtirilgan/.test(n))return 'bko_rasmiy';
   return 'bnrte';
 }
-const FILE_TYPE_LABELS={bnrte:'📋 BNRTE asos fayl',depozit:'💾 Depozit fayl',ombor:'🏢 Omborlar reestri',avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',vaqtincha:'🔄 Vaqtincha IM42/EK12',tolov:'💰 To\'lovlar'};
+const FILE_TYPE_LABELS={
+  bnrte:'📋 BNRTE asos fayl',depozit:'💾 Depozit fayl',ombor:'🏢 Omborlar reestri',
+  avia:'✈ AVIA AWB',yaroqlilik:'⚠ Yaroqlilik',vaqtincha:'🔄 Vaqtincha IM42/EK12',tolov:'💰 To\'lovlar',
+  korik_holatlar:"🔍 Ko'riklar va holatlar",korik_vaqt:"⏱️ Ko'rik sarflangan vaqt",
+  bko_postlar:'📑 BKO postlar',bko_xodimlar:'📑 BKO xodimlar',bko_rasmiy:'📑 BKO rasmiylashtirilgan',
+  avtotaqsimot:'🚗 Avtotaqsimot'
+};
 let _unifiedFiles=[];
 function handleUnifiedDrop(files){
   _unifiedFiles=[...files];
@@ -4217,7 +4229,7 @@ function handleUnifiedDrop(files){
     const sz=(f.size/1024/1024).toFixed(1)+' MB';
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;margin-bottom:5px">
       <select onchange="_unifiedFiles[${i}]._type=this.value" style="font-size:12px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px">
-        ${['bnrte','depozit','ombor','avia','yaroqlilik','vaqtincha','tolov'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
+        ${['bnrte','depozit','ombor','avia','yaroqlilik','vaqtincha','tolov','korik_holatlar','korik_vaqt','bko_postlar','bko_xodimlar','bko_rasmiy','avtotaqsimot'].map(v=>`<option value="${v}"${t===v?' selected':''}>${FILE_TYPE_LABELS[v]}</option>`).join('')}
       </select>
       <span style="font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.name)}">${esc(f.name)}</span>
       <span style="font-size:11px;color:#94a3b8;flex-shrink:0">${sz}</span>
@@ -4281,6 +4293,12 @@ async function runUnifiedUpload(btn){
         const j=await api('/api/chunk_finalize',{method:'POST',body:JSON.stringify({...info,deposit_upload_id:depInfo.upload_id,deposit_filename:depInfo.filename})});
         if(j.job_id)poll(j.job_id);
         results.push(`✓ BNRTE: hisoblash boshlandi`);
+      }else if(['korik_holatlar','korik_vaqt','bko_postlar','bko_xodimlar','bko_rasmiy','avtotaqsimot'].includes(t)){
+        const EP={korik_holatlar:'/api/upload_korik_holatlar',korik_vaqt:'/api/upload_korik_vaqt',bko_postlar:'/api/upload_bko_postlar',bko_xodimlar:'/api/upload_bko_xodimlar',bko_rasmiy:'/api/upload_bko_rasmiy',avtotaqsimot:'/api/upload_avtotaqsimot'};
+        const fd=new FormData();fd.append('file',f);
+        const j=await api(EP[t],{method:'POST',body:fd});
+        if(j.ok){results.push(`✓ ${FILE_TYPE_LABELS[t]}: saqlandi${j.rows!=null?' ('+j.rows+' qator)':''}`);await loadFilesArchive();}
+        else results.push(`✗ ${esc(f.name)}: ${j.error||'Xatolik'}`);
       }else if(t!=='_done'){
         results.push(`⏭ ${f.name}: o'tkazib yuborildi`);
       }
