@@ -2782,6 +2782,7 @@ def reconcile_archive_job(job_id: str):
         recovered: list[str] = []
         reprocessed: list[str] = []
         failed: list[dict] = []
+        skipped: list[dict] = []
         for i, d in enumerate(folders):
             job["status"] = f"Tiklanmoqda {i + 1}/{len(folders)}"
             try:
@@ -2792,8 +2793,10 @@ def reconcile_archive_job(job_id: str):
                 continue
             dash_path = d / "dashboard.json"
             candidates = [f for f in d.iterdir() if f.is_file() and f.name != "dashboard.json"]
+            # depozit/ombor/avia va h.k. fayllar hech qachon asosiy BNRTE manba bo'lmasligi kerak
+            bnrte_candidates = [f for f in candidates if _detect_file_type_py(f.name) == "bnrte"]
             if dash_path.exists():
-                source_file = candidates[0] if candidates else None
+                source_file = bnrte_candidates[0] if bnrte_candidates else (candidates[0] if candidates else None)
                 with _ARCHIVE_LOCK:
                     arc2 = load_json(INDEX_PATH, {"reports": []})
                     if not isinstance(arc2, dict):
@@ -2803,12 +2806,16 @@ def reconcile_archive_job(job_id: str):
                     arc2["reports"] = clean_archive_records(reports)
                     save_json(INDEX_PATH, arc2)
                 recovered.append(d.name)
-            elif candidates:
-                ok, err = reconcile_report_dir(d.name, d, candidates[0], report_date)
+            elif bnrte_candidates:
+                ok, err = reconcile_report_dir(d.name, d, bnrte_candidates[0], report_date)
                 if ok:
                     reprocessed.append(d.name)
                 else:
                     failed.append({"id": d.name, "error": err})
+            elif candidates:
+                # Bu papkada haqiqiy BNRTE asos fayli yo'q - boshqa turdagi fayl (ombor/avia/depozit)
+                # noto'g'ri yuklangan bo'lishi mumkin; bu haqiqiy hisobot emas, shuning uchun xato emas
+                skipped.append({"id": d.name, "files": [f.name for f in candidates]})
             else:
                 failed.append({"id": d.name, "error": "manba fayl topilmadi"})
         job.update({
@@ -2816,6 +2823,7 @@ def reconcile_archive_job(job_id: str):
             "result": {
                 "recovered": recovered, "recovered_count": len(recovered),
                 "reprocessed": reprocessed, "reprocessed_count": len(reprocessed),
+                "skipped": skipped, "skipped_count": len(skipped),
                 "failed": failed, "failed_count": len(failed),
             },
         })
