@@ -4154,7 +4154,26 @@ function translateRuPage(){
    "Oziq-ovqat turi": "Вид продовольственных товаров",
    "Tovarlar turi": "Вид товаров",
    "Ko'rsatkich": "Показатель",
-   "Saqlanish sabablari": "Причины хранения"};
+   "Saqlanish sabablari": "Причины хранения",
+   "GTD raqam": "Номер ГТД", "TN VED": "ТН ВЭД", "Netto (kg)": "Нетто (кг)", "Qiymat ($)": "Стоимость ($)",
+   "Kiritilgan": "Дата ввода", "Muddat tugashi": "Истечение срока",
+   "IM42 — vaqtincha olib kirish": "ИМ42 — временный ввоз", "EK12 — vaqtincha olib chiqish": "ЭК12 — временный вывоз",
+   "kg vazn": "кг вес", "$ qiymat": "$ стоимость",
+   "180 kundan kam qolgan": "Осталось менее 180 дней", "1 oy ichida muddati tugaydi": "Истекает в течение 1 месяца",
+   "180 kun qoidasi (buzilish)": "Правило 180 дней (нарушение)", "Diqqat talab": "Требует внимания",
+   "Diqqat talab (1 yil)": "Требует внимания (1 год)", "Tovar turi": "Вид товара",
+   "Ombor lits. raqami": "Номер лицензии склада", "Deklaratsiya raqami": "Номер декларации",
+   "Yuk qabul qiluvchi": "Грузополучатель", "Muddat holati": "Статус срока", "Vazni (kg)": "Вес (кг)",
+   "Qiymati (ming $)": "Стоимость (тыс. $)", "Pozitsiyalar": "Позиции", "noma'lum": "неизвестно",
+   "Muddati": "Срок", "Kun": "День",
+   "Oylar bo'yicha (ming $)": "По месяцам (тыс. $)", "Davlatlar bo'yicha (ming $) — TOP 15": "По странам (тыс. $) — ТОП 15",
+   "Korxonalar bo'yicha (ming $) — TOP 20": "По предприятиям (тыс. $) — ТОП 20",
+   "Qabul qiluvchi korxona": "Предприятие-получатель", "Reys": "Рейс", "Joylar": "Места",
+   "AWB raqami": "Номер AWB", "Qabul qiluvchi": "Получатель", "Davlat": "Страна", "Kelgan sana": "Дата прибытия",
+   "🔴 O'tgan": "🔴 Просрочено", "🟢 Kuzatuvda": "🟢 На контроле", "2+ reys bilan yetkazilgan": "Доставлено 2+ рейсами",
+   "Tahrirda bo'sh qoldirish mumkin": "Можно оставить пустым при редактировании",
+   "Yangi reestri faylini yuklash:": "Загрузить новый файл реестра:", "AWB Excel yuklash:": "Загрузить Excel AWB:",
+   "Dastlabki parol": "Первоначальный пароль", "F.I.Sh.": "Ф.И.О."};
   _trWalk(M);
 }
 adminPanel=function(){
@@ -4526,6 +4545,49 @@ function compactFilesArchivePanel(isAdmin){
   }
   return `<div class=panel><h2>Arxiv — Boshqa fayllar</h2><div class=muted>${FILES_ARCHIVE.length} ta fayl, ${dates.length} ta sana.</div><table class="fixed-table compact-archive"><colgroup><col style="width:200px"><col><col style="width:1px"><col style="width:170px"></colgroup><tbody>${body}</tbody></table></div>`;
 }
+function unifiedArchivePanel(){
+  let isAdmin=ME&&ME.role==="admin";
+  const TYPE_ICONS={"warehouses":"🏭","avia_awb":"✈️","yaroqlilik":"📋","vaqtincha":"⏱️","tolov":"💰","bko_postlar":"📑","bko_xodimlar":"📑","bko_rasmiy":"📑","korik_holatlar":"🔍","korik_vaqt":"⏱️","avtotaqsimot":"🚗"};
+  const groups={};
+  for(const r of uniqueArchiveRows()){
+    const d=r.date||'—';if(!groups[d])groups[d]=[];
+    let isCurrent=r.id===ARCHIVE_CURRENT_ID||((!ARCHIVE_CURRENT_ID)&&r.id===ARCHIVE[0]?.id);
+    let isLoaded=DATA&&DATA.id===r.id;
+    groups[d].push({_kind:'report',r,isCurrent,isLoaded});
+  }
+  for(const r of FILES_ARCHIVE){
+    const d=r.date||'—';if(!groups[d])groups[d]=[];
+    groups[d].push({_kind:'file',r,isCurrent:r.is_current||FILES_CURRENT[r.type]===r.id});
+  }
+  const dates=Object.keys(groups).sort((a,b)=>{
+    const pa=a.split('.').reverse().join(''), pb=b.split('.').reverse().join('');
+    return pb.localeCompare(pa);
+  });
+  let body='',totalItems=0;
+  for(const date of dates){
+    const grp=groups[date];totalItems+=grp.length;
+    body+=`<tr style="background:rgba(0,0,0,.04)"><td colspan=4 style="padding:6px 10px;font-weight:700;font-size:13px;color:#374151">📅 ${esc(date)} <span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:4px">${grp.length} ta yozuv</span></td></tr>`;
+    for(const item of grp){
+      if(item._kind==='report'){
+        const r=item.r;
+        let source=(r.source||"").split(/[\\/]/).pop(), deposit=r.deposit?((r.deposit||"").split(/[\\/]/).pop()||"Bor"):"-";
+        let badge=item.isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
+        let loadedBadge=item.isLoaded&&!item.isCurrent?`<span style="background:#1d4ed8;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Ochiq</span>`:"";
+        let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteArchiveEntry('${esc(r.id)}','${esc(r.date)}')" title="O'chirish">🗑</button>${!item.isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentArchive('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:"";
+        body+=`<tr><td class=num style="padding-left:20px">📋 <b>BNRTE${deposit!=='-'?' + Depozit':''}</b>${badge}${loadedBadge}</td><td class=text colspan=2 title="${esc(source)}">${esc(source)}${deposit!=='-'?' · '+esc(deposit):''}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center"><button class="light" onclick="loadReport('${esc(r.id)}')">Ochish</button>${adminBtns}</div></td></tr>`;
+      }else{
+        const r=item.r;
+        let icon=TYPE_ICONS[r.type]||"📄";
+        let badge=item.isCurrent?`<span style="background:#166534;color:#fff;font-size:11px;padding:2px 7px;border-radius:10px;margin-left:6px">Joriy</span>`:"";
+        let adminBtns=isAdmin?`<button class="light" style="color:#b42318;border-color:#fca5a5" onclick="deleteFileEntry('${esc(r.id)}','${esc(r.filename)}')" title="O'chirish">🗑</button>${!item.isCurrent?`<button class="light" style="font-size:12px" onclick="setCurrentFile('${esc(r.id)}')" title="Joriy qilib belgilash">★ Joriy</button>`:""}`:"";
+        let viewBtn=`<button class="light" style="font-size:12px" onclick="showFileData('${esc(r.id)}','${esc(r.type)}','${esc(r.label||r.type)}')" title="Ko'rish">👁 Ko'rish</button>`;
+        body+=`<tr><td class=num style="padding-left:20px">${icon} <b>${esc(r.label||r.type)}</b>${badge}</td><td class=text colspan=2 title="${esc(r.filename)}">${esc(r.filename)}</td><td class=num style="white-space:nowrap"><div style="display:flex;gap:4px;justify-content:center">${viewBtn}${adminBtns}</div></td></tr>`;
+      }
+    }
+  }
+  if(!dates.length)body=`<tr><td colspan=4 class=muted style="padding:14px;text-align:center">Hali hech qanday fayl yuklanmagan.</td></tr>`;
+  return `<div class=panel><h2>Arxiv</h2><div class=muted>${dates.length} ta sana, ${totalItems} ta yozuv. "Joriy" — dastur ochilganda yuklanadigan/faol yozuv.</div><table class="fixed-table compact-archive"><colgroup><col style="width:200px"><col><col style="width:1px"><col style="width:170px"></colgroup><tbody>${body}</tbody></table></div>`;
+}
 async function deleteArchiveEntry(id,date){
   if(!confirm(`"${date}" arxiv yozuvini o'chirasizmi?`))return;
   try{
@@ -4613,7 +4675,7 @@ const renderArchiveCompact=render;render=function(){
   renderArchiveCompact();
   if(TAB==="archive"){
     let v=$("view");
-    if(v)v.innerHTML=compactArchivePanel();
+    if(v)v.innerHTML=unifiedArchivePanel();
   }
 }
 const showLoginBase=showLogin;showLogin=function(){showLoginBase();let el=$("login");if(el)el.classList.remove("active");clearBusy()}
