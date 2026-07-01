@@ -1042,6 +1042,9 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {{
     $excel = [System.Activator]::CreateInstance([System.Type]::GetTypeFromCLSID($xlCLSID, $true))
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
+    $excel.ScreenUpdating = $false
+    $excel.EnableEvents = $false
+    $excel.Calculation = -4135
     break
   }} catch {{
     if ($null -ne $excel) {{
@@ -1494,6 +1497,8 @@ try {{
     $usedNames[$newName] = $true
     $ws.Name = $newName
   }}
+  $excel.Calculation = -4105
+  $excel.ScreenUpdating = $true
   $wb.ForceFullCalculation = $true
   $wb.RefreshAll()
   $wb.Save()

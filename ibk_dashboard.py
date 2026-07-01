@@ -3260,7 +3260,7 @@ function landingPanel(){
   let payTotal=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0);
   let aviaDecl=(AVIA_STATS&&AVIA_STATS.decl_soni)||0;
   let vaqCount=((VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[]).length;
-  let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.expired_count)||0;
+  let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded)?(YAROQLILIK_DATA.expired_count||0):((DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0);
   return `<div class="panel wide"><h2>IBK Dashboard</h2><p class="muted">Toshkent-AERO IBK bo'yicha BNRTE nazoratdagi tovarlar, to'lovlar, arxiv, nazoratdan yechilish va tahliliy ko'rsatkichlar yagona dashboardda jamlanadi.</p><div class="summary-grid" style="grid-template-columns:repeat(3,minmax(145px,1fr))">
 <button class="summary-item" onclick="showHomeKpi('bnrte')"><b>${fmtI(k.partiya||0)}</b><span>BNRTE — jami partiya</span></button>
 <button class="summary-item" onclick="showHomeKpi('tolov')"><b>${fmtN(payTotal)}</b><span>To'lovlar — jami summa (so'm)</span></button>
@@ -3293,7 +3293,9 @@ function showHomeKpi(kind){
     body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(items.length)}</b><span>Jami yozuv${rd?' — '+esc(rd):''}</span></div></div>`;
   }else if(kind==='yaroqlilik'){
     let yd=YAROQLILIK_DATA||{};
-    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(yd.expired_count||0)}</b><span>Muddati o'tgan tovar</span></div></div>`;
+    let slExp=(DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0;
+    let cnt=yd.loaded?(yd.expired_count||0):slExp;
+    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(cnt)}</b><span>Muddati o'tgan tovar</span></div></div>`;
   }
   dlgTitle.textContent=titles[kind]||'';
   dlgBody.innerHTML=body+`<div style="margin-top:14px;text-align:right"><button onclick="homeKpiNav('${kind}')">To'liq ko'rish →</button></div>`;
@@ -4628,6 +4630,19 @@ const renderFinalPolish=render;render=function(){renderFinalPolish();cleanTopAct
 // ===== UPLOAD YANGILANMASI =====
 let _uploadAbortCtrl=null;
 function cancelGlobalUpload(){if(_uploadAbortCtrl){_uploadAbortCtrl.abort();_uploadAbortCtrl=null;}showUploadProgress('',0);}
+document.addEventListener('change',function(e){
+  let inp=e.target;
+  if(!inp||inp.tagName!=='INPUT'||inp.type!=='file'||!inp.closest('.uc-field'))return;
+  let old=inp.parentElement.querySelector('.uc-clear-x');
+  if(old)old.remove();
+  if(!inp.files||!inp.files.length)return;
+  let x=document.createElement('button');
+  x.type='button';x.className='uc-clear-x';x.textContent='✕ '+inp.files[0].name;
+  x.title="Tanlangan faylni bekor qilish";
+  x.style.cssText='margin-top:4px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:flex-start';
+  x.onclick=function(ev){ev.preventDefault();inp.value='';x.remove()};
+  inp.insertAdjacentElement('afterend',x);
+});
 function showUploadProgress(label,pct){
   let el=$("uploadStatus");
   let gb=$("gUploadBar"),gl=$("gUploadLabel"),gp=$("gUploadPct");
@@ -4672,6 +4687,7 @@ async function refreshCurrentReport(btn){
   try{DATA=await api("/api/reports/"+DATA.id);render();setText("status","Yangilandi")}catch(err){setText("status",err.message)}finally{setBusy(btn,false)}
 }
 async function chunkedUpload(file,onProgress){
+  if(_uploadActive)throw new Error("Boshqa fayl hali yuklanmoqda — avval o'sha tugashini kuting");
   _uploadActive=true;
   _uploadAbortCtrl=new AbortController();
   const _signal=_uploadAbortCtrl.signal;
@@ -4685,14 +4701,16 @@ async function chunkedUpload(file,onProgress){
     }
     const base=DIRECT_UPLOAD_URL||'';
     const isLAN=!!DIRECT_UPLOAD_URL;
-    // Cloudflare tunnel orqali javobga 100s qat'iy limit bor (HTTP 524). Agar mijozning
-    // yuklash tezligi past bo'lsa, parallel so'rovlar mavjud tarmoq kengligini bo'lib
-    // yuborib, har birini yanada sekinlashtiradi - shuning uchun tashqi ulanishda
-    // ketma-ket (PARALLEL=1) va kichik chunk (512KB) ishlatiladi.
-    const CHUNK=isLAN?1024*1024:512*1024;
+    // Cloudflare tunnel orqali javobga 100s qat'iy limit bor (HTTP 524). Tezlik testi
+    // mijoz bandwidth'i normal ekanini ko'rsatdi (~94 Mbps) - avvalgi sekinlik
+    // bandwidth'dan emas, juda ko'p mayda ketma-ket chunk (har biri tunnel orqali
+    // alohida borib-kelishi) yig'indisidan kelib chiqqan edi. Shuning uchun chunk
+    // va parallellik biroz oshirildi; agar 524 qaytsa - sabab boshqa joyda
+    // (server yuki yoki mahalliy tarmoq vositachisi), yana pasaytirish kerak bo'ladi.
+    const CHUNK=1024*1024;
     const total=Math.max(1,Math.ceil(file.size/CHUNK));
     const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    const PARALLEL=isLAN?4:1;
+    const PARALLEL=isLAN?4:2;
     const MAX_RETRY=6;
     let done=0;
     async function uploadOne(i){
@@ -4932,10 +4950,12 @@ async function ucUploadTolov(btn){
   let src=$('ucTolovSource'),st=$('ucTolovStatus');
   if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('source',src.files[0]);
   try{
-    let j=await api('/api/tolov',{method:'POST',body:fd});PAYMENTS=j.payments||[];
-    if(st)st.textContent=`Tayyor: ${PAYMENTS.length} tur, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm`;
+    const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
+    if(st)st.textContent='Qayta ishlanmoqda...';
+    let j=await api('/api/chunk_finalize_tolov',{method:'POST',body:JSON.stringify(info)});
+    PAYMENTS=j.payments||[];
+    if(st)st.textContent=j.payments?`Tayyor: ${PAYMENTS.length} tur, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so'm`:`Xatolik: ${esc(j.error||'')}`;
     if($('kpis'))$('kpis').innerHTML=renderKpis();
   }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
 }
@@ -4949,9 +4969,11 @@ async function ucUploadGeneric(btn,inputId,statusId,apiPath,label){
   let src=$(inputId),st=$(statusId);
   if(!src?.files?.length){if(st)st.textContent='Fayl tanlang';return}
   setBusy(btn,true,'Yuklanmoqda');if(st)st.textContent='Yuklanyapti...';
-  let fd=new FormData();fd.append('file',src.files[0]);
+  const ftype=apiPath.replace('/api/upload_','');
   try{
-    let j=await api(apiPath,{method:'POST',body:fd});
+    const info=await chunkedUpload(src.files[0],p=>{if(st)st.textContent=`Yuklanyapti: ${Math.round(p*100)}%`;});
+    if(st)st.textContent='Qayta ishlanmoqda...';
+    let j=await api('/api/chunk_finalize_generic',{method:'POST',body:JSON.stringify({...info,ftype})});
     if(st)st.textContent=j.ok?`✓ ${label} arxivga saqlandi${j.rows!=null?' ('+j.rows+' qator)':''}`:`Xatolik: ${esc(j.error||'')}`;
     await loadFilesArchive();
   }catch(e){if(st)st.textContent='Xatolik: '+e.message}finally{setBusy(btn,false)}
@@ -5029,8 +5051,8 @@ uploadPanel=function(){
   let wrSt=WR_DATA&&WR_DATA.length?`<span class="uc-badge ok">🏢 ${WR_DATA.length} ombor</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   let aviaSt=AVIA_DATA&&AVIA_DATA.loaded?`<span class="uc-badge ok">📦 ${fmtI(AVIA_DATA.unique_awb)} AWB</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   let aviaDbSt=AVIA_STATS?`<span class="uc-badge ok">💲 ${fmtN(AVIA_STATS.jami_qiymat_k)} ming $</span>`:'';
-  let yarSt=YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded?`<span class="uc-badge ok">⚠ ${YAROQLILIK_DATA.expired_count||0} muddati o'tgan</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
-  let vaqSt=VAQTINCHA_DATA&&VAQTINCHA_DATA.loaded?`<span class="uc-badge ok">📄 ${(VAQTINCHA_DATA.items||[]).length} yozuv</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let yarSt=YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded?`<span class="uc-badge ok">📅 ${YAROQLILIK_DATA.report_date||'?'} holatiga — ${YAROQLILIK_DATA.expired_count||0} muddati o'tgan</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
+  let vaqSt=VAQTINCHA_DATA&&VAQTINCHA_DATA.loaded?`<span class="uc-badge ok">📅 ${VAQTINCHA_DATA.report_date||'?'} holatiga — ${(VAQTINCHA_DATA.items||[]).length} yozuv</span>`:`<span class="uc-badge warn">Yuklanmagan</span>`;
   let og=g=>UPLOAD_GROUPS_OPEN[g]?'open':'';
   let grp=(key,icon,title,body)=>`<details class=uc-group ${og(key)} ontoggle="UPLOAD_GROUPS_OPEN['${key}']=this.open;localStorage.uploadGroupsOpen=JSON.stringify(UPLOAD_GROUPS_OPEN)"><summary>${ucIcon(icon)}${title}</summary><div class=uc-group-body>${body}</div></details>`;
   let quickBody=`<div class="panel uc-card" style="border-left-color:#7c3aed">
@@ -5665,7 +5687,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/chunk_finalize_vaqtincha", "/api/chunk_finalize_archive", "/api/server_info"):
+        if parsed.path in ("/api/chunk_upload", "/api/chunk_finalize", "/api/chunk_finalize_wr", "/api/chunk_finalize_avia", "/api/chunk_finalize_deposit", "/api/chunk_finalize_vaqtincha", "/api/chunk_finalize_archive", "/api/chunk_finalize_generic", "/api/chunk_finalize_tolov", "/api/server_info"):
             allowed = self._cors_origin()
             self.send_response(HTTPStatus.OK)
             if allowed:
@@ -6440,6 +6462,81 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             self.json({"ok": True, "payments": rows})
             return
+        if parsed.path == "/api/chunk_finalize_generic":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            ftype    = body.get("ftype", "").strip()
+            _generic_parsers = {
+                "bko_postlar": parse_bko_tabular,
+                "bko_xodimlar": parse_bko_tabular,
+                "bko_rasmiy": parse_bko_rasmiy,
+                "korik_holatlar": parse_korik_holatlar,
+                "korik_vaqt": parse_korik_vaqt,
+                "avtotaqsimot": parse_avtotaqsimot,
+            }
+            if not uid or not filename or ftype not in _generic_parsers:
+                self.json({"error": "upload_id, filename va to'g'ri ftype kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            content = b"".join(ch.read_bytes() for ch in chunks)
+            shutil.rmtree(cd, ignore_errors=True)
+            try:
+                data = _generic_parsers[ftype](content)
+                add_file_to_archive(ftype, filename, data, content)
+                resp = {"ok": True, "type": ftype, "rows": len(data.get("rows", []))}
+            except Exception as exc:
+                resp = {"error": str(exc)}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
+            return
+        if parsed.path == "/api/chunk_finalize_tolov":
+            if not self.require_perm("upload"):
+                return
+            body = self.body_json()
+            uid      = body.get("upload_id", "").strip()
+            filename = unquote(body.get("filename", "").strip())
+            total    = int(body.get("total_chunks", 1))
+            if not uid or not filename:
+                self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
+                return
+            cd = CHUNK_DIR / uid
+            chunks = sorted(cd.glob("*.bin"))
+            if len(chunks) < total:
+                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                return
+            tmp = UPLOAD_DIR / ("tolov_" + str(int(time.time() * 1000)))
+            tmp.mkdir(parents=True, exist_ok=True)
+            source = tmp / safe_name(filename)
+            with open(source, "wb") as fh:
+                for ch in chunks:
+                    fh.write(ch.read_bytes())
+            shutil.rmtree(cd, ignore_errors=True)
+            try:
+                rows = build_tolov_from_source(source)
+                try:
+                    add_file_to_archive("tolov", filename, {"payments": rows}, source.read_bytes())
+                except Exception:
+                    pass
+                resp = {"ok": True, "payments": rows}
+            except Exception as exc:
+                resp = {"error": f"{type(exc).__name__}: {exc}"}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
+            return
         if parsed.path == "/api/chunk_upload":
             if not self.require_perm("upload"):
                 return
@@ -6574,6 +6671,10 @@ class Handler(BaseHTTPRequestHandler):
                     j["status"] = "Omborlar reestri tahlil qilinmoqda"
                     result = load_warehouse_registry(dp)
                     j.update({"status": "tayyor", "wr_data": result})
+                    try:
+                        add_file_to_archive("warehouses", dp.name, result, dp.read_bytes())
+                    except Exception:
+                        pass
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_wr, daemon=True).start()
@@ -6616,6 +6717,10 @@ class Handler(BaseHTTPRequestHandler):
                     j["status"] = "AVIA AWB tahlil qilinmoqda"
                     result = load_avia_awb(dp)
                     j.update({"status": "tayyor", "avia_data": result})
+                    try:
+                        add_file_to_archive("avia_awb", dp.name, result, dp.read_bytes())
+                    except Exception:
+                        pass
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_avia, daemon=True).start()
