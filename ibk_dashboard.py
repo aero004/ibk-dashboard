@@ -111,6 +111,7 @@ FILE_TYPE_LABELS = {
 }
 
 JOBS: dict[str, dict] = {}
+FINALIZED_UPLOADS: dict[str, dict] = {}  # upload_id -> javob; chunk_finalize* qayta chaqirilsa ham xavfsiz (idempotent) bo'lishi uchun
 SESSIONS: dict[str, dict] = {}
 STORE: IBKStore | None = None
 
@@ -2640,6 +2641,21 @@ def run_job(job_id: str, source: Path, deposit: Path | None, report_date: dateti
             stored_deposit = report_dir / deposit.name
             shutil.copy2(deposit, stored_deposit)
 
+        # Vaqtinchalik UPLOAD_DIR nusxalarini tozalash (doimiy nusxa report_dir da saqlanadi)
+        try:
+            _tmp_parents = set()
+            if UPLOAD_DIR in source.parents:
+                source.unlink(missing_ok=True)
+                _tmp_parents.add(source.parent)
+            if deposit and UPLOAD_DIR in deposit.parents:
+                deposit.unlink(missing_ok=True)
+                _tmp_parents.add(deposit.parent)
+            for _p in _tmp_parents:
+                if _p.exists() and not any(_p.iterdir()):
+                    _p.rmdir()
+        except Exception:
+            pass
+
         df_for_store = read_report_source(stored_source)
         save_snapshot_to_store(job_id, stored_source, stored_deposit, report_date, df_for_store)
         data = build_dashboard(job_id, stored_source, stored_deposit, report_date)
@@ -4461,10 +4477,11 @@ async function chunkedUpload(file,onProgress){
     }
     const base=DIRECT_UPLOAD_URL||'';
     const isLAN=!!DIRECT_UPLOAD_URL;
-    const CHUNK=isLAN?1024*1024:8*1024*1024;
+    // Cloudflare tunnel orqali javobga 100s qat'iy limit bor (HTTP 524) — kichik chunk ishonchliroq
+    const CHUNK=isLAN?1024*1024:2*1024*1024;
     const total=Math.max(1,Math.ceil(file.size/CHUNK));
     const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    const PARALLEL=isLAN?4:4;
+    const PARALLEL=isLAN?4:2;
     const MAX_RETRY=6;
     let done=0;
     async function uploadOne(i){
@@ -5615,6 +5632,16 @@ class Handler(BaseHTTPRequestHandler):
             save_json(INDEX_PATH, archive)
             self.json(archive)
             return
+        if parsed.path == "/api/files_archive":
+            if not self.require_user():
+                return
+            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+            files = archive.get("files") or []
+            current = archive.get("current_files") or {}
+            for f in files:
+                f["is_current"] = current.get(f.get("type", "")) == f.get("id")
+            self.json({"files": files, "current_files": current})
+            return
         if parsed.path == "/api/analytics":
             if not self.require_admin():
                 return
@@ -6186,6 +6213,9 @@ class Handler(BaseHTTPRequestHandler):
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
                 return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
+                return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
             if len(chunks) < total:
@@ -6221,7 +6251,9 @@ class Handler(BaseHTTPRequestHandler):
                     shutil.rmtree(dcd, ignore_errors=True)
             JOBS[job_id] = {"status": "navbatda", "data": None}
             threading.Thread(target=run_job, args=(job_id, source, deposit, report_date), daemon=True).start()
-            self.json({"job_id": job_id}, cors=True)
+            resp = {"job_id": job_id}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_wr":
             if not self.require_perm("upload"):
@@ -6232,6 +6264,9 @@ class Handler(BaseHTTPRequestHandler):
             total    = int(body.get("total_chunks", 1))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
                 return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
@@ -6258,7 +6293,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_wr, daemon=True).start()
-            self.json({"job_id": job_id, "type": "wr"}, cors=True)
+            resp = {"job_id": job_id, "type": "wr"}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_avia":
             if not self.require_perm("upload"):
@@ -6269,6 +6306,9 @@ class Handler(BaseHTTPRequestHandler):
             total    = int(body.get("total_chunks", 1))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
                 return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
@@ -6295,7 +6335,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_avia, daemon=True).start()
-            self.json({"job_id": job_id, "type": "avia"}, cors=True)
+            resp = {"job_id": job_id, "type": "avia"}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_vaqtincha":
             if not self.require_perm("upload"):
@@ -6306,6 +6348,9 @@ class Handler(BaseHTTPRequestHandler):
             total    = int(body.get("total_chunks", 1))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
                 return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
@@ -6338,7 +6383,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}"
             threading.Thread(target=_load_vaqtincha, daemon=True).start()
-            self.json({"job_id": job_id, "type": "vaqtincha"}, cors=True)
+            resp = {"job_id": job_id, "type": "vaqtincha"}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
 
         if parsed.path == "/api/chunk_finalize_archive":
@@ -6350,6 +6397,9 @@ class Handler(BaseHTTPRequestHandler):
             total    = int(body.get("total_chunks", 1))
             if not uid or not filename:
                 self.json({"error": "upload_id va filename kerak"}, HTTPStatus.BAD_REQUEST)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
                 return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
@@ -6427,7 +6477,9 @@ class Handler(BaseHTTPRequestHandler):
                     results.append({"file": f.name, "type": "vaqtincha", "job_id": jid})
                 else:
                     results.append({"file": f.name, "type": ftype, "skipped": True})
-            self.json({"results": results}, cors=True)
+            resp = {"results": results}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
         if parsed.path == "/api/chunk_finalize_deposit":
             if not self.require_perm("upload"):
@@ -6446,6 +6498,9 @@ class Handler(BaseHTTPRequestHandler):
             item = next((r for r in archive.get("reports", []) if isinstance(r, dict) and r.get("id") == report_id), None)
             if not item:
                 self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            if uid in FINALIZED_UPLOADS:
+                self.json(FINALIZED_UPLOADS[uid], cors=True)
                 return
             cd = CHUNK_DIR / uid
             chunks = sorted(cd.glob("*.bin"))
@@ -6478,7 +6533,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     j["status"] = "xatolik"; j["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
             threading.Thread(target=_rebuild_dep, daemon=True).start()
-            self.json({"job_id": job_id}, cors=True)
+            resp = {"job_id": job_id}
+            FINALIZED_UPLOADS[uid] = resp
+            self.json(resp, cors=True)
             return
         if parsed.path == "/api/reports_bulk":
             if not self.require_perm("upload"):
@@ -6681,16 +6738,6 @@ class Handler(BaseHTTPRequestHandler):
             archive["current_id"] = rid
             save_json(INDEX_PATH, archive)
             self.json({"ok": True})
-            return
-        if parsed.path == "/api/files_archive":
-            if not self.require_user():
-                return
-            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
-            files = archive.get("files") or []
-            current = archive.get("current_files") or {}
-            for f in files:
-                f["is_current"] = current.get(f.get("type", "")) == f.get("id")
-            self.json({"files": files, "current_files": current})
             return
         if parsed.path == "/api/files_archive/delete":
             if not self.require_admin():
