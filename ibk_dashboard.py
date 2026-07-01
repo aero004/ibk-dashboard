@@ -3218,6 +3218,7 @@ function startHeartbeat(){
 function logTabView(tab){try{api('/api/analytics/event',{method:'POST',body:JSON.stringify({event:'tab_view',tab})}).catch(()=>{});}catch(e){}}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;_sessionStart=Date.now();_clickCount=0;_heartbeatSent=0;startHeartbeat();await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){clearInterval(window._hbInterval);localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
+async function loadAviaHome(){if(AVIA_DATA&&AVIA_DATA.loaded)return;try{AVIA_DATA=await api('/api/avia_awb');if(GROUP==='bnrte'&&TAB==='umumiy')render();}catch(e){}}
 let ARCHIVE_CURRENT_ID=null;
 let DATA_IS_STALE=false;
 let DIRECT_UPLOAD_URL=null;
@@ -3247,7 +3248,7 @@ function leBindDrag(){let el=$('leList');if(!el)return;el.querySelectorAll('[dat
 function leEye(btn){let row=btn.closest('[data-le]');let h=!btn.classList.contains('hidden-eye');btn.classList.toggle('hidden-eye',h);btn.textContent=h?'🙈':'👁';row.classList.toggle('le-hidden',h);}
 async function leSave(tab){let el=$('leList');if(!el)return;let items=[...el.querySelectorAll('[data-le]')].map(r=>({id:r.dataset.le,hidden:r.classList.contains('le-hidden')}));await saveTabLayout(tab,items);let s=$('leSt');if(s){s.textContent='✓ Saqlandi';setTimeout(()=>{if(s)s.textContent='';},2000);}}
 async function leReset(tab){if(UI_CONFIG&&UI_CONFIG.tab_layouts)delete UI_CONFIG.tab_layouts[tab];try{await api('/api/ui_config',{method:'POST',body:JSON.stringify(UI_CONFIG||{})});}catch(e){}let p=$('lePanel');if(p){p.outerHTML=layoutEditorPanel();leBindDrag();}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();await loadAviaStats();await loadYaroqlilik();await loadVaqtincha();await loadWarehousesHome();await loadBkoSummary();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);}else{DATA=null;}TAB="home";GROUP="home";render();} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();await loadAviaStats();await loadAviaHome();await loadYaroqlilik();await loadVaqtincha();await loadWarehousesHome();await loadBkoSummary();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);}else{DATA=null;}TAB="home";GROUP="home";render();} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 async function pollAvia(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollAvia(id,st,btn),1800);return}AVIA_DATA=j.avia_data||{};if(st)st.textContent=`✓ Tayyor: ${fmtI(AVIA_DATA.unique_awb||0)} AWB yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();if(TAB==='avia')loadAviaAwb();}catch(e){setTimeout(()=>pollAvia(id,st,btn),3000)}}
 async function pollWr(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollWr(id,st,btn),1800);return}if(j.wr_data?.warehouses)WR_DATA=j.wr_data.warehouses;if(st)st.textContent=`✓ Tayyor: ${(WR_DATA||[]).length} ombor yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();}catch(e){setTimeout(()=>pollWr(id,st,btn),3000)}}
@@ -3325,9 +3326,14 @@ function renderKpis(){let k=DATA.kpis||{};
   </div>`;
   let ownRow=(DATA.warehouse||[]).find(r=>r.name==="O'z ombor")||{};
   let own3mPartiya=(DATA.own_3m||[]).reduce((a,r)=>a+(+r.partiya||0),0);
-  let rows=[["Partiya",fmtI(k.partiya),"partiya",fmtI(ownRow.partiya||0)],["Vazn (tn)",fmtN(k.vazn),"vazn",fmtN(ownRow.vazn||0)],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat",fmtN(ownRow.qiymat||0)],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov",fmtN(ownRow.tolov||0)],["Muddati o'tgan partiya",fmtI(k.expired),"expired",fmtI(own3mPartiya)+" (3 oy+)"]];
-  let aviaHtml=AVIA_DATA&&AVIA_DATA.loaded?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer"><span>✈ AVIA AWB</span><b>${fmtI(AVIA_DATA.unique_awb)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">Muddati o'tgan: <b style="color:#dc2626">${fmtI(AVIA_DATA.overdue_count)}</b></div></div>`:"";
-  let aviaQiymatHtml=AVIA_STATS&&AVIA_STATS.jami_qiymat_k?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ Avia qiymat</span><b style="color:#0ea5e9">${fmtN(AVIA_STATS.jami_qiymat_k)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">ming $ • <b>${fmtN(AVIA_STATS.jami_vazn_tn)}</b> tn</div></div>`:"";
+  let rows=[
+    ["Partiya",fmtI(k.partiya),"partiya","Shundan o'z omborda",fmtI(ownRow.partiya||0)],
+    ["Vazn (tn)",fmtN(k.vazn),"vazn","Shundan o'z omborda",fmtN(ownRow.vazn||0)],
+    ["Qiymat (ming $)",fmtN(k.qiymat),"qiymat","Shundan o'z omborda",fmtN(ownRow.qiymat||0)],
+    ["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov","Shundan o'z omborda",fmtN(ownRow.tolov||0)],
+    ["Muddati o'tgan partiya",fmtI(k.expired),"expired","Shundan o'z omborda, 3 oy+",fmtI(own3mPartiya)],
+  ];
+  let aviaHtml=(AVIA_DATA&&AVIA_DATA.loaded)||(AVIA_STATS&&AVIA_STATS.decl_soni)?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ AVIA AWB</span><b style="color:#0ea5e9">${fmtI((AVIA_DATA&&AVIA_DATA.unique_awb)||0)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN((AVIA_STATS&&AVIA_STATS.jami_qiymat_k)||0)} ming $ · <b style="color:#dc2626">${(AVIA_DATA&&AVIA_DATA.overdue_count)||0}</b> muddati o'tgan</div></div>`:"";
   let foodRowsAll=DATA.food||[];
   let foodQiymat=foodRowsAll.reduce((a,r)=>a+(+r.qiymat||0),0),foodVazn=foodRowsAll.reduce((a,r)=>a+(+r.vazn||0),0);
   let foodOverCount=foodRowsAll.filter(r=>(+r.over_qiymat||0)>0||(+r.over_vazn||0)>0).length;
@@ -3338,11 +3344,11 @@ function renderKpis(){let k=DATA.kpis||{};
   let wrInsExpired=(WR_DATA||[]).filter(r=>r.ins_days!==null&&r.ins_days!==undefined&&r.ins_days<0).length;
   let wrHtml=(WR_DATA||[]).length?`<div class=kpi onclick="TAB='ombor';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #f59e0b"><span>🏢 Omborlar reestri</span><b style="color:#f59e0b">${fmtI(WR_DATA.length)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN(wrHajm)} m² · <b style="color:#dc2626">${wrInsExpired}</b> sug'urtasi o'tgan</div></div>`:"";
   let bkoHtml=BKO_SUMMARY&&BKO_SUMMARY.total_bko?`<div class=kpi onclick="showBkoDetail()" style="cursor:pointer;border-top:3px solid #059669"><span>📑 BKO</span><b style="color:#059669">${fmtI(BKO_SUMMARY.total_bko)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN(BKO_SUMMARY.total_qiymat||0)} $ · <b>${fmtN(BKO_SUMMARY.total_summa||0)}</b> so'm undirilgan</div></div>`:"";
-  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">O'z ombor: <b style="color:var(--blue)">${x[3]}</b></div></div>`).join("")+depHtml+aviaQiymatHtml+aviaHtml+foodHtml+im42Html+ek12Html+wrHtml+bkoHtml;}
+  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${x[3]}: <b style="color:var(--blue)">${x[4]}</b></div></div>`).join("")+depHtml+aviaHtml+foodHtml+im42Html+ek12Html+wrHtml+bkoHtml;}
 function showBkoDetail(){
   const rows=(BKO_SUMMARY&&BKO_SUMMARY.rows)||[];
-  dlgTitle.textContent="BKO — batafsil";
-  dlgBody.innerHTML=table([{k:"bko_raqami",t:"BKO raqami",w:"18%"},{k:"toluvchi_nom",t:"To'lovchi",w:"32%"},{k:"tovar_nomi",t:"Tovar nomi",w:"30%"},{k:"qiymat_usd",t:"Qiymat ($)",n:1,f:fmtN},{k:"jami_summa",t:"Jami summa (so'm)",n:1,f:fmtN}],rows,"fixed-table");
+  dlgTitle.textContent="BKO — postlar kesimida";
+  dlgBody.innerHTML=table([{k:"nom",t:"Post",w:"46%"},{k:"bko_soni",t:"BKO soni",n:1,f:fmtI},{k:"summa",t:"Summa (so'm)",n:1,f:fmtN}],rows,"fixed-table");
   dlg.showModal();
 }
 const _RAW_KEYS=new Set(['korxona','company','stir','decl','goods','hs','hs_code','warehouse','ombor','mamlakat','country','tovar','user','full_name','name','reason']);
@@ -6023,17 +6029,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 archive = load_json(INDEX_PATH, {"files": [], "current_files": {}})
-                current_id = (archive.get("current_files") or {}).get("bko_rasmiy")
-                rec = next((f for f in archive.get("files", []) if f.get("id") == current_id), None)
-                if not rec or not rec.get("json_path") or not Path(rec["json_path"]).exists():
-                    self.json({"loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0})
+                current_files = archive.get("current_files") or {}
+                files = archive.get("files", [])
+
+                def _load(ftype):
+                    fid = current_files.get(ftype)
+                    rec = next((f for f in files if f.get("id") == fid), None)
+                    if not rec or not rec.get("json_path") or not Path(rec["json_path"]).exists():
+                        return None, None
+                    return rec, json.loads(Path(rec["json_path"]).read_text(encoding="utf-8"))
+
+                rasmiy_rec, rasmiy_data = _load("bko_rasmiy")
+                postlar_rec, postlar_data = _load("bko_postlar")
+                if not rasmiy_data and not postlar_data:
+                    self.json({"loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0, "rows": []})
                     return
-                data = json.loads(Path(rec["json_path"]).read_text(encoding="utf-8"))
-                rows = data.get("rows", [])
-                total_qiymat = sum(float(r.get("qiymat_usd", 0) or 0) for r in rows)
-                self.json({"loaded": True, "date": rec.get("date", ""), "total_bko": data.get("total", len(rows)), "total_qiymat": total_qiymat, "total_summa": data.get("total_summa", 0), "rows": rows})
+                rasmiy_rows = (rasmiy_data or {}).get("rows", [])
+                total_qiymat = sum(float(r.get("qiymat_usd", 0) or 0) for r in rasmiy_rows)
+                total_bko = (rasmiy_data or {}).get("total", len(rasmiy_rows))
+                post_rows = (postlar_data or {}).get("rows", [])
+                total_summa = (postlar_data or {}).get("total_summa", 0)
+                date = (rasmiy_rec or postlar_rec or {}).get("date", "")
+                self.json({"loaded": True, "date": date, "total_bko": total_bko, "total_qiymat": total_qiymat, "total_summa": total_summa, "rows": post_rows})
             except Exception as exc:
-                self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0})
+                self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0, "rows": []})
             return
         if parsed.path == "/api/avia_stats":
             if not self.require_user():
