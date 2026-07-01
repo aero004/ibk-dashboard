@@ -1054,7 +1054,21 @@ def _extract_if_archive(path: Path, tmp_dir: Path) -> Path:
             return tmp_dir / names[0]
     if ext == ".rar":
         try:
-            import rarfile  # pip install rarfile + unrar.exe
+            import rarfile, shutil as _sh
+            _candidates = [
+                r"C:\Program Files\7-Zip\7z.exe",
+                r"C:\Program Files (x86)\7-Zip\7z.exe",
+                r"C:\Program Files\WinRAR\UnRAR.exe",
+                r"C:\Program Files (x86)\WinRAR\UnRAR.exe",
+            ]
+            for _c in _candidates:
+                if Path(_c).exists():
+                    rarfile.UNRAR_TOOL = _c
+                    break
+            else:
+                _found = _sh.which("7z") or _sh.which("unrar")
+                if _found:
+                    rarfile.UNRAR_TOOL = _found
             with rarfile.RarFile(path) as rf:
                 names = [n for n in rf.namelist()
                          if Path(n).suffix.lower() in _VALID_INNER]
@@ -1064,7 +1078,9 @@ def _extract_if_archive(path: Path, tmp_dir: Path) -> Path:
                 path.unlink(missing_ok=True)
                 return tmp_dir / names[0]
         except ImportError:
-            raise ValueError("RAR qo'llab-quvvatlanmaydi: serverda 'pip install rarfile' va unrar.exe kerak")
+            raise ValueError("RAR: 'pip install rarfile' kerak (yoki ZIP ishlating)")
+        except Exception as _re:
+            raise ValueError(f"RAR ochib bo'lmadi: {_re}. 7-Zip o'rnatilganmi? (7-zip.org)")
     return path
 
 
@@ -1102,6 +1118,22 @@ def _extract_all_from_archive(path: Path, tmp_dir: Path) -> list:
     if ext == ".rar":
         try:
             import rarfile
+            import shutil as _sh
+            # 7-Zip yoki WinRAR unrar.exe ni avtomatik topish
+            _candidates = [
+                r"C:\Program Files\7-Zip\7z.exe",
+                r"C:\Program Files (x86)\7-Zip\7z.exe",
+                r"C:\Program Files\WinRAR\UnRAR.exe",
+                r"C:\Program Files (x86)\WinRAR\UnRAR.exe",
+            ]
+            for _c in _candidates:
+                if Path(_c).exists():
+                    rarfile.UNRAR_TOOL = _c
+                    break
+            else:
+                found = _sh.which("7z") or _sh.which("unrar")
+                if found:
+                    rarfile.UNRAR_TOOL = found
             with rarfile.RarFile(path) as rf:
                 names = [n for n in rf.namelist()
                          if Path(n).suffix.lower() in _VALID_INNER]
@@ -1116,7 +1148,9 @@ def _extract_all_from_archive(path: Path, tmp_dir: Path) -> list:
             path.unlink(missing_ok=True)
             return extracted
         except ImportError:
-            raise ValueError("RAR qo'llab-quvvatlanmaydi: 'pip install rarfile' va unrar.exe kerak")
+            raise ValueError("RAR: 'pip install rarfile' kerak (yoki ZIP ishlating)")
+        except Exception as _re:
+            raise ValueError(f"RAR ochib bo'lmadi: {_re}. 7-Zip o'rnatilganmi? (7-zip.org)")
     return []
 
 def _zip_to_sources(src: Path, report_date: datetime) -> None:
@@ -4590,12 +4624,15 @@ async function runUnifiedUpload(btn){
           }
           const cnt=j.results.filter(r=>r.job_id).length;
           results.push(`✓ Arxiv: ${cnt} ta fayl qayta ishlanmoqda (${j.results.length} jami)`);
-        }else{results.push(`✗ Arxiv: ${j.error||'Xatolik'}`);}
+        }else{const err=j.error||'Xatolik';results.push(`✗ Arxiv: ${err}`);showUploadProgress('✗ Arxiv: '+err,0);}
       }else if(t!=='_done'){
         results.push(`⏭ ${f.name}: o'tkazib yuborildi`);
       }
-    }catch(e){results.push(`✗ ${esc(f.name)}: ${e.message}`);}
+    }catch(e){const em=e.message||String(e);results.push(`✗ ${esc(f.name)}: ${em}`);showUploadProgress('✗ '+em,0);}
   }
+  const errs=results.filter(r=>r.startsWith('✗'));
+  const oks=results.filter(r=>r.startsWith('✓'));
+  if(errs.length&&!oks.length)showUploadProgress('✗ '+errs[0],0);
   if(prog)prog.innerHTML=`<div style="font-size:13px;margin-top:4px">${results.map(r=>`<div>${r}</div>`).join('')}</div>`;
   setBusy(btn,false);btn.textContent=`🚀 Yuklash (${_unifiedFiles.length} ta fayl)`;
 }
