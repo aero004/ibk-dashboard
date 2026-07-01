@@ -4685,11 +4685,14 @@ async function chunkedUpload(file,onProgress){
     }
     const base=DIRECT_UPLOAD_URL||'';
     const isLAN=!!DIRECT_UPLOAD_URL;
-    // Cloudflare tunnel orqali javobga 100s qat'iy limit bor (HTTP 524) — kichik chunk ishonchliroq
-    const CHUNK=isLAN?1024*1024:2*1024*1024;
+    // Cloudflare tunnel orqali javobga 100s qat'iy limit bor (HTTP 524). Agar mijozning
+    // yuklash tezligi past bo'lsa, parallel so'rovlar mavjud tarmoq kengligini bo'lib
+    // yuborib, har birini yanada sekinlashtiradi - shuning uchun tashqi ulanishda
+    // ketma-ket (PARALLEL=1) va kichik chunk (512KB) ishlatiladi.
+    const CHUNK=isLAN?1024*1024:512*1024;
     const total=Math.max(1,Math.ceil(file.size/CHUNK));
     const uid=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    const PARALLEL=isLAN?4:2;
+    const PARALLEL=isLAN?4:1;
     const MAX_RETRY=6;
     let done=0;
     async function uploadOne(i){
