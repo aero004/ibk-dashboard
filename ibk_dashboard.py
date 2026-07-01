@@ -12,7 +12,7 @@ import zipfile
 import threading
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO, StringIO
@@ -125,7 +125,7 @@ LOGIN_BLOCK_SECS = 900
 ALLOWED_ORIGINS = {"https://ibkinfo.uz"}
 
 TAS_ICAO = "UTTT"  # Toshkent (Islom Karimov) xalqaro aeroporti
-FLIGHTS_CACHE: dict = {"ts": 0.0, "data": None}
+FLIGHTS_CACHE: dict = {"ts": 0.0, "data": None, "next_try": 0.0}
 FLIGHTS_CACHE_TTL = 60  # 1 daqiqa (FR24 schedule)
 
 WAREHOUSE_REGISTRY_PATH: Path | None = None
@@ -842,27 +842,56 @@ def _fr24_parse_flight(f: dict, typ: str) -> dict:
     }
 
 
+_TASHKENT_TZ = timezone(timedelta(hours=5))  # O'zbekiston yozgi vaqtga o'tmaydi, doim UTC+5
+
+
+def _is_today_tashkent(ts) -> bool:
+    if not ts:
+        return False
+    try:
+        return datetime.fromtimestamp(int(ts), _TASHKENT_TZ).date() == datetime.now(_TASHKENT_TZ).date()
+    except Exception:
+        return False
+
+
 def fetch_tas_flights() -> dict:
-    url = "https://api.flightradar24.com/common/v1/airport.json?code=TAS&plugin[]=schedule&limit=50"
+    # limit=50 FR24 tomonidan qat'iy cheklov emas - so'ralgan son; Toshkentda kuniga 50 dan ortiq
+    # parvoz bo'lishi mumkin, shuning uchun oshirilgan va natija "bugun" bo'yicha real filtrlanadi
+    url = "https://api.flightradar24.com/common/v1/airport.json?code=TAS&plugin[]=schedule&limit=200"
     now = int(time.time())
     result = {"updated": now, "arrivals": [], "departures": [], "error": ""}
-    try:
-        req = Request(url, headers=_FR24_HEADERS)
-        with urlopen(req, timeout=12) as resp:
-            raw = json.loads(resp.read().decode("utf-8"))
-        sched = raw["result"]["response"]["airport"]["pluginData"]["schedule"]
-        result["arrivals"] = [_fr24_parse_flight(f, "arr") for f in (sched.get("arrivals") or {}).get("data", [])]
-        result["departures"] = [_fr24_parse_flight(f, "dep") for f in (sched.get("departures") or {}).get("data", [])]
-    except Exception as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
+    last_exc: Exception | None = None
+    for attempt in range(2):  # bir lahzalik tarmoq sekinligida darhol qayta urinish
+        try:
+            req = Request(url, headers=_FR24_HEADERS)
+            with urlopen(req, timeout=12) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            sched = raw["result"]["response"]["airport"]["pluginData"]["schedule"]
+            arrivals = [_fr24_parse_flight(f, "arr") for f in (sched.get("arrivals") or {}).get("data", [])]
+            departures = [_fr24_parse_flight(f, "dep") for f in (sched.get("departures") or {}).get("data", [])]
+            # Faqat Toshkent vaqti bo'yicha bugungi kunga tegishli parvozlar (FR24 ba'zan
+            # kecha/ertangi kun parvozlarini ham qo'shib yuboradi)
+            result["arrivals"] = [f for f in arrivals if _is_today_tashkent(f.get("arr_ts"))]
+            result["departures"] = [f for f in departures if _is_today_tashkent(f.get("dep_ts"))]
+            return result
+        except Exception as exc:
+            last_exc = exc
+    result["error"] = f"{type(last_exc).__name__}: {last_exc}"
     return result
 
 
 def get_tas_flights() -> dict:
     now = time.time()
-    if FLIGHTS_CACHE["data"] is None or now - FLIGHTS_CACHE["ts"] > FLIGHTS_CACHE_TTL:
-        FLIGHTS_CACHE["data"] = fetch_tas_flights()
-        FLIGHTS_CACHE["ts"] = now
+    if now >= FLIGHTS_CACHE["next_try"]:
+        fresh = fetch_tas_flights()
+        if fresh.get("error"):
+            FLIGHTS_CACHE["next_try"] = now + 10  # bir lahzalik xato butun daqiqaga "muzlab" qolmasin
+            if FLIGHTS_CACHE["data"] is None:
+                FLIGHTS_CACHE["data"] = fresh  # ko'rsatadigan boshqa ma'lumot yo'q
+            # aks holda oldingi muvaffaqiyatli ma'lumotni ko'rsatishda davom etamiz
+        else:
+            FLIGHTS_CACHE["data"] = fresh
+            FLIGHTS_CACHE["next_try"] = now + FLIGHTS_CACHE_TTL
     return FLIGHTS_CACHE["data"]
 
 
@@ -3185,7 +3214,7 @@ function leBindDrag(){let el=$('leList');if(!el)return;el.querySelectorAll('[dat
 function leEye(btn){let row=btn.closest('[data-le]');let h=!btn.classList.contains('hidden-eye');btn.classList.toggle('hidden-eye',h);btn.textContent=h?'🙈':'👁';row.classList.toggle('le-hidden',h);}
 async function leSave(tab){let el=$('leList');if(!el)return;let items=[...el.querySelectorAll('[data-le]')].map(r=>({id:r.dataset.le,hidden:r.classList.contains('le-hidden')}));await saveTabLayout(tab,items);let s=$('leSt');if(s){s.textContent='✓ Saqlandi';setTimeout(()=>{if(s)s.textContent='';},2000);}}
 async function leReset(tab){if(UI_CONFIG&&UI_CONFIG.tab_layouts)delete UI_CONFIG.tab_layouts[tab];try{await api('/api/ui_config',{method:'POST',body:JSON.stringify(UI_CONFIG||{})});}catch(e){}let p=$('lePanel');if(p){p.outerHTML=layoutEditorPanel();leBindDrag();}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();loadAviaStats();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();await loadAviaStats();await loadYaroqlilik();await loadVaqtincha();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);TAB="umumiy";GROUP="bnrte";render();}else{DATA=null;TAB="home";GROUP="home";render();}} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 async function pollAvia(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollAvia(id,st,btn),1800);return}AVIA_DATA=j.avia_data||{};if(st)st.textContent=`✓ Tayyor: ${fmtI(AVIA_DATA.unique_awb||0)} AWB yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();if(TAB==='avia')loadAviaAwb();}catch(e){setTimeout(()=>pollAvia(id,st,btn),3000)}}
 async function pollWr(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollWr(id,st,btn),1800);return}if(j.wr_data?.warehouses)WR_DATA=j.wr_data.warehouses;if(st)st.textContent=`✓ Tayyor: ${(WR_DATA||[]).length} ombor yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();}catch(e){setTimeout(()=>pollWr(id,st,btn),3000)}}
@@ -3193,7 +3222,50 @@ let ARTIFACT_POLL_ID=null;
 async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try{let j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({report:DATA.id})});ARTIFACT_POLL_ID=j.job_id;render();pollArtifacts(j.job_id)}catch(e){if($("status"))$("status").textContent="Xatolik: "+String(e)}}
 async function pollArtifacts(id){if(ARTIFACT_POLL_ID!==id)return;try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status==="tayyor"?"✓ Excel/PNG/PDF tayyor":j.status;if(j.status==="xatolik"){ARTIFACT_POLL_ID=null;render();return}if(j.status!=="tayyor"){setTimeout(()=>pollArtifacts(id),2500);return}ARTIFACT_POLL_ID=null;DATA=j.data;render()}catch(e){setTimeout(()=>pollArtifacts(id),5000)}}
 async function openGroup(g,tab){if(GROUP===g){GROUP="home";TAB="home";render();return}GROUP=g;TAB=tab;if(g==="bnrte"&&!DATA&&ARCHIVE.length){await loadReport(ARCHIVE[0].id);return}render()}
-function landingPanel(){return `<div class="panel wide"><h2>IBK Dashboard</h2><p class="muted">Toshkent-AERO IBK bo'yicha BNRTE nazoratdagi tovarlar, to'lovlar, arxiv, nazoratdan yechilish va tahliliy ko'rsatkichlar yagona dashboardda jamlanadi.</p><div class="summary-grid"><button class="summary-item" onclick="openGroup('bnrte','umumiy')"><b>BNRTE</b><span>Nazoratdagi tovarlar jamlanmasi, muddatlar, omborlar va muddati o'tgan tahlillar.</span></button><button class="summary-item" onclick="openGroup('payments','payments')"><b>To'lovlar</b><span>Baza fayl asosida to'lov turlari bo'yicha Excel jadvallar va tahlil.</span></button><button class="summary-item" onclick="openGroup('common','upload')"><b>Fayl yuklash</b><span>BNRTE yoki To'lovlar uchun yangi asos fayllarni yuklash.</span></button></div></div>${flightsPanelShell()}`}
+function landingPanel(){
+  let k=(DATA&&DATA.kpis)||{};
+  let payTotal=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0);
+  let aviaDecl=(AVIA_STATS&&AVIA_STATS.decl_soni)||0;
+  let vaqCount=((VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[]).length;
+  let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.expired_count)||0;
+  return `<div class="panel wide"><h2>IBK Dashboard</h2><p class="muted">Toshkent-AERO IBK bo'yicha BNRTE nazoratdagi tovarlar, to'lovlar, arxiv, nazoratdan yechilish va tahliliy ko'rsatkichlar yagona dashboardda jamlanadi.</p><div class="summary-grid" style="grid-template-columns:repeat(3,minmax(145px,1fr))">
+<button class="summary-item" onclick="showHomeKpi('bnrte')"><b>${fmtI(k.partiya||0)}</b><span>BNRTE — jami partiya</span></button>
+<button class="summary-item" onclick="showHomeKpi('tolov')"><b>${fmtN(payTotal)}</b><span>To'lovlar — jami summa (so'm)</span></button>
+<button class="summary-item" onclick="showHomeKpi('avia')"><b>${fmtI(aviaDecl)}</b><span>AVIA — deklaratsiya soni</span></button>
+<button class="summary-item" onclick="showHomeKpi('vaqtincha')"><b>${fmtI(vaqCount)}</b><span>IM42/EK12 — jami yozuv</span></button>
+<button class="summary-item" onclick="showHomeKpi('yaroqlilik')"><b>${fmtI(yarExpired)}</b><span>Iste'mol muddati o'tgan</span></button>
+<button class="summary-item" onclick="openGroup('common','upload')"><b>📁</b><span>Fayl yuklash</span></button>
+</div></div>${flightsPanelShell()}`}
+function homeKpiNav(kind){
+  dlg.close();
+  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],avia:['bnrte','avia'],vaqtincha:['bnrte','vaqtincha'],yaroqlilik:['bnrte','yaroqlilik']};
+  const dest=map[kind]||['home','home'];
+  GROUP=dest[0];TAB=dest[1];render();
+}
+function showHomeKpi(kind){
+  const titles={bnrte:"BNRTE",tolov:"To'lovlar",avia:"AVIA AWB",vaqtincha:"Vaqtincha IM42/EK12",yaroqlilik:"Iste'mol muddati tahlili"};
+  let body='';
+  if(kind==='bnrte'){
+    let k=(DATA&&DATA.kpis)||{};
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(k.partiya||0)}</b><span>Partiya</span></div><div class="summary-item"><b>${fmtN(k.qiymat||0)}</b><span>Qiymat (ming $)</span></div></div>`;
+  }else if(kind==='tolov'){
+    let sum=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0),rows=(PAYMENTS||[]).reduce((a,r)=>a+(+r.rows||0),0);
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtN(sum)}</b><span>Jami summa (so'm)</span></div><div class="summary-item"><b>${fmtI(rows)}</b><span>Jami qator</span></div></div>`;
+  }else if(kind==='avia'){
+    let s=AVIA_STATS||{};
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(s.decl_soni||0)}</b><span>Deklaratsiya soni</span></div><div class="summary-item"><b>${fmtN(s.jami_qiymat_k||0)}</b><span>Qiymat (ming $)</span></div></div>`;
+  }else if(kind==='vaqtincha'){
+    let items=(VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[];
+    let rd=VAQTINCHA_DATA&&VAQTINCHA_DATA.report_date;
+    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(items.length)}</b><span>Jami yozuv${rd?' — '+esc(rd):''}</span></div></div>`;
+  }else if(kind==='yaroqlilik'){
+    let yd=YAROQLILIK_DATA||{};
+    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(yd.expired_count||0)}</b><span>Muddati o'tgan tovar</span></div></div>`;
+  }
+  dlgTitle.textContent=titles[kind]||'';
+  dlgBody.innerHTML=body+`<div style="margin-top:14px;text-align:right"><button onclick="homeKpiNav('${kind}')">To'liq ko'rish →</button></div>`;
+  dlg.showModal();
+}
 function renderKpis(){let k=DATA.kpis||{};
   let depHtml=`<div class=kpi onclick="showKpi('depozit')" style="grid-row:span 1">
     <span>Jami depozit</span><b>${fmtN(k.depozit)}</b>
