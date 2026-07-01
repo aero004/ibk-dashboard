@@ -3247,7 +3247,7 @@ function leBindDrag(){let el=$('leList');if(!el)return;el.querySelectorAll('[dat
 function leEye(btn){let row=btn.closest('[data-le]');let h=!btn.classList.contains('hidden-eye');btn.classList.toggle('hidden-eye',h);btn.textContent=h?'🙈':'👁';row.classList.toggle('le-hidden',h);}
 async function leSave(tab){let el=$('leList');if(!el)return;let items=[...el.querySelectorAll('[data-le]')].map(r=>({id:r.dataset.le,hidden:r.classList.contains('le-hidden')}));await saveTabLayout(tab,items);let s=$('leSt');if(s){s.textContent='✓ Saqlandi';setTimeout(()=>{if(s)s.textContent='';},2000);}}
 async function leReset(tab){if(UI_CONFIG&&UI_CONFIG.tab_layouts)delete UI_CONFIG.tab_layouts[tab];try{await api('/api/ui_config',{method:'POST',body:JSON.stringify(UI_CONFIG||{})});}catch(e){}let p=$('lePanel');if(p){p.outerHTML=layoutEditorPanel();leBindDrag();}}
-async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();await loadAviaStats();await loadYaroqlilik();await loadVaqtincha();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);}else{DATA=null;}TAB="home";GROUP="home";render();} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
+async function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");ME=await api("/api/me");LANG=ME.lang||localStorage.ibk_lang||"uz";await loadUIConfig();await loadArchive();await loadFilesArchive();await loadPayments();await loadAviaStats();await loadYaroqlilik();await loadVaqtincha();await loadWarehousesHome();await loadBkoSummary();detectDirectUpload();if(ARCHIVE.length){let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;DATA=await api("/api/reports/"+startId);}else{DATA=null;}TAB="home";GROUP="home";render();} async function loadArchive(){let j=await api("/api/archive");ARCHIVE=j.reports||[];ARCHIVE_CURRENT_ID=j.current_id||null;let _t=todayUzDate();DATA_IS_STALE=ARCHIVE.length>0&&!ARCHIVE.some(r=>r.date===_t);} async function loadFilesArchive(){try{let j=await api("/api/files_archive");FILES_ARCHIVE=j.files||[];FILES_CURRENT=j.current_files||{};}catch(e){FILES_ARCHIVE=[];FILES_CURRENT={};}} async function loadPayments(){try{let j=await api("/api/tolov");PAYMENTS=j.payments||[]}catch(e){PAYMENTS=[]}} async function loadReport(id){DATA=await api("/api/reports/"+id);if(TAB==="upload")TAB="umumiy";render()}
 async function poll(id){try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status;if(j.status==="xatolik"){if($("status"))$("status").textContent=j.error;return}if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}DATA=j.data;TAB="umumiy";await loadArchive();render()}catch(e){setTimeout(()=>poll(id),3000)}}
 async function pollAvia(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollAvia(id,st,btn),1800);return}AVIA_DATA=j.avia_data||{};if(st)st.textContent=`✓ Tayyor: ${fmtI(AVIA_DATA.unique_awb||0)} AWB yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();if(TAB==='avia')loadAviaAwb();}catch(e){setTimeout(()=>pollAvia(id,st,btn),3000)}}
 async function pollWr(id,st,btn){try{let j=await api("/api/jobs/"+id);if(st)st.textContent=j.status;if(j.status==="xatolik"){if(st)st.innerHTML='<span style="color:#b91c1c">Xatolik: '+esc(j.error||'')+'</span>';if(btn)setBusy(btn,false);return}if(j.status!=="tayyor"){setTimeout(()=>pollWr(id,st,btn),1800);return}if(j.wr_data?.warehouses)WR_DATA=j.wr_data.warehouses;if(st)st.textContent=`✓ Tayyor: ${(WR_DATA||[]).length} ombor yuklandi`;if(btn)setBusy(btn,false);if($('kpis'))$('kpis').innerHTML=renderKpis();}catch(e){setTimeout(()=>pollWr(id,st,btn),3000)}}
@@ -3261,22 +3261,28 @@ function landingPanel(){
   let aviaDecl=(AVIA_STATS&&AVIA_STATS.decl_soni)||0;
   let vaqCount=((VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[]).length;
   let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded)?(YAROQLILIK_DATA.expired_count||0):((DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0);
+  let foodQiymat=(DATA&&DATA.food||[]).reduce((a,r)=>a+(+r.qiymat||0),0);
+  let wrCount=(WR_DATA||[]).length;
+  let bkoCount=(BKO_SUMMARY&&BKO_SUMMARY.total_bko)||0;
   return `<div class="panel wide"><h2>IBK Dashboard</h2><p class="muted">Toshkent-AERO IBK bo'yicha BNRTE nazoratdagi tovarlar, to'lovlar, arxiv, nazoratdan yechilish va tahliliy ko'rsatkichlar yagona dashboardda jamlanadi.</p><div class="summary-grid" style="grid-template-columns:repeat(3,minmax(145px,1fr))">
 <button class="summary-item" onclick="showHomeKpi('bnrte')"><b>${fmtI(k.partiya||0)}</b><span>BNRTE — jami partiya</span></button>
 <button class="summary-item" onclick="showHomeKpi('tolov')"><b>${fmtN(payTotal)}</b><span>To'lovlar — jami summa (so'm)</span></button>
 <button class="summary-item" onclick="showHomeKpi('avia')"><b>${fmtI(aviaDecl)}</b><span>AVIA — deklaratsiya soni</span></button>
 <button class="summary-item" onclick="showHomeKpi('vaqtincha')"><b>${fmtI(vaqCount)}</b><span>IM42/EK12 — jami yozuv</span></button>
 <button class="summary-item" onclick="showHomeKpi('yaroqlilik')"><b>${fmtI(yarExpired)}</b><span>Iste'mol muddati o'tgan</span></button>
+<button class="summary-item" onclick="showHomeKpi('food')"><b>${fmtN(foodQiymat)}</b><span>Iste'mol tovarlari (ming $)</span></button>
+<button class="summary-item" onclick="showHomeKpi('ombor')"><b>${fmtI(wrCount)}</b><span>Omborlar reestri — jami ombor</span></button>
+<button class="summary-item" onclick="showHomeKpi('bko')"><b>${fmtI(bkoCount)}</b><span>BKO — jami band</span></button>
 <button class="summary-item" onclick="openGroup('common','upload')"><b>📁</b><span>Fayl yuklash</span></button>
 </div></div>${flightsPanelShell()}`}
 function homeKpiNav(kind){
   dlg.close();
-  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],avia:['bnrte','avia'],vaqtincha:['bnrte','vaqtincha'],yaroqlilik:['bnrte','yaroqlilik']};
+  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],avia:['bnrte','avia'],vaqtincha:['bnrte','vaqtincha'],yaroqlilik:['bnrte','yaroqlilik'],food:['bnrte','food'],ombor:['common','upload'],bko:['common','upload']};
   const dest=map[kind]||['home','home'];
   GROUP=dest[0];TAB=dest[1];render();
 }
 function showHomeKpi(kind){
-  const titles={bnrte:"BNRTE",tolov:"To'lovlar",avia:"AVIA AWB",vaqtincha:"Vaqtincha IM42/EK12",yaroqlilik:"Iste'mol muddati tahlili"};
+  const titles={bnrte:"BNRTE",tolov:"To'lovlar",avia:"AVIA AWB",vaqtincha:"Vaqtincha IM42/EK12",yaroqlilik:"Iste'mol muddati tahlili",food:"Iste'mol tovarlari",ombor:"Omborlar reestri",bko:"BKO"};
   let body='';
   if(kind==='bnrte'){
     let k=(DATA&&DATA.kpis)||{};
@@ -3296,6 +3302,15 @@ function showHomeKpi(kind){
     let slExp=(DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0;
     let cnt=yd.loaded?(yd.expired_count||0):slExp;
     body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(cnt)}</b><span>Muddati o'tgan tovar</span></div></div>`;
+  }else if(kind==='food'){
+    let rows=(DATA&&DATA.food)||[];
+    let qiymat=rows.reduce((a,r)=>a+(+r.qiymat||0),0),vazn=rows.reduce((a,r)=>a+(+r.vazn||0),0);
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtN(qiymat)}</b><span>Qiymat (ming $)</span></div><div class="summary-item"><b>${fmtN(vazn)}</b><span>Vazn (tn)</span></div></div>`;
+  }else if(kind==='ombor'){
+    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI((WR_DATA||[]).length)}</b><span>Jami ombor${WR_FILE_DATE?' — '+esc(WR_FILE_DATE)+' holatiga':''}</span></div></div>`;
+  }else if(kind==='bko'){
+    let s=BKO_SUMMARY||{};
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(s.total_bko||0)}</b><span>Jami band</span></div><div class="summary-item"><b>${fmtN(s.total_summa||0)}</b><span>Jami summa</span></div></div>`;
   }
   dlgTitle.textContent=titles[kind]||'';
   dlgBody.innerHTML=body+`<div style="margin-top:14px;text-align:right"><button onclick="homeKpiNav('${kind}')">To'liq ko'rish →</button></div>`;
@@ -3653,7 +3668,7 @@ function paymentModule(mode="overview"){let rows=paymentRows(), t=paymentTotal()
 
 function overviewPanels(){return `<div class="grid2">${executiveSummary()}<div class=panel><h2>Jami va 70-74-80</h2>${table(sumCols,regimeSummaryRows())}<div class=overview-note>Rejim ustiga bosilganda postlar kesimida asos ochiladi.</div></div><div class=panel><h2 onclick="detail({view:'expired_inline'})">Jami muddati o'tgan</h2>${table(sumCols,expiredSummaryRows())}<div id="expiredInline" class="chart"></div></div><div class="panel wide"><h2>TOP 20 korxona: qiymat ulushi</h2>${bars(DATA.top_value||[],"korxona","qiymat",fmtN,5)}</div><div class=panel><h2>Rejimlar qiymat ulushi</h2>${bars(DATA.regimes||[],"rejim","qiymat",fmtN)}</div><div class=panel><h2>Muddati o'tgan postlar</h2>${bars(DATA.post_summary||[],"post","partiya",fmtI,5)}</div><div class=panel><h2>Tovar guruhlari partiya ulushi</h2>${bars(by(DATA.goods||[],"partiya"),"name","partiya",fmtI)}</div></div>`}
 
-let WR_MAP=null,WR_DATA=null,WR_FILE_DATE='';
+let WR_MAP=null,WR_DATA=null,WR_FILE_DATE='',BKO_SUMMARY=null;
 function wrTypeColor(t){return {ochiq:'#1d72b8',yopiq:'#0f4c8a',dutyfree:'#d97706',erkin:'#7c3aed'}[t]||'#1d72b8'}
 function wrTypeName(t){return {ochiq:"Ochiq bojxona ombori",yopiq:"Yopiq bojxona ombori",dutyfree:"Boj olinmaydigan savdo",erkin:"Erkin ombor"}[t]||t}
 function wrRiskColor(r){return {red:'#dc2626',orange:'#d97706',green:'#16a34a'}[r]||'#16a34a'}
@@ -5607,6 +5622,20 @@ async function loadVaqtincha(){
     if(TAB==='vaqtincha')render();
   }catch(e){}
 }
+async function loadWarehousesHome(){
+  if(WR_DATA&&WR_DATA.length)return;
+  try{
+    let j=await api('/api/warehouses');
+    WR_DATA=j.warehouses||[];WR_FILE_DATE=j.file_date||'';
+    if(GROUP==='home')render();
+  }catch(e){}
+}
+async function loadBkoSummary(){
+  try{
+    BKO_SUMMARY=await api('/api/bko_summary');
+    if(GROUP==='home')render();
+  }catch(e){}
+}
 function pollVaqtincha(jobId,st,btn){
   const timer=setInterval(async()=>{
     try{
@@ -5970,6 +5999,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(AVIA_AWB_CACHE if AVIA_AWB_CACHE is not None else load_avia_awb())
             except Exception as exc:
                 self.json({"error": str(exc), "loaded": False})
+            return
+        if parsed.path == "/api/bko_summary":
+            if not self.require_user():
+                return
+            try:
+                archive = load_json(INDEX_PATH, {"files": [], "current_files": {}})
+                current_id = (archive.get("current_files") or {}).get("bko_postlar")
+                rec = next((f for f in archive.get("files", []) if f.get("id") == current_id), None)
+                if not rec or not rec.get("json_path") or not Path(rec["json_path"]).exists():
+                    self.json({"loaded": False, "total_bko": 0, "total_summa": 0})
+                    return
+                data = json.loads(Path(rec["json_path"]).read_text(encoding="utf-8"))
+                self.json({"loaded": True, "date": rec.get("date", ""), "total_bko": data.get("total_bko", 0), "total_summa": data.get("total_summa", 0)})
+            except Exception as exc:
+                self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_summa": 0})
             return
         if parsed.path == "/api/avia_stats":
             if not self.require_user():
