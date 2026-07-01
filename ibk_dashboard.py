@@ -4540,30 +4540,30 @@ poll=async function(id){
     let pMap={"navbatda":8,"Hisob-kitob qilinyapti":30,"SQLite bazaga saqlanmoqda":55,"Dashboard JSON tayyorlanmoqda":70,"Excel/PNG/PDF tayyorlanmoqda":82,"Depozit qayta ishlanmoqda":45};
     let pct=j.status==="tayyor"?100:j.status==="xatolik"?0:(pMap[j.status]||35);
     showUploadProgress(j.status==="tayyor"?"✓ Tayyor!":j.status==="xatolik"?"✗ Xatolik":j.status+" ...",pct);
-    $("status").textContent=j.status;
+    setText("status",j.status);
     if(j.status==="xatolik"){showUploadProgress("✗ "+(j.error||"Noma'lum xato"),0);clearBusy();return}
     if(j.status!=="tayyor"){setTimeout(()=>poll(id),1800);return}
     DATA=j.data;TAB="umumiy";await loadArchive();clearBusy();setTimeout(()=>showUploadProgress("",0),4000);render();
-  }catch(err){$("status").textContent=err.message;clearBusy()}
+  }catch(err){setText("status",err.message);clearBusy()}
 };
 async function uploadDepositOnly(btn){
   let f=$("depositOnlyForm");if(!f)return;
   let sel=f.querySelector("[name=report_id]"),dep=f.querySelector("[name=deposit]");
-  if(!sel||!dep||!dep.files.length){$("depositResult").textContent="Hisobot va depozit fayl tanlang";return}
-  setBusy(btn,true,"Yuklanmoqda");$("depositResult").textContent="Depozit yuklanyapti...";
+  if(!sel||!dep||!dep.files.length){setText("depositResult","Hisobot va depozit fayl tanlang");return}
+  setBusy(btn,true,"Yuklanmoqda");setText("depositResult","Depozit yuklanyapti...");
   showUploadProgress("Depozit fayl yuklanyapti...",10);
   try{
     let fd=new FormData();fd.append("report_id",sel.value);fd.append("deposit",dep.files[0]);
     let j=await api("/api/deposit",{method:"POST",body:fd});
-    $("depositResult").textContent="Qayta hisoblanmoqda...";
+    setText("depositResult","Qayta hisoblanmoqda...");
     poll(j.job_id);
-  }catch(err){$("depositResult").textContent="Xato: "+err.message;showUploadProgress("✗ "+err.message,0)}
+  }catch(err){setText("depositResult","Xato: "+err.message);showUploadProgress("✗ "+err.message,0)}
   finally{setBusy(btn,false)}
 }
 async function refreshCurrentReport(btn){
   if(!DATA)return;
-  setBusy(btn,true,"Yangilanmoqda");$("status").textContent="Ma'lumotlar yangilanmoqda...";
-  try{DATA=await api("/api/reports/"+DATA.id);render();$("status").textContent="Yangilandi"}catch(err){$("status").textContent=err.message}finally{setBusy(btn,false)}
+  setBusy(btn,true,"Yangilanmoqda");setText("status","Ma'lumotlar yangilanmoqda...");
+  try{DATA=await api("/api/reports/"+DATA.id);render();setText("status","Yangilandi")}catch(err){setText("status",err.message)}finally{setBusy(btn,false)}
 }
 async function chunkedUpload(file,onProgress){
   _uploadActive=true;
@@ -4928,13 +4928,15 @@ uploadPanel=function(){
 <div class="panel uc-card"><div class=uc-header><h2>📚 Yillik arxivni birdan yuklash</h2></div><div class=uc-note>Bir vaqtning o'zida bir nechta asos fayl tanlanadi. Fayllar navbatga qo'shiladi va server mustaqil qayta hisoblab chiqadi — admin kutib o'tirmasligi kerak. Fayl sanasi nom ichidan avtomatik aniqlanadi.</div><form id="bulkUpload"><div class=uc-body><div class=uc-field><label>Asos fayllar (bir nechta)</label><input name="sources" type="file" accept=".xls,.xlsx,.html,.htm" multiple required></div><div class=uc-btns><button>Hammasini yuklash</button></div></div></form><div id=bulkResult class=muted style="margin-top:8px">Fayllar tanlanmagan.</div></div>
 </div>`;
 }
+function setText(id,text){let el=$(id);if(el)el.textContent=text;}
+function setHtml(id,html){let el=$(id);if(el)el.innerHTML=html;}
 const bindUploadFull=bindUpload;bindUpload=function(){
   let f=$("upload");
   if(f)f.onsubmit=async e=>{
     e.preventDefault();let btn=e.submitter;
     try{setBusy(btn,true,"Yuklanmoqda");showUploadProgress("Fayl yuklanyapti...",5);
       let j=await api("/api/reports",{method:"POST",body:new FormData(f)});poll(j.job_id);
-    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    }catch(err){setText("status",err.message);showUploadProgress("✗ "+err.message,0)}
     finally{setBusy(btn,false)};
   };
   let bf=$("bulkUpload");
@@ -4943,7 +4945,7 @@ const bindUploadFull=bindUpload;bindUpload=function(){
     try{
       setBusy(btn,true,"Yuklanmoqda");
       const files=[...(bf.querySelector('[name=sources]')?.files||[])];
-      if(!files.length){$("bulkResult").textContent="Fayl tanlanmagan";return}
+      if(!files.length){setText("bulkResult","Fayl tanlanmagan");return}
       let done=0,skipped=[];
       for(let i=0;i<files.length;i++){
         const f=files[i];
@@ -4957,10 +4959,10 @@ const bindUploadFull=bindUpload;bindUpload=function(){
         }catch(err){skipped.push(f.name+': '+err.message)}
       }
       let skipTxt=skipped.length?` O\'tkazildi: ${skipped.join(', ')}`:'';
-      $("bulkResult").textContent=`${done} ta fayl navbatga qo\'shildi.${skipTxt}`;
+      setText("bulkResult",`${done} ta fayl navbatga qo\'shildi.${skipTxt}`);
       showUploadProgress(`${done} ta fayl navbatga qo\'shildi`,95);
       await loadArchive();setTimeout(()=>showUploadProgress("",0),3000);
-    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    }catch(err){setText("status",err.message);showUploadProgress("✗ "+err.message,0)}
     finally{setBusy(btn,false)};
   };
   let tf=$("tolovUpload");
@@ -4969,9 +4971,9 @@ const bindUploadFull=bindUpload;bindUpload=function(){
     try{setBusy(btn,true,"Shakllanmoqda");showUploadProgress("To\'lovlar shakllantirilyapti...",10);
       let j=await api("/api/tolov",{method:"POST",body:new FormData(tf)});
       PAYMENTS=j.payments||[];
-      $("tolovUploadResult").innerHTML=`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so\'m.`;
+      setHtml("tolovUploadResult",`Tayyor: ${fmtI(PAYMENTS.reduce((a,r)=>a+(+r.rows||0),0))} qator, ${fmtN(PAYMENTS.reduce((a,r)=>a+(+r.sum||0),0))} so\'m.`);
       showUploadProgress("To\'lovlar tayyor!",100);setTimeout(()=>showUploadProgress("",0),3000);
-    }catch(err){$("status").textContent=err.message;showUploadProgress("✗ "+err.message,0)}
+    }catch(err){setText("status",err.message);showUploadProgress("✗ "+err.message,0)}
     finally{setBusy(btn,false)};
   };
 };
