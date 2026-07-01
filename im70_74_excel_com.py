@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -205,7 +206,16 @@ def _pick_best_table(tables: list) -> pd.DataFrame:
 
 
 def read_source(path: Path) -> pd.DataFrame:
-    tables = pd.read_html(path, encoding="utf-8")
+    raw = Path(path).read_bytes()
+    tables = None
+    for enc in ("utf-8", "windows-1251", "cp1252"):
+        try:
+            tables = pd.read_html(io.StringIO(raw.decode(enc)))
+            break
+        except UnicodeDecodeError:
+            continue
+    if tables is None:
+        tables = pd.read_html(io.StringIO(raw.decode("utf-8", errors="replace")))
     df = _pick_best_table(tables)
     df = df[df[SRC["decl_no"]].notna()].copy()
     df = df[~df[SRC["reason"]].map(clean).str.lower().str.startswith("сабаби:")].copy()

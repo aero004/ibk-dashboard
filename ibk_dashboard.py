@@ -663,14 +663,21 @@ def save_yaroqlilik(data: dict) -> None:
 
 def parse_vaqtincha_xls(file_bytes: bytes) -> dict:
     """Parse IM42/EK12 vaqtincha declarations XLS (HTML-format)."""
-    import io as _io
     from datetime import date as _date
-    buf = _io.BytesIO(file_bytes)
     report_date = datetime.today().strftime("%Y-%m-%d")
-    try:
-        dfs = pd.read_html(buf, encoding='utf-8')
-    except Exception as exc:
-        return {"items": [], "loaded": True, "error": str(exc), "report_date": report_date}
+    dfs = None
+    last_exc: Exception | None = None
+    for enc in ("utf-8", "cp1251", "windows-1252"):
+        try:
+            dfs = pd.read_html(StringIO(file_bytes.decode(enc)))
+            break
+        except UnicodeDecodeError as exc:
+            last_exc = exc
+            continue
+        except Exception as exc:
+            return {"items": [], "loaded": True, "error": str(exc), "report_date": report_date}
+    if dfs is None:
+        return {"items": [], "loaded": True, "error": str(last_exc), "report_date": report_date}
     if not dfs:
         return {"items": [], "loaded": True, "error": "Jadval topilmadi", "report_date": report_date}
     df = dfs[0]
