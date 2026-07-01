@@ -13,6 +13,8 @@ html,body{margin:0;height:100%;overflow:hidden;font-family:"Segoe UI",system-ui,
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .gp{position:absolute;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:16px;z-index:20}
 .seg-row{display:flex;gap:4px;padding:4px;border-radius:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.cfm-legend-full{position:absolute;bottom:calc(100% + 10px);left:0;width:270px;padding:14px 15px;border-radius:14px;display:none;flex-direction:column;gap:6px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.cfm-chip-group:hover .cfm-legend-full,.cfm-legend-full.open{display:flex}
 .sb{appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap}
 .lb{display:flex;align-items:center;gap:10px;width:100%;appearance:none;cursor:pointer;padding:9px 11px;border-radius:11px;font-size:13.5px;font-weight:600;transition:all .15s;text-align:left;border:1px solid transparent}
 #tip{position:absolute;left:0;top:0;pointer-events:none;opacity:0;transform:translate(-9999px,-9999px);transition:opacity .12s;z-index:40;border-radius:11px;padding:11px 13px;font-family:"Segoe UI",sans-serif;font-size:13px;min-width:152px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
@@ -20,18 +22,14 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="cv"></canvas>
-  <div id="titlePanel" class="gp" style="top:24px;left:26px;padding:16px 20px;max-width:340px"></div>
-  <div id="ctrlPanel" style="position:absolute;top:24px;right:26px;display:flex;flex-direction:column;gap:10px;z-index:20">
-    <div id="viewSeg" class="seg-row"></div>
-    <div id="themeSeg" class="seg-row"></div>
+<div id="wrap" style="display:flex;flex-direction:column">
+  <div id="toolbar" style="flex:none;display:flex;align-items:center;gap:16px;padding:10px 18px;z-index:20;flex-wrap:wrap"></div>
+  <div id="mapArea" style="position:relative;flex:1;overflow:hidden;min-height:0">
+    <canvas id="cv"></canvas>
+    <div id="legendChips" style="position:absolute;bottom:16px;left:16px;display:flex;gap:8px;align-items:center;z-index:20"></div>
+    <div id="zoomPanel" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:20"></div>
+    <div id="tip"></div>
   </div>
-  <div id="legendPanel" class="gp" style="bottom:26px;left:26px;padding:15px 16px;width:286px;display:flex;flex-direction:column;gap:6px"></div>
-  <div id="statPanel" class="gp" style="bottom:26px;right:26px;padding:16px 20px;min-width:232px"></div>
-  <div id="datePanel" class="gp" style="top:130px;right:26px;padding:12px 14px;min-width:180px"></div>
-  <div id="zoomPanel" style="position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:20"></div>
-  <div id="tip"></div>
 </div>
 
 <script>
@@ -357,9 +355,9 @@ function loop() {
 
 // ── Resize ─────────────────────────────────────────────────────────────────
 function resize() {
-  const cv = document.getElementById('cv'), wrap = document.getElementById('wrap');
-  if (!cv || !wrap) return;
-  const r = wrap.getBoundingClientRect();
+  const cv = document.getElementById('cv'), area = document.getElementById('mapArea');
+  if (!cv || !area) return;
+  const r = area.getBoundingClientRect();
   W = Math.max(1, r.width); H = Math.max(1, r.height);
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
 }
@@ -456,6 +454,7 @@ function bindCanvas() {
 }
 
 // ── Panels ─────────────────────────────────────────────────────────────────
+const FKEY = { Avia: 'avia', "Temir yo'l": 'temir', Avto: 'avto' };
 function renderPanels() {
   const dark = S.theme === 'dark';
   const glass = dark ? 'rgba(12,19,34,0.72)' : 'rgba(255,255,255,0.82)';
@@ -465,48 +464,44 @@ function renderPanels() {
   const shadow = dark ? '0 18px 50px rgba(0,0,0,0.55)' : '0 18px 50px rgba(40,60,90,0.16)';
   const accent = dark ? '#3b82f6' : '#2563eb';
 
-  // Apply glass to panel containers
-  for (const id of ['titlePanel','legendPanel','statPanel','datePanel']) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    Object.assign(el.style, { background: glass, border, boxShadow: shadow, color: txt });
-  }
-  for (const id of ['viewSeg','themeSeg']) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    Object.assign(el.style, { background: glass, border, boxShadow: shadow });
-  }
-
-  // Title panel
-  const dateStr = S.dateLabel || '—';
-  document.getElementById('titlePanel').innerHTML = `
-    <div style="font-size:10px;letter-spacing:.15em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase;margin-bottom:5px">IBK Dashboard · Toshkent-Aero</div>
-    <div style="font-size:15px;font-weight:750;letter-spacing:-.01em;line-height:1.2;color:${txt};white-space:nowrap">IBKga tovarlar oqimi</div>
-    <div style="font-size:11px;color:${sub};margin-top:5px;line-height:1.4">${dateStr} holati · ming $</div>`;
+  // Toolbar background (single glass surface, sits above the map instead of floating over it)
+  const toolbar = document.getElementById('toolbar');
+  Object.assign(toolbar.style, { background: glass, borderBottom: border, boxShadow: shadow, color: txt });
+  const chipsWrap = document.getElementById('legendChips');
 
   // Seg buttons helper
   const segBase = `appearance:none;border:none;cursor:pointer;padding:7px 15px;border-radius:8px;font-size:12.5px;font-weight:600;transition:all .15s;white-space:nowrap`;
   const seg = active => `${segBase};background:${active ? accent : 'transparent'};color:${active ? '#fff' : sub};box-shadow:${active ? '0 2px 8px rgba(59,130,246,0.35)' : 'none'}`;
 
-  document.getElementById('viewSeg').innerHTML = `
-    <button style="${seg(S.view==='globe')}" onclick="setView('globe')">Globus</button>
-    <button style="${seg(S.view==='map')}" onclick="setView('map')">Xarita</button>`;
-  document.getElementById('themeSeg').innerHTML = `
-    <button style="${seg(S.theme==='dark')};font-size:15px;padding:6px 13px" onclick="setTheme('dark')">🌙</button>
-    <button style="${seg(S.theme==='light')};font-size:15px;padding:6px 13px" onclick="setTheme('light')">☀</button>`;
+  const dateStr = S.dateLabel || '—';
+  const total = (S.f.avia ? S.aviaTotal : 0) + (S.f.temir ? S.temirTotal : 0) + (S.f.avto ? S.avtoTotal : 0);
+  const cc = S.origins.filter(o => (S.f.avia?(o.Avia||0):0)+(S.f.temir?(o["Temir yo'l"]||0):0)+(S.f.avto?(o.Avto||0):0)>0).length;
 
-  // Date selector panel
-  const dp = document.getElementById('datePanel');
-  if (dp) {
-    if (S.available && S.available.length > 1) {
-      const opts = S.available.map(d => `<option value="${d}"${d===S.selectedDate?' selected':''}>${d}</option>`).join('');
-      dp.style.display = '';
-      dp.innerHTML = `<div style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${sub};margin-bottom:6px">ARXIV SANASI</div>
-        <select onchange="loadDataForDate(this.value)" style="width:100%;border:none;border-radius:8px;padding:6px 8px;font-size:12.5px;font-weight:600;background:${dark?'rgba(255,255,255,0.07)':'rgba(20,40,80,0.06)'};color:${txt};cursor:pointer;outline:none">${opts}</select>`;
-    } else {
-      dp.style.display = 'none';
-    }
+  let dateSelHtml = '';
+  if (S.available && S.available.length > 1) {
+    const opts = S.available.map(d => `<option value="${d}"${d===S.selectedDate?' selected':''}>${d}</option>`).join('');
+    dateSelHtml = `<select onchange="loadDataForDate(this.value)" style="border:none;border-radius:8px;padding:7px 9px;font-size:12.5px;font-weight:600;background:${dark?'rgba(255,255,255,0.07)':'rgba(20,40,80,0.06)'};color:${txt};cursor:pointer;outline:none">${opts}</select>`;
   }
+
+  // Single horizontal toolbar: title, view/theme toggles, date, total value — replaces 4 separate floating panels
+  toolbar.innerHTML = `
+    <div style="display:flex;flex-direction:column;margin-right:auto;min-width:0">
+      <div style="font-size:9px;letter-spacing:.14em;font-weight:700;color:${dark?'#5fb8ff':'#2f6fd0'};text-transform:uppercase">IBK Dashboard · Toshkent-Aero</div>
+      <div style="font-size:14px;font-weight:750;color:${txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">IBKga tovarlar oqimi <span style="font-weight:500;font-size:11px;color:${sub}">· ${dateStr} holati</span></div>
+    </div>
+    <div id="viewSeg" class="seg-row" style="background:${dark?'rgba(255,255,255,0.06)':'rgba(20,40,80,0.05)'}">
+      <button style="${seg(S.view==='globe')}" onclick="setView('globe')">Globus</button>
+      <button style="${seg(S.view==='map')}" onclick="setView('map')">Xarita</button>
+    </div>
+    <div id="themeSeg" class="seg-row" style="background:${dark?'rgba(255,255,255,0.06)':'rgba(20,40,80,0.05)'}">
+      <button style="${seg(S.theme==='dark')};font-size:15px;padding:6px 13px" onclick="setTheme('dark')">🌙</button>
+      <button style="${seg(S.theme==='light')};font-size:15px;padding:6px 13px" onclick="setTheme('light')">☀</button>
+    </div>
+    ${dateSelHtml}
+    <div style="text-align:right;flex:none">
+      <div style="font-size:19px;font-weight:780;font-variant-numeric:tabular-nums;line-height:1;color:${dark?'#fff':'#0f1b30'}">${fmtMln(total)}<span style="font-size:11px;font-weight:600;color:${sub}"> mln $</span></div>
+      <div style="font-size:10px;color:${sub};white-space:nowrap">${cc} davlat · tanlangan oqimlar</div>
+    </div>`;
 
   // Zoom buttons (map view only)
   const zp = document.getElementById('zoomPanel');
@@ -523,7 +518,8 @@ function renderPanels() {
     }
   }
 
-  // Transport legend
+  // Transport legend + filter, consolidated into a small chip row (bottom-left over the map)
+  // that expands to the full legend on hover/click, instead of a permanently-open panel.
   const legBase = `display:flex;align-items:center;gap:10px;width:100%;appearance:none;cursor:pointer;padding:9px 11px;border-radius:11px;font-size:13.5px;font-weight:600;transition:all .15s;text-align:left`;
   const leg = active => `${legBase};background:${active ? (dark?'rgba(255,255,255,0.05)':'rgba(20,40,80,0.045)') : 'transparent'};border:1px solid ${active ? (dark?'rgba(120,150,205,0.16)':'rgba(20,40,80,0.08)') : 'transparent'};opacity:${active?1:0.4};color:${txt}`;
 
@@ -537,40 +533,36 @@ function renderPanels() {
   const valStyle = `font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px;flex:none`;
   const unitStyle = `font-size:10px;font-weight:500;color:${sub}`;
 
-  document.getElementById('legendPanel').innerHTML = `
-    <div style="font-size:10px;letter-spacing:.12em;font-weight:700;color:${sub};text-transform:uppercase;margin-bottom:3px">TRANSPORT TURI · oqimni filtrlash</div>
-    <button style="${leg(S.f.avia)}" onclick="toggleTransport('avia')">
-      <span style="width:11px;height:11px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee;flex:none"></span>
-      ${aviaIcon}
-      <span style="flex:1;text-align:left">Avia</span>
-      <span style="${valStyle}">${aviaVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
-    </button>
-    <button style="${leg(S.f.temir)}" onclick="toggleTransport('temir')">
-      <span style="width:11px;height:11px;border-radius:50%;background:#f5b524;box-shadow:0 0 12px #f5b524;flex:none"></span>
-      ${temirIcon}
-      <span style="flex:1;text-align:left">Temir yoʻl</span>
-      <span style="${valStyle}">${temirVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
-    </button>
-    <button style="${leg(S.f.avto)}" onclick="toggleTransport('avto')">
-      <span style="width:11px;height:11px;border-radius:50%;background:#4ade80;box-shadow:0 0 12px #4ade80;flex:none"></span>
-      ${avtoIcon}
-      <span style="flex:1;text-align:left">Avto</span>
-      <span style="${valStyle}">${avtoVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
-    </button>
-    <div style="font-size:10.5px;color:${sub};margin-top:5px;line-height:1.35;font-style:italic">Chiziq qalinligi va oqim tezligi tovar hajmiga mutanosib</div>`;
+  const dotRow = TRANSPORT_KEYS.map(k => {
+    const active = S.f[FKEY[k]];
+    return `<span style="width:12px;height:12px;border-radius:50%;background:${COL[k]};box-shadow:0 0 8px ${COL[k]};opacity:${active?1:.3};transition:opacity .15s"></span>`;
+  }).join('');
 
-  // Stats panel
-  const total = (S.f.avia ? S.aviaTotal : 0) + (S.f.temir ? S.temirTotal : 0) + (S.f.avto ? S.avtoTotal : 0);
-  const cc = S.origins.filter(o => (S.f.avia?(o.Avia||0):0)+(S.f.temir?(o["Temir yo'l"]||0):0)+(S.f.avto?(o.Avto||0):0)>0).length;
-  const chipStyle = `display:inline-flex;align-items:center;gap:5px;font-size:11px;color:${sub};padding:5px 10px;border-radius:8px;background:${dark?'rgba(255,255,255,0.05)':'rgba(20,40,80,0.05)'}`;
-  const chipNum = `color:${txt};font-weight:700;font-size:12.5px`;
-
-  document.getElementById('statPanel').innerHTML = `
-    <div style="font-size:30px;font-weight:780;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1;color:${dark?'#fff':'#0f1b30'}">${fmtMln(total)}<span style="font-size:14px;font-weight:600;color:${sub}"> mln $</span></div>
-    <div style="font-size:11.5px;color:${sub};margin-top:7px;line-height:1.35;max-width:212px">tanlangan oqimlar boʻlicha jami import qiymati</div>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <span style="${chipStyle}"><b style="${chipNum}">${cc}</b> davlat</span>
-      <span style="${chipStyle}"><b style="${chipNum}">3</b> transport kanali</span>
+  chipsWrap.innerHTML = `
+    <div class="cfm-chip-group" style="position:relative" onclick="document.getElementById('cfmLegendFull').classList.toggle('open')">
+      <div style="display:flex;gap:7px;align-items:center;padding:8px 12px;border-radius:20px;background:${glass};border:${border};box-shadow:${shadow};cursor:pointer">${dotRow}<span style="font-size:11px;font-weight:600;color:${sub};margin-left:2px">Transport</span></div>
+      <div id="cfmLegendFull" class="cfm-legend-full" style="background:${glass};border:${border};box-shadow:${shadow};color:${txt}">
+        <div style="font-size:10px;letter-spacing:.12em;font-weight:700;color:${sub};text-transform:uppercase;margin-bottom:3px">TRANSPORT TURI · oqimni filtrlash</div>
+        <button style="${leg(S.f.avia)}" onclick="event.stopPropagation();toggleTransport('avia')">
+          <span style="width:11px;height:11px;border-radius:50%;background:#22d3ee;box-shadow:0 0 12px #22d3ee;flex:none"></span>
+          ${aviaIcon}
+          <span style="flex:1;text-align:left">Avia</span>
+          <span style="${valStyle}">${aviaVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
+        </button>
+        <button style="${leg(S.f.temir)}" onclick="event.stopPropagation();toggleTransport('temir')">
+          <span style="width:11px;height:11px;border-radius:50%;background:#f5b524;box-shadow:0 0 12px #f5b524;flex:none"></span>
+          ${temirIcon}
+          <span style="flex:1;text-align:left">Temir yoʻl</span>
+          <span style="${valStyle}">${temirVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
+        </button>
+        <button style="${leg(S.f.avto)}" onclick="event.stopPropagation();toggleTransport('avto')">
+          <span style="width:11px;height:11px;border-radius:50%;background:#4ade80;box-shadow:0 0 12px #4ade80;flex:none"></span>
+          ${avtoIcon}
+          <span style="flex:1;text-align:left">Avto</span>
+          <span style="${valStyle}">${avtoVal} <span style="${unitStyle}">mln&nbsp;$</span></span>
+        </button>
+        <div style="font-size:10.5px;color:${sub};margin-top:5px;line-height:1.35;font-style:italic">Chiziq qalinligi va oqim tezligi tovar hajmiga mutanosib</div>
+      </div>
     </div>`;
 }
 
@@ -658,7 +650,7 @@ async function loadData() {
 // ── Boot ───────────────────────────────────────────────────────────────────
 async function boot() {
   resize();
-  new ResizeObserver(resize).observe(document.getElementById('wrap'));
+  new ResizeObserver(resize).observe(document.getElementById('mapArea'));
   bindCanvas();
 
   try {
