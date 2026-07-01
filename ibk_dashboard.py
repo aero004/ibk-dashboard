@@ -3323,7 +3323,9 @@ function renderKpis(){let k=DATA.kpis||{};
       Nazoratda yuki bor qismi: <b style="color:var(--blue)">${fmtN(k.depozit_matched||0)}</b>
     </div>
   </div>`;
-  let rows=[["Partiya",fmtI(k.partiya),"partiya"],["Vazn (tn)",fmtN(k.vazn),"vazn"],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat"],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov"],["Muddati o'tgan partiya",fmtI(k.expired),"expired"]];
+  let ownRow=(DATA.warehouse||[]).find(r=>r.name==="O'z ombor")||{};
+  let own3mPartiya=(DATA.own_3m||[]).reduce((a,r)=>a+(+r.partiya||0),0);
+  let rows=[["Partiya",fmtI(k.partiya),"partiya",fmtI(ownRow.partiya||0)],["Vazn (tn)",fmtN(k.vazn),"vazn",fmtN(ownRow.vazn||0)],["Qiymat (ming $)",fmtN(k.qiymat),"qiymat",fmtN(ownRow.qiymat||0)],["Kutilayotgan to'lov (mln so'm)",fmtN(k.tolov),"tolov",fmtN(ownRow.tolov||0)],["Muddati o'tgan partiya",fmtI(k.expired),"expired",fmtI(own3mPartiya)+" (3 oy+)"]];
   let aviaHtml=AVIA_DATA&&AVIA_DATA.loaded?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer"><span>✈ AVIA AWB</span><b>${fmtI(AVIA_DATA.unique_awb)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">Muddati o'tgan: <b style="color:#dc2626">${fmtI(AVIA_DATA.overdue_count)}</b></div></div>`:"";
   let aviaQiymatHtml=AVIA_STATS&&AVIA_STATS.jami_qiymat_k?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ Avia qiymat</span><b style="color:#0ea5e9">${fmtN(AVIA_STATS.jami_qiymat_k)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">ming $ • <b>${fmtN(AVIA_STATS.jami_vazn_tn)}</b> tn</div></div>`:"";
   let foodRowsAll=DATA.food||[];
@@ -3335,12 +3337,12 @@ function renderKpis(){let k=DATA.kpis||{};
   let wrHajm=(WR_DATA||[]).reduce((a,r)=>a+(+r.area_open||0)+(+r.area_closed||0),0);
   let wrInsExpired=(WR_DATA||[]).filter(r=>r.ins_days!==null&&r.ins_days!==undefined&&r.ins_days<0).length;
   let wrHtml=(WR_DATA||[]).length?`<div class=kpi onclick="TAB='ombor';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #f59e0b"><span>🏢 Omborlar reestri</span><b style="color:#f59e0b">${fmtI(WR_DATA.length)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN(wrHajm)} m² · <b style="color:#dc2626">${wrInsExpired}</b> sug'urtasi o'tgan</div></div>`:"";
-  let bkoHtml=BKO_SUMMARY&&BKO_SUMMARY.total_bko?`<div class=kpi onclick="showBkoDetail()" style="cursor:pointer;border-top:3px solid #059669"><span>📑 BKO</span><b style="color:#059669">${fmtI(BKO_SUMMARY.total_bko)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN(BKO_SUMMARY.total_summa||0)} so'm</div></div>`:"";
-  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b></div>`).join("")+depHtml+aviaQiymatHtml+aviaHtml+foodHtml+im42Html+ek12Html+wrHtml+bkoHtml;}
+  let bkoHtml=BKO_SUMMARY&&BKO_SUMMARY.total_bko?`<div class=kpi onclick="showBkoDetail()" style="cursor:pointer;border-top:3px solid #059669"><span>📑 BKO</span><b style="color:#059669">${fmtI(BKO_SUMMARY.total_bko)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN(BKO_SUMMARY.total_qiymat||0)} $ · <b>${fmtN(BKO_SUMMARY.total_summa||0)}</b> so'm undirilgan</div></div>`:"";
+  return rows.map(x=>`<div class=kpi onclick="showKpi('${x[2]}')"><span>${x[0]}</span><b>${x[1]}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">O'z ombor: <b style="color:var(--blue)">${x[3]}</b></div></div>`).join("")+depHtml+aviaQiymatHtml+aviaHtml+foodHtml+im42Html+ek12Html+wrHtml+bkoHtml;}
 function showBkoDetail(){
   const rows=(BKO_SUMMARY&&BKO_SUMMARY.rows)||[];
-  dlgTitle.textContent="BKO — postlar kesimida";
-  dlgBody.innerHTML=table([{k:"nom",t:"Post",w:"46%"},{k:"bko_soni",t:"BKO soni",n:1,f:fmtI},{k:"summa",t:"Summa (so'm)",n:1,f:fmtN}],rows,"fixed-table");
+  dlgTitle.textContent="BKO — batafsil";
+  dlgBody.innerHTML=table([{k:"bko_raqami",t:"BKO raqami",w:"18%"},{k:"toluvchi_nom",t:"To'lovchi",w:"32%"},{k:"tovar_nomi",t:"Tovar nomi",w:"30%"},{k:"qiymat_usd",t:"Qiymat ($)",n:1,f:fmtN},{k:"jami_summa",t:"Jami summa (so'm)",n:1,f:fmtN}],rows,"fixed-table");
   dlg.showModal();
 }
 const _RAW_KEYS=new Set(['korxona','company','stir','decl','goods','hs','hs_code','warehouse','ombor','mamlakat','country','tovar','user','full_name','name','reason']);
@@ -6021,15 +6023,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 archive = load_json(INDEX_PATH, {"files": [], "current_files": {}})
-                current_id = (archive.get("current_files") or {}).get("bko_postlar")
+                current_id = (archive.get("current_files") or {}).get("bko_rasmiy")
                 rec = next((f for f in archive.get("files", []) if f.get("id") == current_id), None)
                 if not rec or not rec.get("json_path") or not Path(rec["json_path"]).exists():
-                    self.json({"loaded": False, "total_bko": 0, "total_summa": 0})
+                    self.json({"loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0})
                     return
                 data = json.loads(Path(rec["json_path"]).read_text(encoding="utf-8"))
-                self.json({"loaded": True, "date": rec.get("date", ""), "total_bko": data.get("total_bko", 0), "total_summa": data.get("total_summa", 0), "rows": data.get("rows", [])})
+                rows = data.get("rows", [])
+                total_qiymat = sum(float(r.get("qiymat_usd", 0) or 0) for r in rows)
+                self.json({"loaded": True, "date": rec.get("date", ""), "total_bko": data.get("total", len(rows)), "total_qiymat": total_qiymat, "total_summa": data.get("total_summa", 0), "rows": rows})
             except Exception as exc:
-                self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_summa": 0})
+                self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0})
             return
         if parsed.path == "/api/avia_stats":
             if not self.require_user():
