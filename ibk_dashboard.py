@@ -2260,7 +2260,8 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
         regime_year_post.append({"key": {"post": core.to_latin(core.clean(r["_post_group"])), "regime": r["_regime_code"]}, "post": core.to_latin(core.clean(r["_post_group"])), "rejim": core.clean(r["_regime_code"]), "yil": core.clean(r["_gtd_year"]) or "-", "partiya": int(r.partiya), "vazn": float(r.vazn), "qiymat": float(r.qiymat), "tolov": float(r.tolov)})
     expired_post_regime = []
     for row in core.expired_summary_rows(df, report_date):
-        expired_post_regime.append({"key": {"post": core.to_latin(core.clean(row[0]))}, "post": core.to_latin(core.clean(row[0])), "jami_partiya": int(row[1]), "jami_qiymat": float(row[2]), "expired_partiya": int(row[3]), "expired_qiymat": float(row[4]), "ulush": float(row[5]) * 100, "im70_partiya": int(row[6]), "im70_qiymat": float(row[7]), "im74_partiya": int(row[8]), "im74_qiymat": float(row[9]), "tr80_partiya": int(row[10]), "tr80_qiymat": float(row[11])})
+        # row layout after index 5: 2 values per regime, in order IM70,IM42,EK12,IM51,EK61,IM74,TR80
+        expired_post_regime.append({"key": {"post": core.to_latin(core.clean(row[0]))}, "post": core.to_latin(core.clean(row[0])), "jami_partiya": int(row[1]), "jami_qiymat": float(row[2]), "expired_partiya": int(row[3]), "expired_qiymat": float(row[4]), "ulush": float(row[5]) * 100, "im70_partiya": int(row[6]), "im70_qiymat": float(row[7]), "im74_partiya": int(row[16]), "im74_qiymat": float(row[17]), "tr80_partiya": int(row[18]), "tr80_qiymat": float(row[19])})
     expired_block = []
     for row in core.expired_block_rows(df, report_date):
         expired_block.append({"key": {}, "name": core.to_latin(core.clean(row[0])), "korxona": core.clean(row[1]), "stir": core.clean(row[2]), "partiya": int(row[3] or 0), "qiymat": float(row[4] or 0), "vazn": float(row[5] or 0), "tolov": float(row[6] or 0), "reason": core.to_latin(core.clean(row[7]))})
