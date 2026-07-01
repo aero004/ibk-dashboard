@@ -175,7 +175,14 @@ def _wr_file_date(path: Path) -> str:
     name = path.stem
     import re as _re
     m = _re.search(r"(\d{2}[.\-]\d{2}[.\-]\d{4})", name)
-    return m.group(1).replace("-", ".") if m else datetime.today().strftime("%d.%m.%Y")
+    if m:
+        return m.group(1).replace("-", ".")
+    # Filename has no date - fall back to the file's actual last-modified time,
+    # not "today", since that would falsely claim the data is current.
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).strftime("%d.%m.%Y")
+    except OSError:
+        return datetime.today().strftime("%d.%m.%Y")
 
 
 def load_warehouse_registry(path: Path | None = None) -> dict:
@@ -3228,6 +3235,18 @@ async function detectDirectUpload(){try{const j=await api('/api/server_info');co
 function todayUzDate(){let d=new Date();return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();}
 function staleBanner(rd){return `<div style="background:linear-gradient(135deg,#fef9c3,#fef3c7);border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:13px"><span style="font-size:18px">⚠️</span><div><b style="color:#92400e">Bugungi (${todayUzDate()}) ma'lumot yuklanmagan</b><span style="color:#78350f"> &nbsp;·&nbsp; Ko'rsatilayotgan holat: </span><b style="color:#b45309;font-size:14px">${rd}</b></div></div>`;}
 function staleBadge(){if(!DATA||!DATA_IS_STALE)return '';let d=(DATA.meta&&DATA.meta.date)||DATA.date||'?';return `<span class="stale-badge">📅 ${d} holatiga</span>`;}
+function dateFreshnessBadge(dateStr){
+  if(!dateStr)return '';
+  let m=String(dateStr).match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if(!m)return ` <span style="font-size:12px;color:var(--muted)">(${esc(dateStr)} holatiga)</span>`;
+  let d=new Date(+m[3],+m[2]-1,+m[1]);
+  let today=new Date();today.setHours(0,0,0,0);
+  let diffDays=Math.round((today-d)/86400000);
+  let bg='#dcfce7',fg='#166534';
+  if(diffDays>7){bg='#fee2e2';fg='#b42318';}
+  else if(diffDays>1){bg='#fef9c3';fg='#854d0e';}
+  return ` <span style="font-size:12px;font-weight:700;padding:2px 9px;border-radius:10px;background:${bg};color:${fg}">${esc(dateStr)} holatiga</span>`;
+}
 const WIDGET_DEFS={
   umumiy:[{id:'exec',l:"Umumiy ko'rsatkichlar"},{id:'post',l:"70-74-80: postlar kesimida"},{id:'expired_sum',l:"Jami muddati o'tgan (jadval)"},{id:'top_bars',l:"TOP 30 korxona diagrammasi"},{id:'flow',l:"Davlatlar tovarlar oqimi (xarita)"}],
   rejim:[{id:'jami',l:"Jami va 70-74-80 jadvali"},{id:'kesim',l:"Rejimlar kesimida jadvali"},{id:'qiymat',l:"Qiymat ulushi diagrammasi"},{id:'tolov',l:"To'lov ulushi diagrammasi"}],
@@ -3845,7 +3864,7 @@ async function loadWarehouseRegistry(){
     let wrs=j.warehouses||[];
     omborRatingUpdateWR(wrs);
     let fd=j.file_date||'';
-    let dateLabel=fd?` (${fd} holatiga)`:'';
+    let dateLabel=fd?dateFreshnessBadge(fd):'';
     let stats={total:wrs.length,red:wrs.filter(w=>w.risk==='red').length,orange:wrs.filter(w=>w.risk==='orange').length,ssv:wrs.filter(w=>w.ssv).length,fvv:wrs.filter(w=>w.fvv).length,yaroq:wrs.filter(w=>isYaroqRisk(w.lic_num)).length};
     let statHtml=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
       <span><b style="color:#1d72b8">${stats.total}</b> ombor</span>
