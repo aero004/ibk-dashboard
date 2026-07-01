@@ -5374,20 +5374,21 @@ showApp=async function(){
   await loadArchive();
   await loadFilesArchive();
   await loadPayments();
+  await loadAviaStats();await loadAviaHome();await loadYaroqlilik();await loadVaqtincha();await loadWarehousesHome();await loadBkoSummary();
   if(tabsEl)tabsEl.innerHTML=`<button class="module-parent" onclick="openGroup('bnrte','umumiy')"><span>▦</span>BNRTE</button><button class="module-parent pay" onclick="openGroup('payments','payments')"><span>$</span>To'lovlar</button><button class="module-parent" onclick="openGroup('common','upload')"><span>⚙</span>Boshqaruv</button>`;
   if(actionsEl)actionsEl.innerHTML=`<button class="light lang-btn" onclick="setLang('uz')">O'zb</button><button class="light lang-btn" onclick="setLang('uzc')">Ўзб</button><button class="light lang-btn" onclick="setLang('ru')">Рус</button><button class="light lang-btn" onclick="document.body.classList.toggle('dark')">◐</button> <button class="logout-btn" onclick="logout()">Chiqish</button>`;
   if(ARCHIVE.length){
     let startId=ARCHIVE_CURRENT_ID&&ARCHIVE.find(r=>r.id===ARCHIVE_CURRENT_ID)?ARCHIVE_CURRENT_ID:ARCHIVE[0].id;
     DATA=await api("/api/reports/"+startId);
-    TAB="umumiy";GROUP="bnrte";
-    render();
   } else {
-    DATA=null;TAB="home";GROUP="home";
-    if(metaEl)metaEl.textContent="Tizimga xush kelibsiz";
-    if(kpisEl)kpisEl.innerHTML="";
-    if(viewEl)viewEl.innerHTML=landingPanel();
-    setTimeout(()=>{initCountryFlowMap();},200);
+    DATA=null;
   }
+  // Always land on the home page after login - do not auto-navigate into BNRTE/Umumiy.
+  TAB="home";GROUP="home";
+  if(metaEl)metaEl.textContent="Tizimga xush kelibsiz";
+  if(kpisEl)kpisEl.innerHTML="";
+  if(viewEl)viewEl.innerHTML=landingPanel();
+  setTimeout(()=>{initCountryFlowMap();},200);
 }
 let AUTO_LOGOUT_MS=20*60*1000,autoLogoutTimer=null;
 function resetAutoLogout(){clearTimeout(autoLogoutTimer);if(TOKEN)autoLogoutTimer=setTimeout(()=>{if(_uploadActive){resetAutoLogout();return;}logout();let e=$("loginError");if(e)e.textContent="20 daqiqa faollik bo'lmagani uchun qayta kirish kerak."},AUTO_LOGOUT_MS)}
