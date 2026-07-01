@@ -112,6 +112,7 @@ FILE_TYPE_LABELS = {
 
 JOBS: dict[str, dict] = {}
 FINALIZED_UPLOADS: dict[str, dict] = {}  # upload_id -> javob; chunk_finalize* qayta chaqirilsa ham xavfsiz (idempotent) bo'lishi uchun
+_ARCHIVE_LOCK = threading.Lock()  # archive.json ustida read-modify-write: parallel run_job threadlari bir-birini bosib yozib yubormasligi uchun
 SESSIONS: dict[str, dict] = {}
 STORE: IBKStore | None = None
 
@@ -1280,14 +1281,15 @@ def add_file_to_archive(file_type: str, filename: str, data: dict, excel_bytes: 
         "json_path": str(json_path),
         "excel_path": excel_path,
     }
-    archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
-    if not isinstance(archive, dict):
-        archive = {"reports": [], "files": [], "current_files": {}}
-    files = archive.get("files") or []
-    files.append(record)
-    files.sort(key=lambda r: r.get("id", ""), reverse=True)
-    archive["files"] = files
-    save_json(INDEX_PATH, archive)
+    with _ARCHIVE_LOCK:
+        archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+        if not isinstance(archive, dict):
+            archive = {"reports": [], "files": [], "current_files": {}}
+        files = archive.get("files") or []
+        files.append(record)
+        files.sort(key=lambda r: r.get("id", ""), reverse=True)
+        archive["files"] = files
+        save_json(INDEX_PATH, archive)
     return record
 
 
@@ -2669,19 +2671,119 @@ def run_job(job_id: str, source: Path, deposit: Path | None, report_date: dateti
             data["files"]["status"] = "kutilmoqda"
         save_json(report_dir / "dashboard.json", data)
 
-        archive = load_json(INDEX_PATH, {"reports": []})
-        if not isinstance(archive, dict):
-            archive = {"reports": []}
-        reports = archive.get("reports")
-        if not isinstance(reports, list):
-            reports = []
-        reports = [r for r in reports if isinstance(r, dict) and r.get("id") != job_id]
-        reports.append({"id": job_id, "date": fmt_date(report_date), "source": str(stored_source), "deposit": str(stored_deposit or ""), "dir": str(report_dir)})
-        archive["reports"] = clean_archive_records(reports)
-        save_json(INDEX_PATH, archive)
+        with _ARCHIVE_LOCK:
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            reports = archive.get("reports")
+            if not isinstance(reports, list):
+                reports = []
+            reports = [r for r in reports if isinstance(r, dict) and r.get("id") != job_id]
+            reports.append({"id": job_id, "date": fmt_date(report_date), "source": str(stored_source), "deposit": str(stored_deposit or ""), "dir": str(report_dir)})
+            archive["reports"] = clean_archive_records(reports)
+            save_json(INDEX_PATH, archive)
         job.update({"status": "tayyor", "data": data})
     except Exception as exc:
         job = ensure_job(job_id)
+        job["status"] = "xatolik"
+        job["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+
+
+def reconcile_report_dir(job_id: str, report_dir: Path, source_file: Path, report_date: datetime) -> tuple[bool, str | None]:
+    """report_dir va source_file allaqachon diskda mavjud (avval yarim to'xtagan run_job) -
+    hisoblashni nusxalashsiz, joyida qayta bajaradi."""
+    job = ensure_job(job_id)
+    try:
+        job["status"] = "Hisob-kitob qilinyapti (tiklanmoqda)"
+        stored_source = source_file
+        stored_deposit = next(
+            (f for f in report_dir.iterdir() if f.is_file() and f != source_file and f.name != "dashboard.json"),
+            None,
+        )
+        df_for_store = read_report_source(stored_source)
+        save_snapshot_to_store(job_id, stored_source, stored_deposit, report_date, df_for_store)
+        data = build_dashboard(job_id, stored_source, stored_deposit, report_date)
+        if not isinstance(data, dict):
+            data = {}
+        files = update_report_files(job_id, report_dir, report_date)
+        if not isinstance(files, dict):
+            files = {"status": "kutilmoqda", "excel": "", "pdf": "", "pngs": []}
+        data["files"] = files
+        if not data["files"].get("excel"):
+            data["files"]["status"] = "kutilmoqda"
+        save_json(report_dir / "dashboard.json", data)
+        with _ARCHIVE_LOCK:
+            archive = load_json(INDEX_PATH, {"reports": []})
+            if not isinstance(archive, dict):
+                archive = {"reports": []}
+            reports = archive.get("reports")
+            if not isinstance(reports, list):
+                reports = []
+            reports = [r for r in reports if isinstance(r, dict) and r.get("id") != job_id]
+            reports.append({"id": job_id, "date": fmt_date(report_date), "source": str(stored_source), "deposit": str(stored_deposit or ""), "dir": str(report_dir)})
+            archive["reports"] = clean_archive_records(reports)
+            save_json(INDEX_PATH, archive)
+        job.update({"status": "tayyor", "data": data})
+        return True, None
+    except Exception as exc:
+        job["status"] = "xatolik"
+        err = f"{type(exc).__name__}: {exc}"
+        job["error"] = f"{err}\n{traceback.format_exc()}"
+        return False, err
+
+
+def reconcile_archive_job(job_id: str):
+    """data/reports/ dagi papkalarni archive.json bilan solishtiradi:
+    tugallangan-lekin-yozilmagan hisobotlarni ro'yxatga qo'shadi,
+    yarim qolgan hisobotlarni (manba fayli mavjud bo'lsa) qayta hisoblaydi."""
+    job = ensure_job(job_id)
+    try:
+        job["status"] = "Tekshirilmoqda"
+        with _ARCHIVE_LOCK:
+            archive = load_json(INDEX_PATH, {"reports": []})
+            archive_ids = {r.get("id") for r in (archive.get("reports") or []) if isinstance(r, dict)}
+        folders = sorted(d for d in REPORT_DIR.iterdir() if d.is_dir() and d.name not in archive_ids)
+        recovered: list[str] = []
+        reprocessed: list[str] = []
+        failed: list[dict] = []
+        for i, d in enumerate(folders):
+            job["status"] = f"Tiklanmoqda {i + 1}/{len(folders)}"
+            try:
+                date_str = d.name.split("_")[0]
+                report_date = datetime.strptime(date_str, "%Y%m%d")
+            except Exception:
+                failed.append({"id": d.name, "error": "sana papka nomidan aniqlanmadi"})
+                continue
+            dash_path = d / "dashboard.json"
+            candidates = [f for f in d.iterdir() if f.is_file() and f.name != "dashboard.json"]
+            if dash_path.exists():
+                source_file = candidates[0] if candidates else None
+                with _ARCHIVE_LOCK:
+                    arc2 = load_json(INDEX_PATH, {"reports": []})
+                    if not isinstance(arc2, dict):
+                        arc2 = {"reports": []}
+                    reports = [r for r in (arc2.get("reports") or []) if r.get("id") != d.name]
+                    reports.append({"id": d.name, "date": fmt_date(report_date), "source": str(source_file) if source_file else "", "deposit": "", "dir": str(d)})
+                    arc2["reports"] = clean_archive_records(reports)
+                    save_json(INDEX_PATH, arc2)
+                recovered.append(d.name)
+            elif candidates:
+                ok, err = reconcile_report_dir(d.name, d, candidates[0], report_date)
+                if ok:
+                    reprocessed.append(d.name)
+                else:
+                    failed.append({"id": d.name, "error": err})
+            else:
+                failed.append({"id": d.name, "error": "manba fayl topilmadi"})
+        job.update({
+            "status": "tayyor",
+            "result": {
+                "recovered": recovered, "recovered_count": len(recovered),
+                "reprocessed": reprocessed, "reprocessed_count": len(reprocessed),
+                "failed": failed, "failed_count": len(failed),
+            },
+        })
+    except Exception as exc:
         job["status"] = "xatolik"
         job["error"] = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
 
@@ -5677,6 +5779,14 @@ class Handler(BaseHTTPRequestHandler):
             subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=os.path.dirname(os.path.abspath(__file__)))
             threading.Timer(1.0, lambda: os._exit(0)).start()
             return
+        if parsed.path == "/api/admin/reconcile_archive":
+            if not self.require_admin():
+                return
+            job_id = "reconcile_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "navbatda"}
+            threading.Thread(target=reconcile_archive_job, args=(job_id,), daemon=True).start()
+            self.json({"job_id": job_id})
+            return
         if parsed.path == "/api/check_report_exists":
             filename = parse_qs(parsed.query).get("filename", [""])[0]
             if not filename:
@@ -6492,29 +6602,30 @@ class Handler(BaseHTTPRequestHandler):
             if not uid or not filename or not report_id:
                 self.json({"error": "upload_id, filename va report_id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": []})
-            if not isinstance(archive, dict):
-                archive = {"reports": []}
-            item = next((r for r in archive.get("reports", []) if isinstance(r, dict) and r.get("id") == report_id), None)
-            if not item:
-                self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
-                return
-            if uid in FINALIZED_UPLOADS:
-                self.json(FINALIZED_UPLOADS[uid], cors=True)
-                return
-            cd = CHUNK_DIR / uid
-            chunks = sorted(cd.glob("*.bin"))
-            if len(chunks) < total:
-                self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
-                return
-            report_dir = Path(item.get("dir", ""))
-            deposit_path = report_dir / safe_name(filename)
-            with open(deposit_path, "wb") as fh:
-                for ch in chunks:
-                    fh.write(ch.read_bytes())
-            shutil.rmtree(cd, ignore_errors=True)
-            item["deposit"] = str(deposit_path)
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": []})
+                if not isinstance(archive, dict):
+                    archive = {"reports": []}
+                item = next((r for r in archive.get("reports", []) if isinstance(r, dict) and r.get("id") == report_id), None)
+                if not item:
+                    self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
+                    return
+                if uid in FINALIZED_UPLOADS:
+                    self.json(FINALIZED_UPLOADS[uid], cors=True)
+                    return
+                cd = CHUNK_DIR / uid
+                chunks = sorted(cd.glob("*.bin"))
+                if len(chunks) < total:
+                    self.json({"error": f"Qismlar yetishmaydi: {len(chunks)}/{total}"}, HTTPStatus.BAD_REQUEST)
+                    return
+                report_dir = Path(item.get("dir", ""))
+                deposit_path = report_dir / safe_name(filename)
+                with open(deposit_path, "wb") as fh:
+                    for ch in chunks:
+                        fh.write(ch.read_bytes())
+                shutil.rmtree(cd, ignore_errors=True)
+                item["deposit"] = str(deposit_path)
+                save_json(INDEX_PATH, archive)
             job_id = "deposit_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "navbatda"}
             def _rebuild_dep(jid=job_id, it=dict(item), dp=deposit_path):
@@ -6583,22 +6694,23 @@ class Handler(BaseHTTPRequestHandler):
             if "deposit" not in form or not form["deposit"]["filename"]:
                 self.json({"error": "Depozit fayl kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": []})
-            if not isinstance(archive, dict):
-                archive = {"reports": []}
-            reports = archive.get("reports") or []
-            item = next((r for r in reports if isinstance(r, dict) and r.get("id") == report_id), None)
-            if not item:
-                self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
-                return
-            report_dir = Path(item.get("dir", ""))
-            if not report_dir.exists():
-                self.json({"error": "Hisobot papkasi topilmadi"}, HTTPStatus.NOT_FOUND)
-                return
-            deposit_path = report_dir / safe_name(form["deposit"]["filename"])
-            deposit_path.write_bytes(form["deposit"]["content"])
-            item["deposit"] = str(deposit_path)
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": []})
+                if not isinstance(archive, dict):
+                    archive = {"reports": []}
+                reports = archive.get("reports") or []
+                item = next((r for r in reports if isinstance(r, dict) and r.get("id") == report_id), None)
+                if not item:
+                    self.json({"error": "Hisobot topilmadi"}, HTTPStatus.NOT_FOUND)
+                    return
+                report_dir = Path(item.get("dir", ""))
+                if not report_dir.exists():
+                    self.json({"error": "Hisobot papkasi topilmadi"}, HTTPStatus.NOT_FOUND)
+                    return
+                deposit_path = report_dir / safe_name(form["deposit"]["filename"])
+                deposit_path.write_bytes(form["deposit"]["content"])
+                item["deposit"] = str(deposit_path)
+                save_json(INDEX_PATH, archive)
             job_id = "deposit_" + str(int(time.time() * 1000))
             JOBS[job_id] = {"status": "navbatda"}
             def _rebuild_with_deposit(jid=job_id, it=dict(item), dp=deposit_path):
@@ -6715,13 +6827,14 @@ class Handler(BaseHTTPRequestHandler):
             if not rid:
                 self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": []})
-            if not isinstance(archive, dict):
-                archive = {"reports": []}
-            archive["reports"] = [r for r in (archive.get("reports") or []) if r.get("id") != rid]
-            if archive.get("current_id") == rid:
-                archive.pop("current_id", None)
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": []})
+                if not isinstance(archive, dict):
+                    archive = {"reports": []}
+                archive["reports"] = [r for r in (archive.get("reports") or []) if r.get("id") != rid]
+                if archive.get("current_id") == rid:
+                    archive.pop("current_id", None)
+                save_json(INDEX_PATH, archive)
             self.json({"ok": True})
             return
         if parsed.path == "/api/archive/set_current":
@@ -6732,11 +6845,12 @@ class Handler(BaseHTTPRequestHandler):
             if not rid:
                 self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": []})
-            if not isinstance(archive, dict):
-                archive = {"reports": []}
-            archive["current_id"] = rid
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": []})
+                if not isinstance(archive, dict):
+                    archive = {"reports": []}
+                archive["current_id"] = rid
+                save_json(INDEX_PATH, archive)
             self.json({"ok": True})
             return
         if parsed.path == "/api/files_archive/delete":
@@ -6747,17 +6861,18 @@ class Handler(BaseHTTPRequestHandler):
             if not fid:
                 self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
-            if not isinstance(archive, dict):
-                archive = {"reports": [], "files": [], "current_files": {}}
-            rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
-            archive["files"] = [f for f in (archive.get("files") or []) if f.get("id") != fid]
-            curr = archive.get("current_files") or {}
-            for t, cid in list(curr.items()):
-                if cid == fid:
-                    del curr[t]
-            archive["current_files"] = curr
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+                if not isinstance(archive, dict):
+                    archive = {"reports": [], "files": [], "current_files": {}}
+                rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
+                archive["files"] = [f for f in (archive.get("files") or []) if f.get("id") != fid]
+                curr = archive.get("current_files") or {}
+                for t, cid in list(curr.items()):
+                    if cid == fid:
+                        del curr[t]
+                archive["current_files"] = curr
+                save_json(INDEX_PATH, archive)
             if rec:
                 for pk in ("json_path", "excel_path"):
                     p = rec.get(pk, "")
@@ -6776,17 +6891,18 @@ class Handler(BaseHTTPRequestHandler):
             if not fid:
                 self.json({"error": "id kerak"}, HTTPStatus.BAD_REQUEST)
                 return
-            archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
-            if not isinstance(archive, dict):
-                archive = {"reports": [], "files": [], "current_files": {}}
-            rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
-            if not rec:
-                self.json({"error": "Fayl topilmadi"}, HTTPStatus.NOT_FOUND)
-                return
-            curr = archive.get("current_files") or {}
-            curr[rec["type"]] = fid
-            archive["current_files"] = curr
-            save_json(INDEX_PATH, archive)
+            with _ARCHIVE_LOCK:
+                archive = load_json(INDEX_PATH, {"reports": [], "files": [], "current_files": {}})
+                if not isinstance(archive, dict):
+                    archive = {"reports": [], "files": [], "current_files": {}}
+                rec = next((f for f in (archive.get("files") or []) if f.get("id") == fid), None)
+                if not rec:
+                    self.json({"error": "Fayl topilmadi"}, HTTPStatus.NOT_FOUND)
+                    return
+                curr = archive.get("current_files") or {}
+                curr[rec["type"]] = fid
+                archive["current_files"] = curr
+                save_json(INDEX_PATH, archive)
             self.json({"ok": True})
             return
         if parsed.path.startswith("/api/files_archive/data/"):
