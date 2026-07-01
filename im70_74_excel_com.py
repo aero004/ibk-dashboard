@@ -210,12 +210,18 @@ def read_source(path: Path) -> pd.DataFrame:
     tables = None
     for enc in ("utf-8", "windows-1251", "cp1252"):
         try:
-            tables = pd.read_html(io.StringIO(raw.decode(enc)))
-            break
+            found = pd.read_html(io.StringIO(raw.decode(enc)))
+            if found:
+                tables = found
+                break
         except UnicodeDecodeError:
             continue
+        except ValueError:
+            continue
     if tables is None:
-        tables = pd.read_html(io.StringIO(raw.decode("utf-8", errors="replace")))
+        # HTML jadval topilmadi - haqiqiy binary Excel fayl bo'lishi mumkin
+        sheets = pd.read_excel(Path(path), sheet_name=None)
+        tables = list(sheets.values())
     df = _pick_best_table(tables)
     df = df[df[SRC["decl_no"]].notna()].copy()
     df = df[~df[SRC["reason"]].map(clean).str.lower().str.startswith("сабаби:")].copy()
