@@ -6118,6 +6118,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
+                ensure_store_backfilled()
                 q = parse_qs(parsed.query)
                 dates = STORE.available_dates()
                 date_text = q.get("date", [""])[0].strip()
@@ -6136,6 +6137,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
+                ensure_store_backfilled()
                 tr = STORE.country_transport_summary(post_filter=user_post_code(user))
                 self.json({core.to_latin(k): v for k, v in tr.items()})
             except Exception as exc:
