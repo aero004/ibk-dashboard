@@ -5429,7 +5429,19 @@ function releaseDatePair(id,title){return `<div class="release-date-card"><h3>${
 function releaseDashboardPanel(){return `<div class="stack"><div class="panel"><h2>Nazoratdan yechish</h2><div class="overview-note">Tepadagi sanalar barcha jadvallar uchun umumiy ishlashi yoki har jadval alohida muddat bilan shakllanishi mumkin.</div><div class="filters compact-filters"><label class="inline-check"><input type="checkbox" id="relGlobalUse" checked onchange="syncReleaseDates()"> Barcha jadvallar uchun</label><select id="relGlobalBase" onchange="syncReleaseDates()">${dateOptions()}</select><select id="relGlobalFinal" onchange="syncReleaseDates()">${dateOptions()}</select><button onclick="buildAllReleaseSections()">Barchasini shakllantirish</button></div></div>${releaseDatePair('relMain','Nazoratdan yechilishi jadvali')}${releaseDatePair('relSpeed','Korxonalar: eng ko\'p, eng tez va eng sekin')}${releaseDatePair('relWh','Omborlar oboroti')}</div>`}
 function syncReleaseDates(){let use=$('relGlobalUse')?.checked,base=$('relGlobalBase')?.value,final=$('relGlobalFinal')?.value;['relMain','relSpeed','relWh'].forEach(id=>{let b=$(`${id}Base`),f=$(`${id}Final`);if(!b||!f)return;if(use){b.value=base;f.value=final;b.disabled=true;f.disabled=true}else{b.disabled=false;f.disabled=false}})}
 function releaseDatesFor(id){let use=$('relGlobalUse')?.checked;if(use)return {base:$('relGlobalBase').value,final:$('relGlobalFinal').value};return {base:$(`${id}Base`).value,final:$(`${id}Final`).value}}
-async function loadReleaseData(base,final,target){if(parseUzDate(base)>=parseUzDate(final)){target.innerHTML=`<div class=muted>Boshlang'ich sana yakuniy sanadan oldin bo'lishi kerak.</div>`;return null}let j=await api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`);if(j.missing){target.innerHTML=`<div class=muted>Arxivda yo'q sana: ${j.missing.join(', ')}. Shu davr uchun asos fayl yuklash kerak.</div>`;return null}window.LAST_RELEASE=j;return j}
+async function loadReleaseData(base,final,target){
+  if(parseUzDate(base)>=parseUzDate(final)){target.innerHTML=`<div class=muted>Boshlang'ich sana yakuniy sanadan oldin bo'lishi kerak.</div>`;return null}
+  let j;
+  try{
+    let timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('90 soniyadan ortiq javob kelmadi')),90000));
+    j=await Promise.race([api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`),timeout]);
+  }catch(e){
+    target.innerHTML=`<div class=muted>Hisoblashda xatolik: ${esc(e.message||String(e))}. Qayta urinib ko'ring (sahifani yangilang).</div>`;
+    return null;
+  }
+  if(j.missing){target.innerHTML=`<div class=muted>Arxivda yo'q sana: ${j.missing.join(', ')}. Shu davr uchun asos fayl yuklash kerak.</div>`;return null}
+  window.LAST_RELEASE=j;return j;
+}
 async function buildReleaseSection(id){let d=releaseDatesFor(id),box=$(`${id}Result`);if(!box)return;box.innerHTML='<div class=muted>Hisoblanmoqda...</div>';let j=await loadReleaseData(d.base,d.final,box);if(!j)return;let companies=releaseCompanyRows(j);if(id==='relMain'){let rows=numbered([releaseTotalRow(companies)].concat(companies));box.innerHTML=`<h2>${d.base} - ${d.final} <a class="btn light" href="/api/export?kind=release&base=${d.base}&final=${d.final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${d.base}. Yakuniy davr: ${d.final}.</div>${table(releaseCols(d.base,d.final),rows,'release-table sample-release-table fixed-table')}`;return}if(id==='relSpeed'){box.innerHTML=releaseSpeedPanels(companies,d.base,d.final);return}if(id==='relWh'){box.innerHTML=warehouseTurnoverPanel(j);return}}
 async function buildAllReleaseSections(){syncReleaseDates();for(const id of ['relMain','relSpeed','relWh']) await buildReleaseSection(id)}
 const renderReleaseDateControls=render;render=function(){renderReleaseDateControls();if(TAB==='released'){let v=$('view');if(v){v.innerHTML=releaseDashboardPanel();setTimeout(syncReleaseDates,0)}}}
@@ -6333,6 +6345,12 @@ class Handler(BaseHTTPRequestHandler):
             if missing:
                 self.json({"missing": missing, "rows": [], "total": {}})
                 return
+            # Tarixiy sanalar SQLite snapshot bazasida bo'lmasa, har safar ikkita
+            # xom faylni qayta o'qish (juda sekin) o'rniga bir martalik backfill
+            # qilinadi - shundan keyin tez SQLite yo'li ishlaydi
+            if STORE is None:
+                STORE = IBKStore(DB_PATH)
+            ensure_store_backfilled()
             base_snapshot = STORE.snapshot_id_by_date(base_date) if STORE else None
             final_snapshot = STORE.snapshot_id_by_date(final_date) if STORE else None
             if base_snapshot and final_snapshot:
