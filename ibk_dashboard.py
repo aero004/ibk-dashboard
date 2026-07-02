@@ -3225,8 +3225,9 @@ function startHeartbeat(){
 }
 function logTabView(tab){try{api('/api/analytics/event',{method:'POST',body:JSON.stringify({event:'tab_view',tab})}).catch(()=>{});}catch(e){}}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;_sessionStart=Date.now();_clickCount=0;_heartbeatSent=0;startHeartbeat();await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){clearInterval(window._hbInterval);localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
-async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');}catch(e){AVIA_STATS=null;}}
-async function loadAviaHome(){if(AVIA_DATA&&AVIA_DATA.loaded)return;try{AVIA_DATA=await api('/api/avia_awb');if(GROUP==='bnrte'&&TAB==='umumiy')render();}catch(e){}}
+function _onKpiView(){return GROUP==='home'||(GROUP==='bnrte'&&TAB==='umumiy');}
+async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');if(_onKpiView())render();}catch(e){AVIA_STATS=null;}}
+async function loadAviaHome(){if(AVIA_DATA&&AVIA_DATA.loaded)return;try{AVIA_DATA=await api('/api/avia_awb');if(_onKpiView())render();}catch(e){}}
 let ARCHIVE_CURRENT_ID=null;
 let DATA_IS_STALE=false;
 let DIRECT_UPLOAD_URL=null;
@@ -5395,9 +5396,12 @@ showApp=async function(){
   if(dashEl){dashEl.classList.remove("hidden");dashEl.style.display="block";}
   ME=await api("/api/me");
   LANG=ME.lang||localStorage.ibk_lang||"uz";
-  // Bir vaqtda (parallel) yuklanadi - bittasi sekin/osilib qolsa ham (masalan
-  // avia_stats), qolganlari va login jarayoni bloklanib qolmasin
-  await Promise.allSettled([loadArchive(),loadFilesArchive(),loadPayments(),loadAviaStats(),loadAviaHome(),loadYaroqlilik(),loadVaqtincha(),loadWarehousesHome(),loadBkoSummary()]);
+  // Faqat asos hisobotni aniqlash uchun kerak bo'lgan arxiv ro'yxati kutiladi.
+  // Qolgan 8 tasi (to'lovlar, avia, yaroqlilik, vaqtincha, ombor, bko) fonda
+  // yuklanadi - biri sekinlashsa (masalan avia_stats 524 timeout) ham, sahifa
+  // darhol ko'rinadi va ishlaydi, har biri o'zi tugagach mos joyni yangilaydi.
+  await loadArchive();
+  loadFilesArchive();loadPayments();loadAviaStats();loadAviaHome();loadYaroqlilik();loadVaqtincha();loadWarehousesHome();loadBkoSummary();
   if(tabsEl)tabsEl.innerHTML=`<button class="module-parent" onclick="openGroup('bnrte','umumiy')"><span>▦</span>BNRTE</button><button class="module-parent pay" onclick="openGroup('payments','payments')"><span>$</span>To'lovlar</button><button class="module-parent" onclick="openGroup('common','upload')"><span>⚙</span>Boshqaruv</button>`;
   if(actionsEl)actionsEl.innerHTML=`<button class="light lang-btn" onclick="setLang('uz')">O'zb</button><button class="light lang-btn" onclick="setLang('uzc')">Ўзб</button><button class="light lang-btn" onclick="setLang('ru')">Рус</button><button class="light lang-btn" onclick="document.body.classList.toggle('dark')">◐</button> <button class="logout-btn" onclick="logout()">Chiqish</button>`;
   if(ARCHIVE.length){
@@ -5682,7 +5686,7 @@ async function loadYaroqlilik(){
   try{
     let j=await api('/api/yaroqlilik');
     YAROQLILIK_DATA=j;
-    if(TAB==='yaroqlilik')render();
+    if(TAB==='yaroqlilik'||_onKpiView())render();
   }catch(e){}
 }
 async function loadVaqtincha(){
@@ -5690,7 +5694,7 @@ async function loadVaqtincha(){
   try{
     let j=await api('/api/vaqtincha');
     VAQTINCHA_DATA=j;
-    if(TAB==='vaqtincha')render();
+    if(TAB==='vaqtincha'||_onKpiView())render();
   }catch(e){}
 }
 async function loadWarehousesHome(){
@@ -5698,13 +5702,13 @@ async function loadWarehousesHome(){
   try{
     let j=await api('/api/warehouses');
     WR_DATA=j.warehouses||[];WR_FILE_DATE=j.file_date||'';
-    if(GROUP==='home')render();
+    if(_onKpiView())render();
   }catch(e){}
 }
 async function loadBkoSummary(){
   try{
     BKO_SUMMARY=await api('/api/bko_summary');
-    if(GROUP==='home')render();
+    if(_onKpiView())render();
   }catch(e){}
 }
 function pollVaqtincha(jobId,st,btn){
