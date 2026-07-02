@@ -171,12 +171,14 @@ class IBKStore:
                 return datetime.min
         return sorted(raw, key=_dt, reverse=True)
 
-    def country_flow_by_date(self, date_text: str) -> list[dict[str, Any]]:
+    def country_flow_by_date(self, date_text: str, post_filter: str = "") -> list[dict[str, Any]]:
         """Berilgan sana (dd.mm.yyyy) snapshot uchun davlatlar kesimida
         jami qiymat/vazn/partiya. Qiymat bo'yicha kamayish tartibida qaytariladi."""
+        post_clause = "AND a.source_post = ?" if post_filter else ""
+        params = (date_text, post_filter) if post_filter else (date_text,)
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT a.country AS name,
                        SUM(a.value)   AS qiymat,
                        SUM(a.weight)  AS vazn,
@@ -184,12 +186,12 @@ class IBKStore:
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
                 WHERE s.report_date = ?
-                  AND a.country IS NOT NULL AND a.country != ''
+                  AND a.country IS NOT NULL AND a.country != '' {post_clause}
                 GROUP BY a.country
                 ORDER BY qiymat DESC
                 """,
                 conn,
-                params=(date_text,),
+                params=params,
             )
         if df.empty:
             return []
@@ -203,21 +205,24 @@ class IBKStore:
             for _, r in df.iterrows()
         ]
 
-    def company_series_all(self) -> dict[str, Any]:
+    def company_series_all(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir korxona (STIR) bo'yicha har bir snapshot (davr) kesimida
         jami qiymat/vazn/partiya. Davrlar bo'yicha tendensiya tahlili uchun.
-        Davrlar 'yyyy-mm-dd' ko'rinishda, xronologik tartibda qaytariladi."""
+        Davrlar 'yyyy-mm-dd' ko'rinishda, xronologik tartibda qaytariladi.
+        post_filter berilsa, faqat shu source_post'ga tegishli qatorlar."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT s.report_date as date, a.stir as stir, a.company as company,
                        SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
-                WHERE a.stir IS NOT NULL AND a.stir != ''
+                WHERE a.stir IS NOT NULL AND a.stir != '' {post_clause}
                 GROUP BY s.report_date, a.stir
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {"periods": [], "companies": []}
@@ -238,20 +243,22 @@ class IBKStore:
             companies.append({"stir": str(stir), "company": str(name_map.get(stir, "")), "series": series})
         return {"periods": periods, "companies": companies}
 
-    def goods_series_all(self) -> dict[str, Any]:
+    def goods_series_all(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir tovar (HS kod) bo'yicha har bir davrda jami qiymat/vazn/partiya.
         Tovarlar bo'yicha yangi qo'shilgan/chiqib ketgan tahlili uchun."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT s.report_date as date, a.hs_code as hs_code, a.goods as goods,
                        SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
-                WHERE a.hs_code IS NOT NULL AND a.hs_code != ''
+                WHERE a.hs_code IS NOT NULL AND a.hs_code != '' {post_clause}
                 GROUP BY s.report_date, a.hs_code
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {"periods": [], "goods": []}
@@ -274,19 +281,21 @@ class IBKStore:
             items.append({"hs_code": str(hs), "goods": name, "goods_short": short or str(hs), "series": series})
         return {"periods": periods, "goods": items}
 
-    def warehouse_series_all(self) -> dict[str, Any]:
+    def warehouse_series_all(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir ombor bo'yicha har bir davr kesimida jami qiymat/vazn/partiya."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT s.report_date as date, a.warehouse as warehouse,
                        SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
-                WHERE a.warehouse IS NOT NULL AND a.warehouse != ''
+                WHERE a.warehouse IS NOT NULL AND a.warehouse != '' {post_clause}
                 GROUP BY s.report_date, a.warehouse
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {"periods": [], "warehouses": []}
@@ -307,19 +316,21 @@ class IBKStore:
         items.sort(key=lambda x: sum(s["value"] for s in x["series"]), reverse=True)
         return {"periods": periods, "warehouses": items}
 
-    def transport_series_all(self) -> dict[str, Any]:
+    def transport_series_all(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir transport turi bo'yicha har bir davr kesimida jami qiymat/vazn/partiya."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT s.report_date as date, a.transport as transport,
                        SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
-                WHERE a.transport IS NOT NULL AND a.transport != ''
+                WHERE a.transport IS NOT NULL AND a.transport != '' {post_clause}
                 GROUP BY s.report_date, a.transport
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {"periods": [], "transports": []}
@@ -340,21 +351,23 @@ class IBKStore:
         items.sort(key=lambda x: sum(s["value"] for s in x["series"]), reverse=True)
         return {"periods": periods, "transports": items}
 
-    def transport_company_series_all(self) -> dict[str, Any]:
+    def transport_company_series_all(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir transport turi kesimida korxonalarning davriy aylanmasi."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT s.report_date as date, a.transport as transport,
                        a.stir as stir, a.company as company,
                        SUM(a.value) as value, SUM(a.weight) as weight, SUM(a.partiya) as partiya
                 FROM active_items a
                 JOIN snapshots s ON s.id = a.snapshot_id
                 WHERE a.transport IS NOT NULL AND a.transport != ''
-                  AND a.stir IS NOT NULL AND a.stir != ''
+                  AND a.stir IS NOT NULL AND a.stir != '' {post_clause}
                 GROUP BY s.report_date, a.transport, a.stir
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {"periods": [], "transports": []}
@@ -387,19 +400,21 @@ class IBKStore:
         transports.sort(key=lambda x: sum(c["total_value"] for c in x["companies"]), reverse=True)
         return {"periods": periods, "transports": transports}
 
-    def country_transport_summary(self) -> dict[str, Any]:
+    def country_transport_summary(self, post_filter: str = "") -> dict[str, Any]:
         """Har bir davlat uchun transport turi breakdown (active_items.transport ustunidan)."""
+        post_clause, params = ("AND a.source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df = pd.read_sql_query(
-                """
+                f"""
                 SELECT a.country, a.transport,
                        SUM(a.weight) as weight, SUM(a.value) as value
                 FROM active_items a
                 WHERE a.country   IS NOT NULL AND a.country   != ''
-                  AND a.transport IS NOT NULL AND a.transport != ''
+                  AND a.transport IS NOT NULL AND a.transport != '' {post_clause}
                 GROUP BY a.country, a.transport
                 """,
                 conn,
+                params=params,
             )
         if df.empty:
             return {}
@@ -414,36 +429,37 @@ class IBKStore:
             result[str(country)] = {"dominant": dominant, "transports": transports}
         return result
 
-    def avia_db_stats(self) -> dict[str, Any]:
+    def avia_db_stats(self, post_filter: str = "") -> dict[str, Any]:
         """active_items WHERE transport='Avia' dan qiymat statistikasi (ming $)."""
+        post_clause, params = ("AND source_post = ?", (post_filter,)) if post_filter else ("", ())
         with self.connect() as conn:
             df_sum = pd.read_sql_query(
                 "SELECT COUNT(DISTINCT decl) AS decl_soni, SUM(value) AS jami_qiymat,"
                 " SUM(weight) AS jami_vazn, SUM(partiya) AS jami_partiya"
-                " FROM active_items WHERE transport='Avia'",
-                conn,
+                f" FROM active_items WHERE transport='Avia' {post_clause}",
+                conn, params=params,
             )
             df_oy = pd.read_sql_query(
                 "SELECT strftime('%Y-%m', gtd_date) AS oy,"
                 " COUNT(DISTINCT decl) AS decl_soni, SUM(value) AS qiymat,"
                 " SUM(weight) AS vazn, SUM(partiya) AS partiya"
-                " FROM active_items WHERE transport='Avia' AND gtd_date IS NOT NULL"
+                f" FROM active_items WHERE transport='Avia' AND gtd_date IS NOT NULL {post_clause}"
                 " GROUP BY oy ORDER BY oy DESC LIMIT 24",
-                conn,
+                conn, params=params,
             )
             df_comp = pd.read_sql_query(
                 "SELECT company, stir, COUNT(DISTINCT decl) AS decl_soni,"
                 " SUM(value) AS qiymat, SUM(weight) AS vazn, SUM(partiya) AS partiya"
-                " FROM active_items WHERE transport='Avia' AND company IS NOT NULL AND company!=''"
+                f" FROM active_items WHERE transport='Avia' AND company IS NOT NULL AND company!='' {post_clause}"
                 " GROUP BY stir, company ORDER BY qiymat DESC LIMIT 20",
-                conn,
+                conn, params=params,
             )
             df_cnt = pd.read_sql_query(
                 "SELECT country, COUNT(DISTINCT decl) AS decl_soni,"
                 " SUM(value) AS qiymat, SUM(weight) AS vazn"
-                " FROM active_items WHERE transport='Avia' AND country IS NOT NULL AND country!=''"
+                f" FROM active_items WHERE transport='Avia' AND country IS NOT NULL AND country!='' {post_clause}"
                 " GROUP BY country ORDER BY qiymat DESC LIMIT 15",
-                conn,
+                conn, params=params,
             )
         s = df_sum.iloc[0]
         return {

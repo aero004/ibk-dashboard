@@ -6052,62 +6052,68 @@ class Handler(BaseHTTPRequestHandler):
             self.json(get_live_states())
             return
         if parsed.path == "/api/company_trends":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
                 ensure_store_backfilled()
-                self.json(STORE.company_series_all())
+                self.json(STORE.company_series_all(post_filter=user_post_code(user)))
             except Exception as exc:
                 self.json({"periods": [], "companies": [], "error": str(exc)})
             return
         if parsed.path == "/api/goods_trends":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
                 ensure_store_backfilled()
-                self.json(STORE.goods_series_all())
+                self.json(STORE.goods_series_all(post_filter=user_post_code(user)))
             except Exception as exc:
                 self.json({"periods": [], "goods": [], "error": str(exc)})
             return
         if parsed.path == "/api/warehouse_trends":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
                 ensure_store_backfilled()
-                self.json(STORE.warehouse_series_all())
+                self.json(STORE.warehouse_series_all(post_filter=user_post_code(user)))
             except Exception as exc:
                 self.json({"periods": [], "warehouses": [], "error": str(exc)})
             return
         if parsed.path == "/api/transport_trends":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
                 ensure_store_backfilled()
-                self.json(STORE.transport_series_all())
+                self.json(STORE.transport_series_all(post_filter=user_post_code(user)))
             except Exception as exc:
                 self.json({"periods": [], "transports": [], "error": str(exc)})
             return
         if parsed.path == "/api/transport_company_trends":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
                 ensure_store_backfilled()
-                self.json(STORE.transport_company_series_all())
+                self.json(STORE.transport_company_series_all(post_filter=user_post_code(user)))
             except Exception as exc:
                 self.json({"periods": [], "transports": [], "error": str(exc)})
             return
         if parsed.path == "/api/country_flow":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
@@ -6117,19 +6123,20 @@ class Handler(BaseHTTPRequestHandler):
                 date_text = q.get("date", [""])[0].strip()
                 if not date_text and dates:
                     date_text = dates[0]
-                countries = STORE.country_flow_by_date(date_text) if date_text else []
+                countries = STORE.country_flow_by_date(date_text, post_filter=user_post_code(user)) if date_text else []
                 countries = [dict(c, name=core.to_latin(c['name'])) for c in countries]
                 self.json({"countries": countries, "date": date_text, "available": dates})
             except Exception as exc:
                 self.json({"countries": [], "date": "", "available": [], "error": str(exc)})
             return
         if parsed.path == "/api/country_transport":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
                 if STORE is None:
                     STORE = IBKStore(DB_PATH)
-                tr = STORE.country_transport_summary()
+                tr = STORE.country_transport_summary(post_filter=user_post_code(user))
                 self.json({core.to_latin(k): v for k, v in tr.items()})
             except Exception as exc:
                 self.json({"error": str(exc)})
@@ -6194,10 +6201,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.json({"error": str(exc), "loaded": False, "total_bko": 0, "total_qiymat": 0, "total_summa": 0, "rows": []})
             return
         if parsed.path == "/api/avia_stats":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             try:
-                stats = STORE.avia_db_stats()
+                stats = STORE.avia_db_stats(post_filter=user_post_code(user))
                 stats["by_country"] = [
                     dict(r, country=core.to_latin(r["country"])) for r in stats["by_country"]
                 ]
