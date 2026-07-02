@@ -4321,11 +4321,12 @@ const SM_MODULES=[
   {id:'common',label:'Boshqaruv',tabs:['upload','archive','profile','settings','admin']}
 ];
 let _smEditMode=false;
-function smToggleEdit(){
+async function smToggleEdit(){
+  if(_smEditMode){await saveSiteMap();}
   _smEditMode=!_smEditMode;
   const grid=$('smMapGrid');const btn=$('smEditBtn');const rp=$('smRolePanel');
   if(grid)grid.classList.toggle('sm-edit-mode',_smEditMode);
-  if(btn)btn.textContent=_smEditMode?'✓ Tugallash':'✏ Tartib & Rol';
+  if(btn)btn.textContent=_smEditMode?'✓ Saqlash va tugallash':'✏ Tartib & Rol';
   if(rp)rp.style.display=_smEditMode?'':'none';
   grid?.querySelectorAll('.sm-card').forEach(c=>{c.draggable=_smEditMode;});
 }
@@ -4410,11 +4411,10 @@ function siteMapPanel(){
   <h2>🗺 Sayt xaritasi</h2>
   <div style="display:flex;gap:7px">
     <button id="smEditBtn" class=light onclick="smToggleEdit()">✏ Tartib &amp; Rol</button>
-    <button onclick="saveSiteMap()">Saqlash</button>
     <button class=light onclick="resetSiteMap()">Reset</button>
   </div>
 </div>
-<p class=muted style="margin:0 0 10px;font-size:12px">Tabni bosing — shu tabga o'tiladi. "Tartib & Rol" tugmasi → sudrab ko'chirish (modullar orasida ham) + yashirish + rol belgilash.</p>
+<p class=muted style="margin:0 0 10px;font-size:12px">Tabni bosing — shu tabga o'tiladi. "Tartib & Rol" tugmasi → sudrab ko'chirish (modullar orasida ham) + yashirish + rol belgilash rejimini yoqadi. Qayta bosib "Saqlash va tugallash" deyilganda — o'zgarishlar saqlanadi va rejim yopiladi.</p>
 <div id="smMapGrid">${SM_MODULES.map(m=>modSection(m)).join('')}</div>
 <div id="smRolePanel" style="display:none;margin-top:12px">
   <div style="font-size:12px;color:#64748b;margin-bottom:8px">Har tab uchun kimga ko'rinishini belgilang (Admin har doim ko'radi):</div>
