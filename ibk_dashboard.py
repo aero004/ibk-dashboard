@@ -3277,29 +3277,26 @@ async function prepareArtifacts(){if(!DATA)return;if(ARTIFACT_POLL_ID)return;try
 async function pollArtifacts(id){if(ARTIFACT_POLL_ID!==id)return;try{let j=await api("/api/jobs/"+id);if($("status"))$("status").textContent=j.status==="tayyor"?"✓ Excel/PNG/PDF tayyor":j.status;if(j.status==="xatolik"){ARTIFACT_POLL_ID=null;render();return}if(j.status!=="tayyor"){setTimeout(()=>pollArtifacts(id),2500);return}ARTIFACT_POLL_ID=null;DATA=j.data;render()}catch(e){setTimeout(()=>pollArtifacts(id),5000)}}
 async function openGroup(g,tab){if(GROUP===g){GROUP="home";TAB="home";render();return}GROUP=g;TAB=tab;if(g==="bnrte"&&!DATA&&ARCHIVE.length){await loadReport(ARCHIVE[0].id);return}render()}
 function landingPanel(){
-  let k=(DATA&&DATA.kpis)||{};
   let payTotal=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0);
   let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded)?(YAROQLILIK_DATA.expired_count||0):((DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0);
-  let {aviaHtml,foodHtml,im42Html,ek12Html,wrHtml,bkoHtml}=kpiExtraBlocks();
+  // BNRTE'ga oid barcha kartalar (partiya/vazn/qiymat/... + depozit + avia/food/im42/ek12/ombor/bko)
+  // Umumiy tabdagi bilan bir xil bo'lishi uchun to'g'ridan-to'g'ri renderKpis()'dan olinadi
+  let kpisHtml=DATA?renderKpis():"";
   return `<div class="panel wide"><h2>IBK Dashboard</h2><p class="muted">Toshkent-AERO IBK bo'yicha BNRTE nazoratdagi tovarlar, to'lovlar, arxiv, nazoratdan yechilish va tahliliy ko'rsatkichlar yagona dashboardda jamlanadi.</p><div class="summary-grid" style="grid-template-columns:repeat(3,minmax(145px,1fr))">
-<button class="summary-item" onclick="showHomeKpi('bnrte')"><b>${fmtI(k.partiya||0)}</b><span>BNRTE — jami partiya</span></button>
 <button class="summary-item" onclick="showHomeKpi('tolov')"><b>${fmtN(payTotal)}</b><span>To'lovlar — jami summa (so'm)</span></button>
 <button class="summary-item" onclick="showHomeKpi('yaroqlilik')"><b>${fmtI(yarExpired)}</b><span>Iste'mol muddati o'tgan</span></button>
 <button class="summary-item" onclick="openGroup('common','upload')"><b>📁</b><span>Fayl yuklash</span></button>
-</div><div class="kpis" style="grid-template-columns:repeat(3,1fr)">${aviaHtml}${foodHtml}${im42Html}${ek12Html}${wrHtml}${bkoHtml}</div></div>${flightsPanelShell()}`}
+</div><div class="kpis">${kpisHtml}</div></div>${flightsPanelShell()}`}
 function homeKpiNav(kind){
   dlg.close();
-  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],yaroqlilik:['bnrte','yaroqlilik']};
+  const map={tolov:['payments','payments'],yaroqlilik:['bnrte','yaroqlilik']};
   const dest=map[kind]||['home','home'];
   GROUP=dest[0];TAB=dest[1];render();
 }
 function showHomeKpi(kind){
-  const titles={bnrte:"BNRTE",tolov:"To'lovlar",yaroqlilik:"Iste'mol muddati tahlili"};
+  const titles={tolov:"To'lovlar",yaroqlilik:"Iste'mol muddati tahlili"};
   let body='';
-  if(kind==='bnrte'){
-    let k=(DATA&&DATA.kpis)||{};
-    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(k.partiya||0)}</b><span>Partiya</span></div><div class="summary-item"><b>${fmtN(k.qiymat||0)}</b><span>Qiymat (ming $)</span></div></div>`;
-  }else if(kind==='tolov'){
+  if(kind==='tolov'){
     let sum=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0),rows=(PAYMENTS||[]).reduce((a,r)=>a+(+r.rows||0),0);
     body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtN(sum)}</b><span>Jami summa (so'm)</span></div><div class="summary-item"><b>${fmtI(rows)}</b><span>Jami qator</span></div></div>`;
   }else if(kind==='yaroqlilik'){
