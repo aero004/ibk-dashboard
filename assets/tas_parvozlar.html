@@ -376,8 +376,10 @@ function initMap(){
   const el=document.getElementById('xaritaEl');if(!el)return;
   _ll(()=>{
     if(!S.map){
-      const m=L.map(el,{center:[UTTT.lat,UTTT.lon],zoom:4,zoomControl:true});
+      const m=L.map(el,{center:[UTTT.lat,UTTT.lon],zoom:4,zoomControl:true,scrollWheelZoom:false});
       S.map=m;
+      m.on('click',()=>m.scrollWheelZoom.enable());
+      el.addEventListener('mouseleave',()=>m.scrollWheelZoom.disable());
       const dark=S.theme==='dark';
       const tUrl=dark
         ?'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'

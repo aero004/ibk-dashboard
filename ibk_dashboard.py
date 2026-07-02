@@ -3768,7 +3768,9 @@ function buildWrMap(wrs){
   }
   _loadLeaflet(function(){
     try{
-      let map=L.map(el,{center:[41.27,69.27],zoom:11,zoomControl:true});
+      let map=L.map(el,{center:[41.27,69.27],zoom:11,zoomControl:true,scrollWheelZoom:false});
+      map.on('click',()=>map.scrollWheelZoom.enable());
+      el.addEventListener('mouseleave',()=>map.scrollWheelZoom.disable());
       L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
       WR_MAP=map;
       WR_MAP._wrMarkers=[];

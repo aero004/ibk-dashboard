@@ -132,6 +132,7 @@ const S = {
   selectedDate: '',
   mapZoom: 1,
   mapPan: [0, 0],
+  mapActive: false,
   aviaTotal: 0,
   temirTotal: 0,
   avtoTotal: 0,
@@ -415,6 +416,7 @@ function bindCanvas() {
   cv.style.cursor = 'grab';
   const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   cv.addEventListener('pointerdown', e => {
+    S.mapActive = true;
     if (S.view === 'globe') {
       S.drag = { x: e.clientX, y: e.clientY, r: [...S.rotate], mode: 'globe' };
     } else {
@@ -443,8 +445,9 @@ function bindCanvas() {
   };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
-  cv.addEventListener('pointerleave', hideTip);
+  cv.addEventListener('pointerleave', e => { S.mapActive = false; hideTip(); });
   cv.addEventListener('wheel', e => {
+    if (!S.mapActive) return;
     e.preventDefault();
     if (S.view === 'globe') return;
     const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
