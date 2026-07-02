@@ -26,6 +26,8 @@ class IBKStore:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.ensure_schema()
+        self._timeline_cache: pd.DataFrame | None = None
+        self._timeline_cache_mtime: float | None = None
 
     def connect(self):
         conn = sqlite3.connect(self.db_path)
@@ -515,7 +517,17 @@ class IBKStore:
         holatiga emas, balki hamma arxivlangan fayllarga qarab baholanadi -
         agar biror oraliq fayl to'liqsiz bo'lib item vaqtincha ko'rinmay
         qolsa-yu, undan keyingi faylda yana paydo bo'lsa, bu vaqtinchalik
-        uzilish (bitta faylning kamchiligi) deb hisoblanadi, yechilish emas."""
+        uzilish (bitta faylning kamchiligi) deb hisoblanadi, yechilish emas.
+        Butun arxivni skanerlaydi - yangi fayl yuklanmagunicha (db fayli
+        o'zgarmagunicha) natija keshlanadi, aks holda har bir so'rovda
+        butun tarixni qayta hisoblash serverni sekinlashtiradi/qulashiga
+        olib kelishi mumkin."""
+        try:
+            db_mtime = self.db_path.stat().st_mtime
+        except OSError:
+            db_mtime = None
+        if self._timeline_cache is not None and db_mtime is not None and db_mtime == self._timeline_cache_mtime:
+            return self._timeline_cache.copy()
         with self.connect() as conn:
             df = pd.read_sql_query("""
                 SELECT ai.item_key, ai.decl, ai.item_no, ai.regime, ai.post, ai.warehouse,
@@ -558,7 +570,10 @@ class IBKStore:
         out["last_seen_date"] = last_seen
         out["release_date"] = release_dates
         out["is_released"] = out["release_date"].notna()
-        return out.reset_index()[cols]
+        result = out.reset_index()[cols]
+        self._timeline_cache = result
+        self._timeline_cache_mtime = db_mtime
+        return result.copy()
 
     def items_active_as_of(self, date_text: str, timeline: pd.DataFrame | None = None) -> pd.DataFrame:
         """Berilgan sanaga 'holatiga' haqiqatda faol (nazoratda) bo'lgan
