@@ -7,12 +7,14 @@ import os
 import re
 import secrets
 import shutil
+import smtplib
 import sys
 import zipfile
 import threading
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
+from email.mime.text import MIMEText
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO, StringIO
@@ -53,6 +55,15 @@ from ibk_store import IBKStore, RELEASE_BUCKETS  # noqa: E402
 
 HOST = os.environ.get("IBK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("IBK_PORT", "8788"))
+
+# "Parolni unutdim" - vaqtinchalik parolni Gmail SMTP orqali yuborish uchun.
+# Sirlarni koddan chetda saqlash uchun atayin muhit o'zgaruvchilaridan
+# o'qiladi (boshqa IBK_* sozlamalar kabi) - .env yoki server-komp'ning
+# tizim muhit o'zgaruvchilarida sozlanadi, git repoga hech qachon yozilmaydi.
+SMTP_USER = os.environ.get("IBK_SMTP_USER", "")
+SMTP_PASS = os.environ.get("IBK_SMTP_PASS", "")
+SMTP_HOST = os.environ.get("IBK_SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("IBK_SMTP_PORT", "465"))
 
 def _lan_ip() -> str:
     try:
@@ -120,6 +131,9 @@ STORE: IBKStore | None = None
 LOGIN_FAILS: dict[str, dict] = {}
 LOGIN_BLOCK_AFTER = 5
 LOGIN_BLOCK_SECS = 900
+
+FORGOT_PW_ATTEMPTS: dict[str, list] = {}
+FORGOT_PW_MAX_PER_HOUR = 3
 
 # CORS: faqat ibkinfo.uz dan cross-origin so'rovlarga ruxsat
 ALLOWED_ORIGINS = {"https://ibkinfo.uz"}
@@ -1094,6 +1108,24 @@ def save_json(path: Path, data):
 
 def hash_password(password: str, salt: str) -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+
+def gen_temp_password() -> str:
+    """8 xonali, o'qish oson (0/O, 1/I kabi chalkashadigan belgilarsiz) vaqtinchalik parol."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+def send_smtp_email(to_addr: str, subject: str, body: str) -> None:
+    if not SMTP_USER or not SMTP_PASS:
+        raise RuntimeError("SMTP sozlanmagan (IBK_SMTP_USER / IBK_SMTP_PASS muhit o'zgaruvchilari yo'q)")
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USER
+    msg["To"] = to_addr
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+        server.login(SMTP_USER, SMTP_PASS)
+        server.sendmail(SMTP_USER, [to_addr], msg.as_string())
 
 
 def safe_name(name: str) -> str:
@@ -3321,8 +3353,16 @@ function startHeartbeat(){
 function logTabView(tab){try{api('/api/analytics/event',{method:'POST',body:JSON.stringify({event:'tab_view',tab})}).catch(()=>{});}catch(e){}}
 async function doLogin(){let btn=$("loginBtn"),err=$("loginError");try{if(err)err.textContent="";setBusy(btn,true,"Kirish");let user=($("user")?.value||"").trim(),pass=$("pass")?.value||"";if(!user||!pass){if(err)err.textContent="Login va parolni kiriting";return;}let j=await api("/api/login",{method:"POST",body:JSON.stringify({user,pass})});TOKEN=j.token;localStorage.ibk_token=TOKEN;ME=j.user;_sessionStart=Date.now();_clickCount=0;_heartbeatSent=0;startHeartbeat();await showApp()}catch(e){if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";}finally{setBusy(btn,false)}} function logout(){clearInterval(window._hbInterval);localStorage.removeItem("ibk_token");TOKEN="";DATA=null;showLogin()}
 function _onKpiView(){return GROUP==='home'||(GROUP==='bnrte'&&TAB==='umumiy');}
-async function loadAviaStats(){try{AVIA_STATS=await api('/api/avia_stats');if(_onKpiView())render();}catch(e){AVIA_STATS=null;}}
-async function loadAviaHome(){if(AVIA_DATA&&AVIA_DATA.loaded)return;try{AVIA_DATA=await api('/api/avia_awb');if(_onKpiView())render();}catch(e){}}
+// Server band bo'lgan paytda (masalan qayta hisoblash ketayotganda) fon
+// yuklamalarining bittasi vaqtincha muvaffaqiyatsiz tugasa, keyingi urinishsiz
+// shu KPI blok butun sessiya davomida ko'rinmay qolar edi. Bir marta qayta
+// urinish bilan bu holatni kamaytiramiz.
+async function _apiRetry(url,delayMs=2500){
+  try{return await api(url);}
+  catch(e){await new Promise(r=>setTimeout(r,delayMs));return await api(url);}
+}
+async function loadAviaStats(){try{AVIA_STATS=await _apiRetry('/api/avia_stats');if(_onKpiView())render();}catch(e){AVIA_STATS=null;}}
+async function loadAviaHome(){if(AVIA_DATA&&AVIA_DATA.loaded)return;try{AVIA_DATA=await _apiRetry('/api/avia_awb');if(_onKpiView())render();}catch(e){}}
 let ARCHIVE_CURRENT_ID=null;
 let DATA_IS_STALE=false;
 let DIRECT_UPLOAD_URL=null;
@@ -5458,9 +5498,14 @@ doLogin=async function(){
     if(err)err.textContent=(e&&e.message&&e.message!=="login")?e.message:"Login yoki parol xato";
   }finally{setBusy(btn,false)}
 }
-function forgotPassword(){
+async function forgotPassword(){
   let err=$("loginError"),u=($("user")?.value||"").trim();
-  if(err)err.textContent=u?`${u} uchun vaqtinchalik parol SMS orqali yuborish moduli tayyorlanmoqda. SMS provayder ulangandan keyin ishlaydi.`:"Avval loginni kiriting, keyin SMS orqali tiklash so'rovi yuboriladi.";
+  if(!u){if(err)err.textContent="Avval loginni kiriting, keyin vaqtinchalik parol emailga yuboriladi.";return}
+  if(err)err.textContent="Yuborilmoqda...";
+  try{
+    let j=await api("/api/forgot_password",{method:"POST",body:JSON.stringify({user:u})});
+    if(err)err.textContent=j.message||j.error||"So'rov yuborildi.";
+  }catch(e){if(err)err.textContent="Xatolik: "+(e.message||String(e));}
 }
 const showAppStableBase=showApp;
 showApp=async function(){
@@ -5799,7 +5844,7 @@ function aviaPanel(){
 async function loadYaroqlilik(){
   if(YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded)return;
   try{
-    let j=await api('/api/yaroqlilik');
+    let j=await _apiRetry('/api/yaroqlilik');
     YAROQLILIK_DATA=j;
     if(TAB==='yaroqlilik'||_onKpiView())render();
   }catch(e){}
@@ -5807,7 +5852,7 @@ async function loadYaroqlilik(){
 async function loadVaqtincha(){
   if(VAQTINCHA_DATA&&VAQTINCHA_DATA.loaded)return;
   try{
-    let j=await api('/api/vaqtincha');
+    let j=await _apiRetry('/api/vaqtincha');
     VAQTINCHA_DATA=j;
     if(TAB==='vaqtincha'||_onKpiView())render();
   }catch(e){}
@@ -5815,14 +5860,14 @@ async function loadVaqtincha(){
 async function loadWarehousesHome(){
   if(WR_DATA&&WR_DATA.length)return;
   try{
-    let j=await api('/api/warehouses');
+    let j=await _apiRetry('/api/warehouses');
     WR_DATA=j.warehouses||[];WR_FILE_DATE=j.file_date||'';
     if(_onKpiView())render();
   }catch(e){}
 }
 async function loadBkoSummary(){
   try{
-    BKO_SUMMARY=await api('/api/bko_summary');
+    BKO_SUMMARY=await _apiRetry('/api/bko_summary');
     if(_onKpiView())render();
   }catch(e){}
 }
@@ -6725,6 +6770,49 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             self.json({"token": token, "user": {"user": data["user"], "role": rec.get("role", "user"), "role_label": rec.get("role_label", ROLE_LABELS.get(rec.get("role", "user"), "Foydalanuvchi")), "post_code": rec.get("post_code", ""), "full_name": rec.get("full_name", ""), "position": rec.get("position", ""), "phone": rec.get("phone", ""), "lang": rec.get("lang", "uz"), "perms": rec.get("perms", [])}})
+            return
+        if parsed.path == "/api/forgot_password":
+            client_ip = self.client_address[0]
+            now = time.time()
+            attempts = [t for t in FORGOT_PW_ATTEMPTS.get(client_ip, []) if now - t < 3600]
+            if len(attempts) >= FORGOT_PW_MAX_PER_HOUR:
+                self.json({"error": "Juda ko'p urinish. Keyinroq qayta urining."}, HTTPStatus.TOO_MANY_REQUESTS)
+                return
+            attempts.append(now)
+            FORGOT_PW_ATTEMPTS[client_ip] = attempts
+            data = self.body_json()
+            login = re.sub(r"[^\w.@-]+", "", data.get("user", "")).strip()
+            # Login mavjud yoki yo'qligini, email ulangan yoki ulanmaganini oshkor
+            # qilmaslik uchun - hamma holatda BIR XIL umumiy javob qaytariladi.
+            generic = {"ok": True, "message": "Agar bu login mavjud bo'lsa va unga email ulangan bo'lsa, vaqtinchalik parol yuborildi."}
+            if not login:
+                self.json({"error": "Login kiriting"}, HTTPStatus.BAD_REQUEST)
+                return
+            users = load_json(USER_PATH, {})
+            rec = users.get(login)
+            email = (rec or {}).get("email", "").strip()
+            if not rec or not email:
+                self.json(generic)
+                return
+            temp_pw = gen_temp_password()
+            rec["salt"] = secrets.token_hex(8)
+            rec["password"] = hash_password(temp_pw, rec["salt"])
+            users[login] = rec
+            try:
+                send_smtp_email(
+                    email,
+                    "IBK Dashboard - vaqtinchalik parol",
+                    f"Assalomu alaykum, {rec.get('full_name') or login}!\n\n"
+                    f"Login: {login}\n"
+                    f"Vaqtinchalik parol: {temp_pw}\n\n"
+                    f"Tizimga kirgach, iltimos parolni Profil bo'limidan o'zgartiring.\n"
+                    f"Agar bu so'rovni siz yubormagan bo'lsangiz, shu xatni e'tiborsiz qoldiring.",
+                )
+            except Exception as exc:
+                self.json({"error": f"Email yuborishda xatolik: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                return
+            save_json(USER_PATH, users)
+            self.json(generic)
             return
         if parsed.path == "/api/ui_config":
             if not self.require_admin():
