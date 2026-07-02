@@ -5434,6 +5434,9 @@ const showLoginFinalBase = showLogin;
 showLogin = function(){
   let p=$("pass"); if(p) p.value='';
   forceLoginView();
+  let err=$("loginError"); if(err) err.textContent='';
+  let el=$("login"); if(el) el.classList.remove("active");
+  clearBusy();
 }
 
 const showAppFinalBase = showApp;
