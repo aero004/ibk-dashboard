@@ -5551,7 +5551,8 @@ function releaseDashboardPanel(){return `<div class="stack"><div class="panel"><
 async function loadReleaseBuckets(){
   let box=$('relBucketsPanel');if(!box)return;
   try{
-    let data=await api('/api/release_buckets');
+    let r=await api('/api/release_buckets');
+    let data=await _pollJob(r.job_id);
     box.innerHTML=`<h2>Yillar va muddat kesimida nazoratdan yechilganlar</h2><div class="overview-note">Bugungi kundan orqaga hisoblangan, kumulyativ (masalan "1 oy" ustuniga "1 hafta"dagilar ham kiradi). Katakka bosilganda shu davrga tegishli deklaratsiyalar Excel qilib yuklanadi.</div>${releaseBucketsTable(data)}`;
   }catch(e){
     box.innerHTML=`<h2>Yillar va muddat kesimida nazoratdan yechilganlar</h2><div class="muted">Yuklashda xatolik: ${esc(e.message||String(e))}</div>`;
@@ -5577,12 +5578,24 @@ function releaseBucketsTable(data){
 }
 function syncReleaseDates(){let use=$('relGlobalUse')?.checked,base=$('relGlobalBase')?.value,final=$('relGlobalFinal')?.value;['relMain','relSpeed','relWh'].forEach(id=>{let b=$(`${id}Base`),f=$(`${id}Final`);if(!b||!f)return;if(use){b.value=base;f.value=final;b.disabled=true;f.disabled=true}else{b.disabled=false;f.disabled=false}})}
 function releaseDatesFor(id){let use=$('relGlobalUse')?.checked;if(use)return {base:$('relGlobalBase').value,final:$('relGlobalFinal').value};return {base:$(`${id}Base`).value,final:$(`${id}Final`).value}}
+async function _pollJob(jobId,{intervalMs=1500,maxMs=180000,onStatus=null}={}){
+  let start=Date.now();
+  while(Date.now()-start<maxMs){
+    let j=await api('/api/jobs/'+jobId);
+    if(onStatus)onStatus(j.status);
+    if(j.status==='tayyor')return j.data;
+    if(j.status==='xatolik')throw new Error(j.error||'Xatolik');
+    await new Promise(r=>setTimeout(r,intervalMs));
+  }
+  throw new Error('3 daqiqadan ortiq kutildi, hali tayyor emas');
+}
 async function loadReleaseData(base,final,target){
   if(parseUzDate(base)>=parseUzDate(final)){target.innerHTML=`<div class=muted>Boshlang'ich sana yakuniy sanadan oldin bo'lishi kerak.</div>`;return null}
   let j;
   try{
-    let timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('90 soniyadan ortiq javob kelmadi')),90000));
-    j=await Promise.race([api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`),timeout]);
+    let r=await api(`/api/release?base=${encodeURIComponent(base)}&final=${encodeURIComponent(final)}`);
+    if(r.missing){target.innerHTML=`<div class=muted>Arxivda yo'q sana: ${r.missing.join(', ')}. Shu davr uchun asos fayl yuklash kerak.</div>`;return null}
+    j=await _pollJob(r.job_id,{onStatus:s=>{target.innerHTML=`<div class=muted>${esc(s)}...</div>`;}});
   }catch(e){
     target.innerHTML=`<div class=muted>Hisoblashda xatolik: ${esc(e.message||String(e))}. Qayta urinib ko'ring (sahifani yangilang).</div>`;
     return null;
@@ -6527,34 +6540,62 @@ class Handler(BaseHTTPRequestHandler):
             if missing:
                 self.json({"missing": missing, "rows": [], "total": {}})
                 return
-            # Tarixiy sanalar SQLite snapshot bazasida bo'lmasa, har safar ikkita
-            # xom faylni qayta o'qish (juda sekin) o'rniga bir martalik backfill
-            # qilinadi - shundan keyin tez SQLite yo'li ishlaydi
-            if STORE is None:
-                STORE = IBKStore(DB_PATH)
-            ensure_store_backfilled()
-            # Faqat ikkita sananing snapshotini solishtirish EMAS - har bir
-            # item_key uchun BUTUN arxiv tarixi bo'yicha faollik oralig'idan
-            # foydalaniladi. Shu orqali bitta oraliq faylning to'liqsizligi
-            # (masalan bitta STIR uchun kam yozuv) natijani buzmaydi - agar
-            # item o'sha uzilishdan oldin ham, keyin ham faol ko'rinsa, u
-            # butun davr davomida faol deb hisoblanadi.
-            try:
-                result = STORE.compute_released_robust(base_date, final_date)
-                if not result.get("rows") and not result.get("total"):
-                    raise ValueError("STORE'da ma'lumot yo'q")
-            except Exception:
-                result = release_company_table(Path(base_item["source"]), Path(final_item["source"]))
-            result.update({"base": base_date, "final": final_date})
-            self.json(result)
+            # Bu hisoblash (butun arxiv tarixi bo'yicha item_key faollik
+            # oralig'ini chiqarish) keshsiz holatda (masalan yangi fayl
+            # yuklangandan keyingi birinchi so'rovda) bir necha o'n soniya
+            # olishi mumkin - sinxron javob kutilsa, Cloudflare/tunnel
+            # o'zining javob kutish vaqtidan oshib ketib, brauzerga hali
+            # server hisoblab bo'lmasidanoq 502 qaytarardi. Shu sabab fon
+            # job sifatida ishga tushirilib, natija /api/jobs/<id> orqali
+            # so'raladi - HTTP javobi darhol qaytadi.
+            base_src, final_src = dict(base_item), dict(final_item)
+            job_id = "release_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "navbatda"}
+
+            def _compute_release(jid=job_id, bd=base_date, fd=final_date, bi=base_src, fi=final_src):
+                global STORE
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Hisoblanmoqda"
+                    if STORE is None:
+                        STORE = IBKStore(DB_PATH)
+                    ensure_store_backfilled()
+                    try:
+                        result = STORE.compute_released_robust(bd, fd)
+                        if not result.get("rows") and not result.get("total"):
+                            raise ValueError("STORE'da ma'lumot yo'q")
+                    except Exception:
+                        result = release_company_table(Path(bi["source"]), Path(fi["source"]))
+                    result.update({"base": bd, "final": fd})
+                    j.update({"status": "tayyor", "data": result})
+                except Exception as exc:
+                    j["status"] = "xatolik"
+                    j["error"] = f"{type(exc).__name__}: {exc}"
+
+            threading.Thread(target=_compute_release, daemon=True).start()
+            self.json({"job_id": job_id})
             return
         if parsed.path == "/api/release_buckets":
             if not self.require_perm("release"):
                 return
-            if STORE is None:
-                STORE = IBKStore(DB_PATH)
-            ensure_store_backfilled()
-            self.json(STORE.released_year_bucket_table())
+            job_id = "relbuckets_" + str(int(time.time() * 1000))
+            JOBS[job_id] = {"status": "navbatda"}
+
+            def _compute_buckets(jid=job_id):
+                global STORE
+                j = ensure_job(jid)
+                try:
+                    j["status"] = "Hisoblanmoqda"
+                    if STORE is None:
+                        STORE = IBKStore(DB_PATH)
+                    ensure_store_backfilled()
+                    j.update({"status": "tayyor", "data": STORE.released_year_bucket_table()})
+                except Exception as exc:
+                    j["status"] = "xatolik"
+                    j["error"] = f"{type(exc).__name__}: {exc}"
+
+            threading.Thread(target=_compute_buckets, daemon=True).start()
+            self.json({"job_id": job_id})
             return
         if parsed.path == "/api/export":
             if not self.require_perm("export"):
