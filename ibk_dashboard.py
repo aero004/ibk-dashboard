@@ -2000,23 +2000,27 @@ def release_company_table(base_source: Path, final_source: Path) -> dict:
             continue
         rows.append(row)
     rows.sort(key=lambda x: (x["released_qiymat"], x["released_vazn"], x["released_partiya"]), reverse=True)
+    # Jami (total) BUTUN base davri bo'yicha (rows + unreleased) hisoblanadi,
+    # aks holda hali umuman yechilmagan kompaniyalar qoldiq yig'indisidan
+    # tushib qoladi - compute_released_frames() bilan bir xil tuzatish.
+    all_rows = rows + unreleased
     total = {
         "korxona": "Jami",
         "stir": "",
-        "base_vazn": sum(r["base_vazn"] for r in rows),
-        "base_qiymat": sum(r["base_qiymat"] for r in rows),
-        "base_partiya": sum(r["base_partiya"] for r in rows),
-        "remain_vazn": sum(r["remain_vazn"] for r in rows),
-        "remain_qiymat": sum(r["remain_qiymat"] for r in rows),
-        "remain_partiya": sum(r["remain_partiya"] for r in rows),
-        "released_vazn": sum(r["released_vazn"] for r in rows),
-        "released_qiymat": sum(r["released_qiymat"] for r in rows),
+        "base_vazn": sum(r["base_vazn"] for r in all_rows),
+        "base_qiymat": sum(r["base_qiymat"] for r in all_rows),
+        "base_partiya": sum(r["base_partiya"] for r in all_rows),
+        "remain_vazn": sum(r["remain_vazn"] for r in all_rows),
+        "remain_qiymat": sum(r["remain_qiymat"] for r in all_rows),
+        "remain_partiya": sum(r["remain_partiya"] for r in all_rows),
+        "released_vazn": sum(r["released_vazn"] for r in all_rows),
+        "released_qiymat": sum(r["released_qiymat"] for r in all_rows),
         "released_pct": 0.0,
-        "released_partiya": sum(r["released_partiya"] for r in rows),
-        "released_tolov": sum(r["released_tolov"] for r in rows),
-        "current_vazn": sum(r["current_vazn"] for r in rows),
-        "current_qiymat": sum(r["current_qiymat"] for r in rows),
-        "current_partiya": sum(r["current_partiya"] for r in rows),
+        "released_partiya": sum(r["released_partiya"] for r in all_rows),
+        "released_tolov": sum(r["released_tolov"] for r in all_rows),
+        "current_vazn": sum(r["current_vazn"] for r in all_rows),
+        "current_qiymat": sum(r["current_qiymat"] for r in all_rows),
+        "current_partiya": sum(r["current_partiya"] for r in all_rows),
     }
     total["released_pct"] = (total["released_qiymat"] / total["base_qiymat"] * 100) if total["base_qiymat"] else 0.0
     partial = [r for r in rows if r["released_partiya"] == 0 and (r["released_qiymat"] > 0.005 or r["released_vazn"] > 0.005)]
@@ -6344,11 +6348,17 @@ class Handler(BaseHTTPRequestHandler):
             if STORE is None:
                 STORE = IBKStore(DB_PATH)
             ensure_store_backfilled()
-            base_snapshot = STORE.snapshot_id_by_date(base_date) if STORE else None
-            final_snapshot = STORE.snapshot_id_by_date(final_date) if STORE else None
-            if base_snapshot and final_snapshot:
-                result = STORE.compute_released(base_snapshot, final_snapshot)
-            else:
+            # Faqat ikkita sananing snapshotini solishtirish EMAS - har bir
+            # item_key uchun BUTUN arxiv tarixi bo'yicha faollik oralig'idan
+            # foydalaniladi. Shu orqali bitta oraliq faylning to'liqsizligi
+            # (masalan bitta STIR uchun kam yozuv) natijani buzmaydi - agar
+            # item o'sha uzilishdan oldin ham, keyin ham faol ko'rinsa, u
+            # butun davr davomida faol deb hisoblanadi.
+            try:
+                result = STORE.compute_released_robust(base_date, final_date)
+                if not result.get("rows") and not result.get("total"):
+                    raise ValueError("STORE'da ma'lumot yo'q")
+            except Exception:
                 result = release_company_table(Path(base_item["source"]), Path(final_item["source"]))
             result.update({"base": base_date, "final": final_date})
             self.json(result)
@@ -6370,13 +6380,16 @@ class Handler(BaseHTTPRequestHandler):
                 if not base_item or not final_item:
                     self.send_error(404)
                     return
-                base_snapshot = STORE.snapshot_id_by_date(base_date) if STORE else None
-                final_snapshot = STORE.snapshot_id_by_date(final_date) if STORE else None
-                if base_snapshot and final_snapshot:
-                    data = STORE.compute_released(base_snapshot, final_snapshot)
-                else:
+                if STORE is None:
+                    STORE = IBKStore(DB_PATH)
+                ensure_store_backfilled()
+                try:
+                    data = STORE.compute_released_robust(base_date, final_date)
+                    if not data.get("rows") and not data.get("total"):
+                        raise ValueError("STORE'da ma'lumot yo'q")
+                except Exception:
                     data = release_company_table(Path(base_item["source"]), Path(final_item["source"]))
-                rows = [data["total"]] + data["rows"]
+                rows = [data["total"]] + data["rows"] + data.get("unreleased", [])
                 title = f"Nazoratdan yechilishi {base_date} - {final_date}"
                 headers = release_headers()
             else:

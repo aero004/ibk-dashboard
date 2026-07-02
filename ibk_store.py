@@ -480,6 +480,82 @@ class IBKStore:
             return {"total": {}, "rows": [], "partial": [], "unreleased": []}
         return compute_released_frames(base, final)
 
+    def item_timelines(self) -> pd.DataFrame:
+        """Har bir item_key (deklaratsiya + tovar qatori) uchun BUTUN arxiv
+        tarixi bo'yicha birinchi va oxirgi ko'rinish sanasini, hamda (agar
+        keyinchalik hech qachon qayta ko'rinmagan bo'lsa) taxminiy yechilish
+        sanasini hisoblaydi. Faqat bitta sananing (bitta yuklangan fayl)
+        holatiga emas, balki hamma arxivlangan fayllarga qarab baholanadi -
+        agar biror oraliq fayl to'liqsiz bo'lib item vaqtincha ko'rinmay
+        qolsa-yu, undan keyingi faylda yana paydo bo'lsa, bu vaqtinchalik
+        uzilish (bitta faylning kamchiligi) deb hisoblanadi, yechilish emas."""
+        with self.connect() as conn:
+            df = pd.read_sql_query("""
+                SELECT ai.item_key, ai.decl, ai.item_no, ai.regime, ai.post, ai.warehouse,
+                       ai.stir, ai.company, ai.weight, ai.value, ai.payment, ai.partiya,
+                       ai.gtd_date, s.report_date
+                FROM active_items ai JOIN snapshots s ON ai.snapshot_id = s.id
+            """, conn)
+            # Snapshots jadvalidan ALOHIDA olinadi - agar biror sana (masalan
+            # hamma narsa yechilib, active_items bo'sh qolgan yuklama) uchun
+            # active_items'da mutlaqo qator qolmagan bo'lsa, yuqoridagi JOIN
+            # bu sanani butunlay yashirib qo'yardi va "keyingi sana" sifatida
+            # hech qachon hisobga olinmasdi.
+            all_snap_dates_raw = pd.read_sql_query("SELECT report_date FROM snapshots", conn)["report_date"]
+        cols = ["item_key", "decl", "item_no", "regime", "post", "warehouse", "stir", "company",
+                "weight", "value", "payment", "partiya", "gtd_date",
+                "first_seen_date", "last_seen_date", "release_date", "is_released"]
+        all_snap_dates = sorted(pd.to_datetime(all_snap_dates_raw, format="%d.%m.%Y", errors="coerce").dropna().unique())
+        if df.empty or not all_snap_dates:
+            return pd.DataFrame(columns=cols)
+        df["_rd"] = pd.to_datetime(df["report_date"], format="%d.%m.%Y", errors="coerce")
+        df = df.dropna(subset=["_rd"])
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+        all_dates = all_snap_dates
+        latest_date = all_dates[-1]
+        grp = df.groupby("item_key")["_rd"]
+        first_seen = grp.min()
+        last_seen = grp.max()
+
+        def _release_date(d):
+            if d == latest_date:
+                return pd.NaT
+            later = [x for x in all_dates if x > d]
+            return later[0] if later else pd.NaT
+
+        release_dates = last_seen.map(_release_date)
+        last_rows = df.sort_values("_rd").groupby("item_key").tail(1).set_index("item_key")
+        out = last_rows.drop(columns=["_rd", "report_date"])
+        out["first_seen_date"] = first_seen
+        out["last_seen_date"] = last_seen
+        out["release_date"] = release_dates
+        out["is_released"] = out["release_date"].notna()
+        return out.reset_index()[cols]
+
+    def items_active_as_of(self, date_text: str, timeline: pd.DataFrame | None = None) -> pd.DataFrame:
+        """Berilgan sanaga 'holatiga' haqiqatda faol (nazoratda) bo'lgan
+        item'larni butun tarix asosida qaytaradi - yolg'iz shu sanadagi
+        (agar mavjud bo'lsa ham) bitta faylga tayanmaydi."""
+        df = timeline if timeline is not None else self.item_timelines()
+        if df.empty:
+            return df
+        target = pd.to_datetime(date_text, format="%d.%m.%Y", errors="coerce")
+        if pd.isna(target):
+            return df.iloc[0:0]
+        mask = (df["first_seen_date"] <= target) & (df["release_date"].isna() | (df["release_date"] > target))
+        return df[mask].copy()
+
+    def compute_released_robust(self, base_date: str, final_date: str) -> dict[str, Any]:
+        """/api/release uchun asosiy hisoblash - ikkita alohida sana snapshot
+        emas, item'larning butun tarix bo'yicha faollik oralig'idan foydalanadi."""
+        timeline = self.item_timelines()
+        base = self.items_active_as_of(base_date, timeline)
+        final = self.items_active_as_of(final_date, timeline)
+        if base.empty:
+            return {"total": {}, "rows": [], "partial": [], "unreleased": []}
+        return compute_released_frames(base, final)
+
 
 def compute_released_frames(base: pd.DataFrame, final: pd.DataFrame) -> dict[str, Any]:
     if final.empty:
@@ -534,19 +610,25 @@ def compute_released_frames(base: pd.DataFrame, final: pd.DataFrame) -> dict[str
             released["release_type"] = "qisman" if has_final and released["released_partiya"] == 0 else "to'liq"
             rows.append(released)
     rows.sort(key=lambda x: (x["released_qiymat"], x["released_vazn"], x["released_partiya"]), reverse=True)
+    # Jami (total) BUTUN base davri bo'yicha hisoblanadi (rows + unreleased),
+    # aks holda hali umuman yechilmagan (0% released) kompaniyalar remain_*
+    # yig'indisidan tushib qolib, "jami qoldiq" haqiqiy sondan kam chiqadi -
+    # frontend releaseCompanyRows()/releaseTotalRow() ham shu ikkalasini
+    # birlashtirib hisoblaydi, total shu bilan mos bo'lishi kerak.
+    all_rows = rows + unreleased
     total = {
         "korxona": "Jami",
         "stir": "",
-        "base_vazn": sum(r["base_vazn"] for r in rows),
-        "base_qiymat": sum(r["base_qiymat"] for r in rows),
-        "base_partiya": sum(r["base_partiya"] for r in rows),
-        "remain_vazn": sum(r["remain_vazn"] for r in rows),
-        "remain_qiymat": sum(r["remain_qiymat"] for r in rows),
-        "remain_partiya": sum(r["remain_partiya"] for r in rows),
-        "released_vazn": sum(r["released_vazn"] for r in rows),
-        "released_qiymat": sum(r["released_qiymat"] for r in rows),
-        "released_partiya": sum(r["released_partiya"] for r in rows),
-        "released_tolov": sum(r["released_tolov"] for r in rows),
+        "base_vazn": sum(r["base_vazn"] for r in all_rows),
+        "base_qiymat": sum(r["base_qiymat"] for r in all_rows),
+        "base_partiya": sum(r["base_partiya"] for r in all_rows),
+        "remain_vazn": sum(r["remain_vazn"] for r in all_rows),
+        "remain_qiymat": sum(r["remain_qiymat"] for r in all_rows),
+        "remain_partiya": sum(r["remain_partiya"] for r in all_rows),
+        "released_vazn": sum(r["released_vazn"] for r in all_rows),
+        "released_qiymat": sum(r["released_qiymat"] for r in all_rows),
+        "released_partiya": sum(r["released_partiya"] for r in all_rows),
+        "released_tolov": sum(r["released_tolov"] for r in all_rows),
     }
     total["released_pct"] = (total["released_qiymat"] / total["base_qiymat"] * 100) if total["base_qiymat"] else 0.0
     return {
