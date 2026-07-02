@@ -41,8 +41,9 @@ _SL_RE = re.compile(
         (?:srok\s+godnosti|срок\s+годности|srok\s+gdn|
            goden\s+do|годен\s+до|
            yaroqlilik\s+muddati|yaroqliligi|
-           годен|годности)
-        \s*[:\-]?\s*
+           годен|годности|
+           \bexp(?:iry|iration)?\b)
+        \.?\s*(?:date\s*)?[:\-]?\s*
     )
     (?:
         (\d{2})[./](\d{2})[./](\d{4})
