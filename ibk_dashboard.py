@@ -1705,6 +1705,28 @@ def read_report_source(source: Path) -> pd.DataFrame:
     return df.copy()
 
 
+def user_post_code(user: str) -> str:
+    """Foydalanuvchining post_code maydonini qaytaradi. Bo'sh yoki "00" -
+    to'liq (IBK bo'yicha) ko'rish huquqi, aks holda faqat shu post kodiga
+    tegishli ma'lumotlarni ko'rish kerak."""
+    if not user:
+        return ""
+    rec = load_json(USER_PATH, {}).get(user, {})
+    code = core.clean(str(rec.get("post_code", "") or ""))
+    return "" if code in ("", "00") else code
+
+
+def filter_df_by_post(df: pd.DataFrame, post_code: str) -> pd.DataFrame:
+    """post_code bo'sh bo'lmasa, faqat shu postdan kelib chiqqan (source_post_code)
+    qatorlarni qoldiradi. Xodimga faqat o'z postiga tegishli ma'lumot ko'rinishi
+    kerak - boshqa postlarniki emas."""
+    if not post_code:
+        return df
+    if "_source_post_code" not in df.columns:
+        return df.iloc[0:0]
+    return df[df["_source_post_code"].map(core.clean) == post_code].copy()
+
+
 def item_key(row) -> str:
     goods_no = core.clean(row[core.SRC.get("goods_no", core.SRC["decl_no"])])
     return f"{declaration_key(row)}::{goods_no}"
@@ -2162,8 +2184,13 @@ def make_xlsx(headers: list[dict], rows: list[dict], title: str) -> bytes:
     return bio.getvalue()
 
 
-def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_date: datetime) -> dict:
+def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_date: datetime, post_filter: str = "") -> dict:
     df = read_report_source(source)
+    # Post kodiga cheklangan xodim faqat o'z postiga tegishli qatorlarni
+    # ko'rishi kerak - filtr shu yerda, aggregatsiyalardan OLDIN qo'llanadi,
+    # shunda pastdagi barcha hisob-kitoblar (companies/regimes/expired/wh/...)
+    # avtomatik ravishda faqat shu postga tegishli bo'lib qoladi.
+    df = filter_df_by_post(df, post_filter)
     deposits, deposit_date, deposit_total = core.read_deposit(deposit)
     expired = core.with_expiry(df, report_date)
     expired = expired[expired["_expired"]].copy()
@@ -2252,19 +2279,27 @@ def build_dashboard(report_id: str, source: Path, deposit: Path | None, report_d
     for r in archive:
         by_date.setdefault(r.get("date", ""), r)
     release = {}
-    for days in [1, 3, 5, 10, 30]:
-        base_dt = report_date - timedelta(days=days)
-        base_key = fmt_date(base_dt)
-        item = by_date.get(base_key)
-        old_path = Path(item["source"]) if item and item.get("source") else None
-        if old_path and old_path.exists():
-            try:
-                release[str(days)] = released_between(old_path, source)
-                release[str(days)]["base_date"] = base_key
-            except Exception:
-                release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": base_key, "missing_date": base_key}
-        else:
-            release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": "", "missing_date": base_key}
+    # released_between() ikkita XOM faylni to'g'ridan-to'g'ri o'qib solishtiradi -
+    # yuqoridagi post filtridan chetda qoladi. Post kodiga cheklangan xodim uchun
+    # (post_filter mavjud bo'lsa) hisoblanmaydi - aks holda boshqa postlarning
+    # ma'lumoti sizib chiqishi mumkin edi.
+    if post_filter:
+        for days in [1, 3, 5, 10, 30]:
+            release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": "", "missing_date": ""}
+    else:
+        for days in [1, 3, 5, 10, 30]:
+            base_dt = report_date - timedelta(days=days)
+            base_key = fmt_date(base_dt)
+            item = by_date.get(base_key)
+            old_path = Path(item["source"]) if item and item.get("source") else None
+            if old_path and old_path.exists():
+                try:
+                    release[str(days)] = released_between(old_path, source)
+                    release[str(days)]["base_date"] = base_key
+                except Exception:
+                    release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": base_key, "missing_date": base_key}
+            else:
+                release[str(days)] = {"partiya": 0, "vazn": 0, "qiymat": 0, "tolov": 0, "rows": [], "base_date": "", "missing_date": base_key}
 
     food_total_value = 0.0
     food_data = []
@@ -6266,12 +6301,32 @@ class Handler(BaseHTTPRequestHandler):
             self.json(JOBS.get(parsed.path.rsplit("/", 1)[-1], {"status": "xatolik", "error": "Job topilmadi"}))
             return
         if parsed.path.startswith("/api/reports/"):
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             report_id = parsed.path.rsplit("/", 1)[-1]
             item = next((r for r in load_json(INDEX_PATH, {"reports": []})["reports"] if r["id"] == report_id), None)
             if not item:
                 self.json({"error": "Topilmadi"}, HTTPStatus.NOT_FOUND)
+                return
+            post_code = user_post_code(user)
+            if post_code:
+                # Post kodiga cheklangan xodim uchun UMUMIY keshlangan
+                # dashboard.json'ga tegilmaydi (aks holda boshqa foydalanuvchilar
+                # ham filtrlangan/noto'g'ri natijani ko'rib qolishi mumkin edi) -
+                # har safar shu postga xos yangi hisobot tuziladi. Asos fayl
+                # o'zi read_report_source() ichida keshlanganligi uchun bu
+                # sekin emas - faqat aggregatsiya qayta hisoblanadi.
+                try:
+                    deposit_path = Path(item["deposit"]) if item.get("deposit") else None
+                    data = build_dashboard(item["id"], Path(item["source"]), deposit_path, datetime.strptime(item["date"], "%d.%m.%Y"), post_filter=post_code)
+                    # Excel/PDF/PNG fayllari UMUMIY (filtrlanmagan) hisobot uchun
+                    # tayyorlangan - cheklangan xodimga ko'rsatilmaydi, aks holda
+                    # yuklab olib boshqa postlarning ma'lumotini ko'rishi mumkin edi.
+                    data["files"] = {"status": "cheklangan", "excel": "", "pdf": "", "pngs": []}
+                except Exception as exc:
+                    data = {"error": f"Hisobot tuzishda xatolik: {exc}"}
+                self.json(data)
                 return
             data_path = Path(item["dir"]) / "dashboard.json"
             data = load_json(data_path, {})
@@ -6325,7 +6380,8 @@ class Handler(BaseHTTPRequestHandler):
             self.json(data)
             return
         if parsed.path == "/api/details":
-            if not self.require_user():
+            user = self.require_user()
+            if not user:
                 return
             q = parse_qs(parsed.query)
             report_id = q.get("report", [""])[0]
@@ -6334,10 +6390,12 @@ class Handler(BaseHTTPRequestHandler):
             if not item:
                 self.json({"rows": []})
                 return
-            self.json({"rows": detail_rows(read_report_source(Path(item["source"])), filters)})
+            src_df = filter_df_by_post(read_report_source(Path(item["source"])), user_post_code(user))
+            self.json({"rows": detail_rows(src_df, filters)})
             return
         if parsed.path == "/api/export_details":
-            if not self.require_perm("export"):
+            user = self.require_perm("export")
+            if not user:
                 return
             q = parse_qs(parsed.query)
             report_id = q.get("report", [""])[0]
@@ -6346,7 +6404,8 @@ class Handler(BaseHTTPRequestHandler):
             if not item:
                 self.send_error(404)
                 return
-            rows = detail_rows(read_report_source(Path(item["source"])), filters)
+            src_df = filter_df_by_post(read_report_source(Path(item["source"])), user_post_code(user))
+            rows = detail_rows(src_df, filters)
             headers = [
                 {"k": "decl", "t": "Deklaratsiya", "width": 20},
                 {"k": "date", "t": "Sana", "width": 14},
