@@ -348,7 +348,25 @@ def load_avia_awb(path: Path | None = None) -> dict:
     global AVIA_AWB_PATH, AVIA_AWB_CACHE
     today = datetime.today().date()
     try:
-        target = path or AVIA_AWB_PATH
+        target = path
+        if target is None:
+            # Admin "Joriy" (current) belgisi qo'yilgan AVIA faylni afzal ko'ramiz -
+            # aks holda eng oxirgi yuklangan/keshdagi faylga tayanib, admin belgilagan
+            # boshqa sanadagi faylga o'tishni e'tiborsiz qoldirar edik.
+            archive = load_json(INDEX_PATH, {"files": [], "current_files": {}})
+            cur_id = (archive.get("current_files") or {}).get("avia_awb")
+            if cur_id:
+                rec = next((f for f in (archive.get("files") or []) if f.get("id") == cur_id), None)
+                if rec and rec.get("json_path") and Path(rec["json_path"]).exists():
+                    cached = json.loads(Path(rec["json_path"]).read_text(encoding="utf-8"))
+                    if rec.get("excel_path") and Path(rec["excel_path"]).exists():
+                        AVIA_AWB_PATH = Path(rec["excel_path"])
+                    AVIA_AWB_CACHE = cached
+                    return cached
+                if rec and rec.get("excel_path") and Path(rec["excel_path"]).exists():
+                    target = Path(rec["excel_path"])
+        if target is None:
+            target = AVIA_AWB_PATH
         if target is None:
             found = sorted(
                 DASHBOARD_DIR.glob("Yuklarni qabul qilish*.xlsx"),
@@ -4747,8 +4765,15 @@ async function deleteFileEntry(id,filename){
 }
 async function setCurrentFile(id){
   try{
+    let rec=(FILES_ARCHIVE||[]).find(r=>r.id===id);
     await api("/api/files_archive/set_current",{method:"POST",body:JSON.stringify({id})});
     await loadFilesArchive();
+    if(rec&&rec.type==='avia_awb'){
+      try{
+        let [j,stats]=await Promise.all([api('/api/avia_awb?force=1'),api('/api/avia_stats')]);
+        AVIA_DATA=j;AVIA_STATS=stats;
+      }catch(e){}
+    }
     render();
   }catch(e){alert("Xatolik: "+e.message)}
 }

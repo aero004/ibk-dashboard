@@ -386,10 +386,22 @@ def summarize_goods(items: pd.Series) -> str:
 
 def goods_category(items: pd.Series) -> str:
     text = " ".join(clean(x).lower() for x in items if clean(x))
+    # Tartib muhim: birinchi mos kelgan qoida g'olib chiqadi. Shuning uchun
+    # o'ziga XOS (boshqa turdagi tovarlarda deyarli uchramaydigan) belgilar -
+    # masalan avtomobil markalari - eng OLDIN tekshiriladi. "yoqilg'i
+    # mahsulotlari" qoidasidagi "бензин"/"дизел" kabi so'zlar esa aslida har
+    # qanday avtomobil tavsifida ("дизельный двигатель" - dizel dvigatel)
+    # ham uchraydi - shu sabab avtomobil qoidasidan KEYIN turishi kerak,
+    # aks holda haqiqiy avtomobil dizel/benzin dvigateliga ega bo'lgani
+    # uchun "yoqilg'i mahsuloti" deb noto'g'ri belgilanardi.
+    # "автомобил(?!ьн)" - "автомобиль/автомобиля" (mashina, ot) ga mos keladi,
+    # lekin "автомобильный" (avtomobilга oid, sifatdosh - masalan "автомобильный
+    # бензин" = avtomobil benzini, yoqilg'ining o'zi) ga mos KELMAYDI - aks holda
+    # haqiqiy yoqilg'i mahsuloti ham noto'g'ri "avtomobillar" deb belgilanardi.
     rules = [
+        ("avtomobillar va ehtiyot qismlar", [r"автомобил(?!ьн)", "легковой", "bmw", "chevrolet", "liхiang", "lixiang", "запас", "ehtiyot", "двигател", "шина"]),
         ("qurilish mollari", ["строител", "цемент", "кабель", "transformator", "бетон", "плит", "eshik", "deraza", "armatura", "сантех"]),
         ("yoqilg'i mahsulotlari", ["топливо", "yoqilg", "бензин", "дизел", "керосин", "jet", "ts-1", "нефт"]),
-        ("avtomobillar va ehtiyot qismlar", ["автомоб", "легковой", "bmw", "chevrolet", "liхiang", "lixiang", "запас", "ehtiyot", "двигател", "шина"]),
         ("lift va uskunalar", ["лифт", "оборуд", "ускуна", "станок", "machine", "apparat"]),
         ("oziq-ovqat mahsulotlari", ["oziq", "озиқ", "овқат", "food", "сахар", "шакар", "рис", "guruch", "масло", "yog", "молок", "sut", "мяс", "go'sht"]),
         ("kimyo mahsulotlari", ["хим", "kimyo", "лак", "краска", "поли", "смола", "реагент"]),
@@ -397,7 +409,7 @@ def goods_category(items: pd.Series) -> str:
         ("elektrotexnika mahsulotlari", ["электр", "кабель", "lamp", "аккумулятор", "battery"]),
     ]
     for label, needles in rules:
-        if any(n in text for n in needles):
+        if any(re.search(n, text) for n in needles):
             return label
     return summarize_goods(items)
 
