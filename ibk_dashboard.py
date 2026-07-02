@@ -3280,7 +3280,6 @@ function landingPanel(){
   let k=(DATA&&DATA.kpis)||{};
   let payTotal=(PAYMENTS||[]).reduce((a,r)=>a+(+r.sum||0),0);
   let aviaDecl=(AVIA_STATS&&AVIA_STATS.decl_soni)||0;
-  let vaqCount=((VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[]).length;
   let yarExpired=(YAROQLILIK_DATA&&YAROQLILIK_DATA.loaded)?(YAROQLILIK_DATA.expired_count||0):((DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0);
   let foodQiymat=(DATA&&DATA.food||[]).reduce((a,r)=>a+(+r.qiymat||0),0);
   let wrCount=(WR_DATA||[]).length;
@@ -3289,7 +3288,8 @@ function landingPanel(){
 <button class="summary-item" onclick="showHomeKpi('bnrte')"><b>${fmtI(k.partiya||0)}</b><span>BNRTE — jami partiya</span></button>
 <button class="summary-item" onclick="showHomeKpi('tolov')"><b>${fmtN(payTotal)}</b><span>To'lovlar — jami summa (so'm)</span></button>
 <button class="summary-item" onclick="showHomeKpi('avia')"><b>${fmtI(aviaDecl)}</b><span>AVIA — deklaratsiya soni</span></button>
-<button class="summary-item" onclick="showHomeKpi('vaqtincha')"><b>${fmtI(vaqCount)}</b><span>IM42/EK12 — jami yozuv</span></button>
+<button class="summary-item" onclick="showHomeKpi('im42')"><b>${fmtI((VAQTINCHA_DATA&&VAQTINCHA_DATA.im42_count)||0)}</b><span>IM42 — jami yozuv</span></button>
+<button class="summary-item" onclick="showHomeKpi('ek12')"><b>${fmtI((VAQTINCHA_DATA&&VAQTINCHA_DATA.ek12_count)||0)}</b><span>EK12 — jami yozuv</span></button>
 <button class="summary-item" onclick="showHomeKpi('yaroqlilik')"><b>${fmtI(yarExpired)}</b><span>Iste'mol muddati o'tgan</span></button>
 <button class="summary-item" onclick="showHomeKpi('food')"><b>${fmtN(foodQiymat)}</b><span>Iste'mol tovarlari (ming $)</span></button>
 <button class="summary-item" onclick="showHomeKpi('ombor')"><b>${fmtI(wrCount)}</b><span>Omborlar reestri — jami ombor</span></button>
@@ -3298,12 +3298,13 @@ function landingPanel(){
 </div></div>${flightsPanelShell()}`}
 function homeKpiNav(kind){
   dlg.close();
-  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],avia:['bnrte','avia'],vaqtincha:['bnrte','vaqtincha'],yaroqlilik:['bnrte','yaroqlilik'],food:['bnrte','food'],ombor:['common','upload'],bko:['common','upload']};
+  const map={bnrte:['bnrte','umumiy'],tolov:['payments','payments'],avia:['bnrte','avia'],im42:['bnrte','vaqtincha'],ek12:['bnrte','vaqtincha'],yaroqlilik:['bnrte','yaroqlilik'],food:['bnrte','food'],ombor:['bnrte','ombor'],bko:['common','upload']};
   const dest=map[kind]||['home','home'];
+  if(kind==='im42')VAQTINCHA_REGIME='im42';else if(kind==='ek12')VAQTINCHA_REGIME='ek12';
   GROUP=dest[0];TAB=dest[1];render();
 }
 function showHomeKpi(kind){
-  const titles={bnrte:"BNRTE",tolov:"To'lovlar",avia:"AVIA AWB",vaqtincha:"Vaqtincha IM42/EK12",yaroqlilik:"Iste'mol muddati tahlili",food:"Iste'mol tovarlari",ombor:"Omborlar reestri",bko:"BKO"};
+  const titles={bnrte:"BNRTE",tolov:"To'lovlar",avia:"AVIA AWB",im42:"IM42",ek12:"EK12",yaroqlilik:"Iste'mol muddati tahlili",food:"Iste'mol tovarlari",ombor:"Omborlar reestri",bko:"BKO"};
   let body='';
   if(kind==='bnrte'){
     let k=(DATA&&DATA.kpis)||{};
@@ -3314,10 +3315,12 @@ function showHomeKpi(kind){
   }else if(kind==='avia'){
     let s=AVIA_STATS||{};
     body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(s.decl_soni||0)}</b><span>Deklaratsiya soni</span></div><div class="summary-item"><b>${fmtN(s.jami_qiymat_k||0)}</b><span>Qiymat (ming $)</span></div></div>`;
-  }else if(kind==='vaqtincha'){
-    let items=(VAQTINCHA_DATA&&VAQTINCHA_DATA.items)||[];
-    let rd=VAQTINCHA_DATA&&VAQTINCHA_DATA.report_date;
-    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(items.length)}</b><span>Jami yozuv${rd?' — '+esc(rd):''}</span></div></div>`;
+  }else if(kind==='im42'){
+    let d=VAQTINCHA_DATA||{};
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(d.im42_count||0)}</b><span>Jami yozuv</span></div><div class="summary-item"><b>${fmtN(d.im42_value||0)}</b><span>Qiymat ($)</span></div><div class="summary-item"><b style="color:#dc2626">${fmtI(d.expired_im42||0)}</b><span>Muddati o'tgan</span></div></div>`;
+  }else if(kind==='ek12'){
+    let d=VAQTINCHA_DATA||{};
+    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(d.ek12_count||0)}</b><span>Jami yozuv</span></div><div class="summary-item"><b>${fmtN(d.ek12_value||0)}</b><span>Qiymat ($)</span></div><div class="summary-item"><b style="color:#dc2626">${fmtI(d.expired_ek12||0)}</b><span>Muddati o'tgan</span></div></div>`;
   }else if(kind==='yaroqlilik'){
     let yd=YAROQLILIK_DATA||{};
     let slExp=(DATA&&DATA.shelf_life)?DATA.shelf_life.filter(r=>r.holat==="Muddati o'tgan"||r.holat==="180 kun qoidasi (buzilish)").length:0;
@@ -3331,7 +3334,7 @@ function showHomeKpi(kind){
     body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI((WR_DATA||[]).length)}</b><span>Jami ombor${WR_FILE_DATE?' — '+esc(WR_FILE_DATE)+' holatiga':''}</span></div></div>`;
   }else if(kind==='bko'){
     let s=BKO_SUMMARY||{};
-    body=`<div class="summary-grid" style="grid-template-columns:repeat(2,1fr)"><div class="summary-item"><b>${fmtI(s.total_bko||0)}</b><span>Jami band</span></div><div class="summary-item"><b>${fmtN(s.total_summa||0)}</b><span>Jami summa</span></div></div>`;
+    body=`<div class="summary-grid" style="grid-template-columns:1fr"><div class="summary-item"><b>${fmtI(s.total_bko||0)}</b><span>Jami band</span></div><div class="summary-item"><b>${fmtN(s.total_qiymat||0)}</b><span>Qiymat ($)</span></div><div class="summary-item"><b>${fmtN(s.total_summa||0)}</b><span>Jami undirilgan summa (so'm)</span></div></div>`;
   }
   dlgTitle.textContent=titles[kind]||'';
   dlgBody.innerHTML=body+`<div style="margin-top:14px;text-align:right"><button onclick="homeKpiNav('${kind}')">To'liq ko'rish →</button></div>`;
