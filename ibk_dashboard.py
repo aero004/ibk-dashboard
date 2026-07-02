@@ -48,7 +48,7 @@ sys.path.insert(0, str(DASHBOARD_DIR))
 
 import im70_74_excel_com as core  # noqa: E402
 from im70_74_analysis_report import build as build_png_report  # noqa: E402
-from ibk_store import IBKStore  # noqa: E402
+from ibk_store import IBKStore, RELEASE_BUCKETS  # noqa: E402
 
 
 HOST = os.environ.get("IBK_HOST", "0.0.0.0")
@@ -2108,6 +2108,23 @@ def release_headers():
         {"k": "current_vazn", "t": "Yakuniy qoldiq vazn (tn)", "n": True, "width": 18},
         {"k": "current_qiymat", "t": "Yakuniy qoldiq qiymat (ming $)", "n": True, "width": 22},
         {"k": "current_partiya", "t": "Yakuniy qoldiq partiya", "i": True, "width": 18},
+    ]
+
+
+def release_bucket_headers():
+    return [
+        {"k": "decl", "t": "Deklaratsiya", "width": 20},
+        {"k": "item_no", "t": "Tovar t/r", "width": 10},
+        {"k": "company", "t": "Korxona", "width": 42},
+        {"k": "stir", "t": "STIR", "width": 14},
+        {"k": "regime", "t": "Rejim", "width": 10},
+        {"k": "post", "t": "Post", "width": 24},
+        {"k": "warehouse", "t": "Ombor", "width": 24},
+        {"k": "gtd_date", "t": "Deklaratsiya sanasi", "width": 16},
+        {"k": "release_date_text", "t": "Nazoratdan yechilgan sana", "width": 18},
+        {"k": "weight", "t": "Vazn (tn)", "n": True, "width": 14},
+        {"k": "value", "t": "Qiymat (ming $)", "n": True, "width": 16},
+        {"k": "payment", "t": "To'lov (mln so'm)", "n": True, "width": 16},
     ]
 
 
@@ -5423,7 +5440,34 @@ const renderRealGlobe=render;render=function(){renderRealGlobe();setTimeout(()=>
 document.body.classList.remove("bg-aero","bg-classic");localStorage.removeItem("ibk_bg");
 startBackgroundVideo();
 function releaseDatePair(id,title){return `<div class="release-date-card"><h3>${title}</h3><div class="filters compact-filters"><select id="${id}Base">${dateOptions()}</select><select id="${id}Final">${dateOptions()}</select><button onclick="buildReleaseSection('${id}')">Shakllantirish</button></div><div id="${id}Result" class="release-section-result"></div></div>`}
-function releaseDashboardPanel(){return `<div class="stack"><div class="panel"><h2>Nazoratdan yechish</h2><div class="overview-note">Tepadagi sanalar barcha jadvallar uchun umumiy ishlashi yoki har jadval alohida muddat bilan shakllanishi mumkin.</div><div class="filters compact-filters"><label class="inline-check"><input type="checkbox" id="relGlobalUse" checked onchange="syncReleaseDates()"> Barcha jadvallar uchun</label><select id="relGlobalBase" onchange="syncReleaseDates()">${dateOptions()}</select><select id="relGlobalFinal" onchange="syncReleaseDates()">${dateOptions()}</select><button onclick="buildAllReleaseSections()">Barchasini shakllantirish</button></div></div>${releaseDatePair('relMain','Nazoratdan yechilishi jadvali')}${releaseDatePair('relSpeed','Korxonalar: eng ko\'p, eng tez va eng sekin')}${releaseDatePair('relWh','Omborlar oboroti')}</div>`}
+function releaseDashboardPanel(){return `<div class="stack"><div class="panel"><h2>Nazoratdan yechish</h2><div class="overview-note">Tepadagi sanalar barcha jadvallar uchun umumiy ishlashi yoki har jadval alohida muddat bilan shakllanishi mumkin.</div><div class="filters compact-filters"><label class="inline-check"><input type="checkbox" id="relGlobalUse" checked onchange="syncReleaseDates()"> Barcha jadvallar uchun</label><select id="relGlobalBase" onchange="syncReleaseDates()">${dateOptions()}</select><select id="relGlobalFinal" onchange="syncReleaseDates()">${dateOptions()}</select><button onclick="buildAllReleaseSections()">Barchasini shakllantirish</button></div></div>${releaseDatePair('relMain','Nazoratdan yechilishi jadvali')}${releaseDatePair('relSpeed','Korxonalar: eng ko\'p, eng tez va eng sekin')}${releaseDatePair('relWh','Omborlar oboroti')}<div class="panel wide" id="relBucketsPanel"><h2>Yillar va muddat kesimida nazoratdan yechilganlar</h2><div class="overview-note">Bugungi kundan orqaga hisoblangan, kumulyativ (masalan "1 oy" ustuniga "1 hafta"dagilar ham kiradi). Katakka bosilganda shu davrga tegishli deklaratsiyalar Excel qilib yuklanadi.</div><div class="muted">Yuklanmoqda...</div></div></div>`}
+async function loadReleaseBuckets(){
+  let box=$('relBucketsPanel');if(!box)return;
+  try{
+    let data=await api('/api/release_buckets');
+    box.innerHTML=`<h2>Yillar va muddat kesimida nazoratdan yechilganlar</h2><div class="overview-note">Bugungi kundan orqaga hisoblangan, kumulyativ (masalan "1 oy" ustuniga "1 hafta"dagilar ham kiradi). Katakka bosilganda shu davrga tegishli deklaratsiyalar Excel qilib yuklanadi.</div>${releaseBucketsTable(data)}`;
+  }catch(e){
+    box.innerHTML=`<h2>Yillar va muddat kesimida nazoratdan yechilganlar</h2><div class="muted">Yuklashda xatolik: ${esc(e.message||String(e))}</div>`;
+  }
+}
+function releaseBucketsTable(data){
+  let buckets=data.buckets||[],years=data.years||[],rows=data.rows||[],total=data.total||{};
+  if(!years.length)return `<div class="muted">Hali nazoratdan yechilgan tovarlar topilmadi.</div>`;
+  let cellHtml=(cell,year,bkey)=>{
+    cell=cell||{partiya:0,vazn:0,qiymat:0};
+    let inner=`<b>${fmtI(cell.partiya)}</b><div style="font-size:11px;color:var(--muted)">${fmtN(cell.vazn)} tn · ${fmtN(cell.qiymat)} ming $</div>`;
+    if(year==null)return `<td class=num>${inner}</td>`;
+    let href=`/api/export?kind=release_bucket&year=${year}&bucket=${bkey}&token=${TOKEN}`;
+    return `<td class=num><a class="bucket-cell" href="${href}" title="Excel yuklab olish" style="display:block;text-decoration:none;color:inherit">${inner}</a></td>`;
+  };
+  let head=`<tr><th rowspan=1>Yil</th>${buckets.map(b=>`<th>${b[1]}</th>`).join('')}</tr>`;
+  let totalRow=`<tr style="font-weight:800;background:#eaf1dd"><td>IBK bo'yicha Jami</td>${buckets.map(b=>cellHtml(total[b[0]],null,b[0])).join('')}</tr>`;
+  let bodyRows=years.map(year=>{
+    let row=rows.find(r=>r.year===year)||{};
+    return `<tr><td class=text>${year} yil</td>${buckets.map(b=>cellHtml(row[b[0]],year,b[0])).join('')}</tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto"><table class="fixed-table sample-like"><thead>${head}</thead><tbody>${totalRow}${bodyRows}</tbody></table></div>`;
+}
 function syncReleaseDates(){let use=$('relGlobalUse')?.checked,base=$('relGlobalBase')?.value,final=$('relGlobalFinal')?.value;['relMain','relSpeed','relWh'].forEach(id=>{let b=$(`${id}Base`),f=$(`${id}Final`);if(!b||!f)return;if(use){b.value=base;f.value=final;b.disabled=true;f.disabled=true}else{b.disabled=false;f.disabled=false}})}
 function releaseDatesFor(id){let use=$('relGlobalUse')?.checked;if(use)return {base:$('relGlobalBase').value,final:$('relGlobalFinal').value};return {base:$(`${id}Base`).value,final:$(`${id}Final`).value}}
 async function loadReleaseData(base,final,target){
@@ -5441,7 +5485,7 @@ async function loadReleaseData(base,final,target){
 }
 async function buildReleaseSection(id){let d=releaseDatesFor(id),box=$(`${id}Result`);if(!box)return;box.innerHTML='<div class=muted>Hisoblanmoqda...</div>';let j=await loadReleaseData(d.base,d.final,box);if(!j)return;let companies=releaseCompanyRows(j);if(id==='relMain'){let rows=numbered([releaseTotalRow(companies)].concat(companies));box.innerHTML=`<h2>${d.base} - ${d.final} <a class="btn light" href="/api/export?kind=release&base=${d.base}&final=${d.final}&token=${TOKEN}">Excel</a></h2><div class=overview-note>Boshlang'ich davr: ${d.base}. Yakuniy davr: ${d.final}.</div>${table(releaseCols(d.base,d.final),rows,'release-table sample-release-table fixed-table')}`;return}if(id==='relSpeed'){box.innerHTML=releaseSpeedPanels(companies,d.base,d.final);return}if(id==='relWh'){box.innerHTML=warehouseTurnoverPanel(j);return}}
 async function buildAllReleaseSections(){syncReleaseDates();for(const id of ['relMain','relSpeed','relWh']) await buildReleaseSection(id)}
-const renderReleaseDateControls=render;render=function(){renderReleaseDateControls();if(TAB==='released'){let v=$('view');if(v){v.innerHTML=releaseDashboardPanel();setTimeout(syncReleaseDates,0)}}}
+const renderReleaseDateControls=render;render=function(){renderReleaseDateControls();if(TAB==='released'){let v=$('view');if(v){v.innerHTML=releaseDashboardPanel();setTimeout(syncReleaseDates,0);loadReleaseBuckets();}}}
 /* === BOOT FIX: tokenni o'chirib tashlamaymiz; holatni to'g'ri ochamiz === */
 function forceLoginView(){
   document.body.classList.add("login-screen");
@@ -6363,6 +6407,14 @@ class Handler(BaseHTTPRequestHandler):
             result.update({"base": base_date, "final": final_date})
             self.json(result)
             return
+        if parsed.path == "/api/release_buckets":
+            if not self.require_perm("release"):
+                return
+            if STORE is None:
+                STORE = IBKStore(DB_PATH)
+            ensure_store_backfilled()
+            self.json(STORE.released_year_bucket_table())
+            return
         if parsed.path == "/api/export":
             if not self.require_perm("export"):
                 return
@@ -6392,6 +6444,24 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [data["total"]] + data["rows"] + data.get("unreleased", [])
                 title = f"Nazoratdan yechilishi {base_date} - {final_date}"
                 headers = release_headers()
+            elif kind == "release_bucket":
+                year_raw = q.get("year", [""])[0]
+                bucket_key = q.get("bucket", [""])[0]
+                try:
+                    year = int(year_raw)
+                except ValueError:
+                    self.send_error(HTTPStatus.BAD_REQUEST)
+                    return
+                if STORE is None:
+                    STORE = IBKStore(DB_PATH)
+                ensure_store_backfilled()
+                detail = STORE.released_bucket_detail(year, bucket_key)
+                bucket_label = dict((b[0], b[1]) for b in RELEASE_BUCKETS).get(bucket_key, bucket_key)
+                rows = detail.to_dict("records") if not detail.empty else []
+                for r in rows:
+                    r["release_date_text"] = r["release_date"].strftime("%d.%m.%Y") if pd.notna(r.get("release_date")) else ""
+                title = f"Nazoratdan yechilgan {year} yil - {bucket_label} ichida"
+                headers = release_bucket_headers()
             else:
                 item = next((r for r in load_json(INDEX_PATH, {"reports": []})["reports"] if r["id"] == report_id), None)
                 if not item:

@@ -7,6 +7,17 @@ from typing import Any
 
 import pandas as pd
 
+# (kalit, o'zbekcha nom, bugundan orqaga necha kun ichida) - kumulyativ
+RELEASE_BUCKETS = [
+    ("kun1", "1 kun", 1),
+    ("hafta1", "1 hafta", 7),
+    ("kun15", "15 kun", 15),
+    ("oy1", "1 oy", 30),
+    ("oy3", "3 oy", 90),
+    ("oy6", "6 oy", 180),
+    ("yil1", "1 yil", 365),
+]
+
 
 class IBKStore:
     """SQLite arxiv: yuklangan fayllar snapshoti va nazoratdan yechilgan qatorlar."""
@@ -555,6 +566,68 @@ class IBKStore:
         if base.empty:
             return {"total": {}, "rows": [], "partial": [], "unreleased": []}
         return compute_released_frames(base, final)
+
+    def released_year_bucket_table(self, as_of: "datetime | None" = None) -> dict[str, Any]:
+        """Deklaratsiya yili kesimida, bugundan orqaga 1 kun/1 hafta/15 kun/
+        1 oy/3 oy/6 oy/1 yil ICHIDA nazoratdan yechilgan tovarlarning
+        partiya/vazn/qiymat yig'indisi (kumulyativ - '1 oy' ustuniga '1
+        hafta' va '15 kun'dagilar ham kiradi, chunki ular ham 1 oy ichida)."""
+        timeline = self.item_timelines()
+        empty = {"years": [], "buckets": [[b[0], b[1]] for b in RELEASE_BUCKETS], "rows": [], "total": {}}
+        if timeline.empty:
+            return empty
+        released = timeline[timeline["is_released"]].copy()
+        if released.empty:
+            return empty
+        now = pd.Timestamp(as_of) if as_of is not None else pd.Timestamp.now().normalize()
+        released["_decl_year"] = pd.to_datetime(released["gtd_date"], errors="coerce").dt.year
+        released = released.dropna(subset=["_decl_year"])
+        if released.empty:
+            return empty
+        released["_decl_year"] = released["_decl_year"].astype(int)
+        released["_days_since_release"] = (now - released["release_date"]).dt.days
+        years = sorted(released["_decl_year"].unique().tolist())
+
+        def _bucket_sums(frame: pd.DataFrame) -> dict[str, dict[str, float]]:
+            out = {}
+            for bkey, _blabel, bdays in RELEASE_BUCKETS:
+                sub = frame[(frame["_days_since_release"] >= 0) & (frame["_days_since_release"] <= bdays)]
+                out[bkey] = {
+                    "partiya": int(sub["partiya"].sum()),
+                    "vazn": float(sub["weight"].sum()),
+                    "qiymat": float(sub["value"].sum()),
+                }
+            return out
+
+        rows = [{"year": year, **_bucket_sums(released[released["_decl_year"] == year])} for year in years]
+        total = {"year": "Jami", **_bucket_sums(released)}
+        return {"years": years, "buckets": [[b[0], b[1]] for b in RELEASE_BUCKETS], "rows": rows, "total": total}
+
+    def released_bucket_detail(self, year: int, bucket_key: str, as_of: "datetime | None" = None) -> pd.DataFrame:
+        """Berilgan yil + vaqt oralig'i katagiga tegishli aniq deklaratsiya
+        qatorlarini qaytaradi (Excel eksporti uchun)."""
+        bucket_days = {b[0]: b[2] for b in RELEASE_BUCKETS}
+        if bucket_key not in bucket_days:
+            return pd.DataFrame()
+        timeline = self.item_timelines()
+        if timeline.empty:
+            return timeline
+        released = timeline[timeline["is_released"]].copy()
+        if released.empty:
+            return released
+        now = pd.Timestamp(as_of) if as_of is not None else pd.Timestamp.now().normalize()
+        released["_decl_year"] = pd.to_datetime(released["gtd_date"], errors="coerce").dt.year
+        released = released.dropna(subset=["_decl_year"])
+        if released.empty:
+            return released
+        released["_decl_year"] = released["_decl_year"].astype(int)
+        released["_days_since_release"] = (now - released["release_date"]).dt.days
+        mask = (
+            (released["_decl_year"] == year)
+            & (released["_days_since_release"] >= 0)
+            & (released["_days_since_release"] <= bucket_days[bucket_key])
+        )
+        return released[mask].copy()
 
 
 def compute_released_frames(base: pd.DataFrame, final: pd.DataFrame) -> dict[str, Any]:
