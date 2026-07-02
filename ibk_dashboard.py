@@ -500,7 +500,7 @@ def load_avia_awb(path: Path | None = None) -> dict:
                 company_stats[c]["overdue"] += 1
         companies_list = sorted(company_stats.values(), key=lambda x: x["vazn"], reverse=True)
         result = {
-            "loaded": True, "file_name": target.name,
+            "loaded": True, "file_name": target.name, "file_date": _wr_file_date(target),
             "total_rows": len(rows_raw), "skipped_rows": skipped,
             "unique_awb": len(awb_list),
             "multi_flight_awb": sum(1 for r in awb_list if r["flights"] > 1),
@@ -3312,7 +3312,7 @@ function showHomeKpi(kind){
 function kpiDateTag(dateStr){return dateStr?`<div style="margin-top:4px">${dateFreshnessBadge(dateStr)}</div>`:"";}
 function kpiExtraBlocks(){
   let bnrteDateTag=kpiDateTag(DATA&&DATA.meta&&DATA.meta.date);
-  let aviaHtml=(AVIA_DATA&&AVIA_DATA.loaded)||(AVIA_STATS&&AVIA_STATS.decl_soni)?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ AVIA AWB</span><b style="color:#0ea5e9">${fmtI((AVIA_DATA&&AVIA_DATA.unique_awb)||0)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN((AVIA_STATS&&AVIA_STATS.jami_qiymat_k)||0)} ming $ · <b style="color:#dc2626">${(AVIA_DATA&&AVIA_DATA.overdue_count)||0}</b> muddati o'tgan</div></div>`:"";
+  let aviaHtml=(AVIA_DATA&&AVIA_DATA.loaded)||(AVIA_STATS&&AVIA_STATS.decl_soni)?`<div class=kpi onclick="TAB='avia';GROUP='bnrte';render()" style="cursor:pointer;border-top:3px solid #0ea5e9"><span>✈ AVIA AWB</span><b style="color:#0ea5e9">${fmtI((AVIA_DATA&&AVIA_DATA.unique_awb)||0)}</b><div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(0,0,0,.08);font-size:12px;color:var(--muted)">${fmtN((AVIA_STATS&&AVIA_STATS.jami_qiymat_k)||0)} ming $ · <b style="color:#dc2626">${(AVIA_DATA&&AVIA_DATA.overdue_count)||0}</b> muddati o'tgan</div>${kpiDateTag(AVIA_DATA&&AVIA_DATA.file_date)}</div>`:"";
   let foodRowsAll=(DATA&&DATA.food)||[];
   let foodQiymat=foodRowsAll.reduce((a,r)=>a+(+r.qiymat||0),0),foodVazn=foodRowsAll.reduce((a,r)=>a+(+r.vazn||0),0);
   let foodOverCount=foodRowsAll.filter(r=>(+r.over_qiymat||0)>0||(+r.over_vazn||0)>0).length;
