@@ -1675,13 +1675,34 @@ def declaration_key(row) -> str:
     return core.clean(row[core.SRC["decl_no"]])
 
 
+_SOURCE_DF_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
+_SOURCE_DF_CACHE_MAX = 20
+
+
 def read_report_source(source: Path) -> pd.DataFrame:
+    # Asos fayl (odatda HTML jadval, pd.read_html bilan o'qiladi - katta
+    # fayllarda juda sekin) faqat kontent o'zgarganda qayta o'qiladi. Depozit
+    # fayl qayta yuklanganda ham build_dashboard() shu funksiyani chaqiradi,
+    # holbuki asos fayl o'zgarmagan bo'ladi - keshsiz bu har safar butun
+    # faylni qayta tahlil qilib, minutlab osilib qolishga sabab bo'lardi.
+    key = str(source)
+    try:
+        mtime = source.stat().st_mtime
+    except OSError:
+        mtime = None
+    cached = _SOURCE_DF_CACHE.get(key)
+    if cached is not None and mtime is not None and cached[0] == mtime:
+        return cached[1].copy()
     df = core.read_source(source)
     df["_decl_key"] = df.apply(declaration_key, axis=1)
     df["_source_post_code"] = df[core.SRC["decl_no"]].map(source_post_code)
     df["_source_post_name"] = df["_source_post_code"].map(source_post_name)
     df["_source_transport"] = df.apply(lambda r: source_transport(r.get("_source_post_code", ""), r.get("_source_post_name", "")), axis=1)
-    return df
+    if mtime is not None:
+        if len(_SOURCE_DF_CACHE) >= _SOURCE_DF_CACHE_MAX:
+            _SOURCE_DF_CACHE.pop(next(iter(_SOURCE_DF_CACHE)))
+        _SOURCE_DF_CACHE[key] = (mtime, df)
+    return df.copy()
 
 
 def item_key(row) -> str:
